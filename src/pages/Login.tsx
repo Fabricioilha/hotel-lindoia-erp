@@ -13,11 +13,9 @@ export function Login({ onLogin }: LoginProps) {
 
   const handleLogin = (e: React.FormEvent) => {
     e.preventDefault();
-    
     const user = username.trim().toLowerCase();
     const pass = password.trim();
 
-    // Verificação baseada nas regras originais
     if (user === 'admin' && pass === 'admin123') {
       onLogin('admin');
     } else if (user === 'equipe' && pass === 'lindoia') {
@@ -28,74 +26,55 @@ export function Login({ onLogin }: LoginProps) {
   };
 
   return (
-    <div style={styles.overlay}>
-      <h2 style={{ marginBottom: '30px', color: 'white' }}>🏨 ERP - Hotel Lindoia</h2>
-      <div style={styles.loginBox}>
-        <h3 style={{ marginTop: 0, color: '#2c3e50' }}>Acesso ao Sistema</h3>
+    <div className="min-h-screen w-full flex items-center justify-center bg-[radial-linear(ellipse_at_top,var(--tw-gradient-stops))] from-slate-700 via-slate-900 to-black p-4">
+      
+      {/* Container de Vidro */}
+      <div className="max-w-md w-full bg-white/5 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/10 p-10 space-y-8">
         
-        <form onSubmit={handleLogin}>
-          <input
-            type="text"
-            placeholder="Usuário"
-            value={username}
-            onChange={(e) => setUsername(e.target.value)}
-            style={styles.input}
-          />
-          <input
-            type="password"
-            placeholder="Senha"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            style={styles.input}
-          />
-          <button type="submit" style={styles.button}>Entrar</button>
-        </form>
+        <div className="text-center">
+          <div className="bg-indigo-500/20 text-indigo-400 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 text-4xl shadow-[0_0_15px_rgba(99,102,241,0.3)] border border-indigo-500/30">
+            🏨
+          </div>
+          <h2 className="text-3xl font-black text-white tracking-wide">Hotel Lindoia</h2>
+          <p className="text-indigo-200 mt-2 font-medium tracking-wider text-sm uppercase">Painel de Gestão Integrada</p>
+        </div>
 
-        {error && (
-          <p style={{ color: 'red', fontSize: '13px', marginTop: '10px' }}>
-            Credenciais inválidas!
-          </p>
-        )}
+        <form onSubmit={handleLogin} className="space-y-5">
+          <div>
+            <label className="block text-sm font-semibold text-slate-300 mb-1.5 ml-1">Usuário</label>
+            <input
+              type="text"
+              placeholder="Digite seu usuário"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
+              className="w-full px-5 py-3.5 rounded-xl bg-slate-800/50 border border-slate-600 text-white placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all"
+            />
+          </div>
+          <div>
+            <label className="block text-sm font-semibold text-slate-300 mb-1.5 ml-1">Senha</label>
+            <input
+              type="password"
+              placeholder="••••••••"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full px-5 py-3.5 rounded-xl bg-slate-800/50 border border-slate-600 text-white placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all"
+            />
+          </div>
+
+          {error && (
+            <div className="bg-red-500/20 text-red-300 text-sm p-4 rounded-xl text-center border border-red-500/30 animate-pulse">
+              Credenciais inválidas. Tente novamente.
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-lg py-4 px-4 rounded-xl shadow-[0_0_20px_rgba(79,70,229,0.4)] hover:shadow-[0_0_25px_rgba(79,70,229,0.6)] transition-all active:scale-[0.98] mt-4"
+          >
+            Entrar no Sistema
+          </button>
+        </form>
       </div>
     </div>
   );
 }
-
-// Estilos isolados baseados no CSS original do projeto
-const styles = {
-  overlay: {
-    position: 'fixed' as const,
-    top: 0, left: 0, width: '100%', height: '100%',
-    backgroundColor: '#2c3e50',
-    display: 'flex', flexDirection: 'column' as const,
-    justifyContent: 'center', alignItems: 'center',
-    zIndex: 2000,
-  },
-  loginBox: {
-    backgroundColor: 'white',
-    padding: '30px',
-    borderRadius: '8px',
-    width: '300px',
-    textAlign: 'center' as const,
-    boxShadow: '0 4px 15px rgba(0,0,0,0.2)',
-  },
-  input: {
-    width: '90%',
-    marginBottom: '15px',
-    padding: '10px',
-    border: '1px solid #ccc',
-    borderRadius: '4px',
-    fontSize: '14px',
-  },
-  button: {
-    backgroundColor: '#3498db',
-    color: 'white',
-    border: 'none',
-    padding: '10px',
-    width: '100%',
-    borderRadius: '4px',
-    cursor: 'pointer',
-    fontWeight: 'bold',
-    fontSize: '16px',
-  }
-};
