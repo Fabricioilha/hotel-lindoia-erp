@@ -1,6 +1,6 @@
 // src/config/firebase.ts
-import { initializeApp } from "firebase/app";
-import { getDatabase, ref } from "firebase/database";
+import { initializeApp } from 'firebase/app';
+import { getDatabase, ref, type Database } from 'firebase/database';
 
 const firebaseConfig = {
   apiKey: "AIzaSyDtOODuVs7QzZVmxohSgWcpMpUpG-JVj3w",
@@ -11,11 +11,9 @@ const firebaseConfig = {
   appId: "1:101095801473:web:339d6ad1184b2393ac4380"
 };
 
-// Inicializa o Firebase
 const app = initializeApp(firebaseConfig);
 
-// Exporta o banco de dados para ser usado nos outros componentes do React
-export const db = getDatabase(app);
+const databaseUrl = import.meta.env.VITE_FIREBASE_DATABASE_URL;
+export const db: Database = getDatabase(app, databaseUrl);
 
-// Cria a referência principal (uma "gaveta" vazia pronta para receber os dados do ERP)
 export const dbRef = ref(db, 'erp_geral');

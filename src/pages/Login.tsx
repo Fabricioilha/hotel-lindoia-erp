@@ -1,6 +1,6 @@
-// src/pages/Login.tsx
-import React, { useState } from 'react';
+import { useState, type FormEvent } from 'react';
 import type { UserRole } from '../types';
+import './login.css';
 
 interface LoginProps {
   onLogin: (role: UserRole) => void;
@@ -11,8 +11,8 @@ export function Login({ onLogin }: LoginProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
-    e.preventDefault();
+  function handleLogin(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     const user = username.trim().toLowerCase();
     const pass = password.trim();
 
@@ -23,58 +23,34 @@ export function Login({ onLogin }: LoginProps) {
     } else {
       setError(true);
     }
-  };
+  }
 
   return (
-    <div className="min-h-screen w-full flex items-center justify-center bg-[radial-linear(ellipse_at_top,var(--tw-gradient-stops))] from-slate-700 via-slate-900 to-black p-4">
-      
-      {/* Container de Vidro */}
-      <div className="max-w-md w-full bg-white/5 backdrop-blur-xl rounded-3xl shadow-2xl border border-white/10 p-10 space-y-8">
-        
-        <div className="text-center">
-          <div className="bg-indigo-500/20 text-indigo-400 w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-6 text-4xl shadow-[0_0_15px_rgba(99,102,241,0.3)] border border-indigo-500/30">
-            🏨
-          </div>
-          <h2 className="text-3xl font-black text-white tracking-wide">Hotel Lindoia</h2>
-          <p className="text-indigo-200 mt-2 font-medium tracking-wider text-sm uppercase">Painel de Gestão Integrada</p>
+    <main className="login-page">
+      <section className="login-brand-panel">
+        <div className="login-brand-lockup"><span>HL</span><small>HOTEL LINDOIA</small></div>
+        <div className="login-brand-copy"><p>HOSPITALIDADE &amp; OPERAÇÃO</p><h1>Hotel<br />Lindoia</h1><span>GESTÃO INTEGRADA</span></div>
+        <div className="login-brand-rule" />
+        <p className="login-brand-footer">PAINEL DA EQUIPE</p>
+      </section>
+
+      <section className="login-form-panel">
+        <div className="login-form-wrap">
+          <span className="login-form-mark">HL</span>
+          <p className="login-eyebrow">ACESSO DA EQUIPE</p>
+          <h2>Entrar no sistema</h2>
+          <p className="login-intro">Use suas credenciais para acessar a operação do hotel.</p>
+
+          <form onSubmit={handleLogin} className="login-form">
+            <label className="login-field"><span>Usuário</span><input autoComplete="username" required value={username} onChange={(event) => { setUsername(event.target.value); setError(false); }} placeholder="Digite seu usuário" /></label>
+            <label className="login-field"><span>Senha</span><input autoComplete="current-password" required type="password" value={password} onChange={(event) => { setPassword(event.target.value); setError(false); }} placeholder="Digite sua senha" /></label>
+            {error && <div className="login-error" role="alert">Usuário ou senha inválidos. Tente novamente.</div>}
+            <button className="login-submit" type="submit">Entrar <span aria-hidden="true">→</span></button>
+          </form>
+
+          <p className="login-footnote">Acesso interno <span>·</span> Hotel Lindoia</p>
         </div>
-
-        <form onSubmit={handleLogin} className="space-y-5">
-          <div>
-            <label className="block text-sm font-semibold text-slate-300 mb-1.5 ml-1">Usuário</label>
-            <input
-              type="text"
-              placeholder="Digite seu usuário"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full px-5 py-3.5 rounded-xl bg-slate-800/50 border border-slate-600 text-white placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-semibold text-slate-300 mb-1.5 ml-1">Senha</label>
-            <input
-              type="password"
-              placeholder="••••••••"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full px-5 py-3.5 rounded-xl bg-slate-800/50 border border-slate-600 text-white placeholder-slate-400 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/50 outline-none transition-all"
-            />
-          </div>
-
-          {error && (
-            <div className="bg-red-500/20 text-red-300 text-sm p-4 rounded-xl text-center border border-red-500/30 animate-pulse">
-              Credenciais inválidas. Tente novamente.
-            </div>
-          )}
-
-          <button
-            type="submit"
-            className="w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-lg py-4 px-4 rounded-xl shadow-[0_0_20px_rgba(79,70,229,0.4)] hover:shadow-[0_0_25px_rgba(79,70,229,0.6)] transition-all active:scale-[0.98] mt-4"
-          >
-            Entrar no Sistema
-          </button>
-        </form>
-      </div>
-    </div>
+      </section>
+    </main>
   );
 }
