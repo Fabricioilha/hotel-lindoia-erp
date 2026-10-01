@@ -1,0 +1,26 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+    "roles": {
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('roles').child(auth.uid).child('role').val() === 'admin')",
+        ".write": false
+      }
+    },
+    "erp_geral": {
+      "escala": {
+        ".read": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')",
+        ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"
+      },
+      "estoque": {
+        ".read": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')",
+        ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')"
+      },
+      "financeiro": {
+        ".read": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
+        ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"
+      }
+    }
+  }
+}

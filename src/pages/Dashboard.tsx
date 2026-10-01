@@ -42,14 +42,13 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
         <section className="dashboard-modules">
           <div className="dashboard-section-heading">
             <div><p className="dashboard-eyebrow">ACESSO RÁPIDO</p><h2>Módulos do hotel</h2></div>
-            <Link to="/estoque" className="dashboard-text-link">Abrir estoque <span aria-hidden="true">→</span></Link>
           </div>
           <div className="module-grid">
             <ModuleCard number="01" title="Geladeira - Recepção" description="Venda bebidas, receba na hora ou registre por quarto." route="/vendas" />
             <ModuleCard number="02" title="Controle de estoque" description="Limpeza, rouparia, manutenção e itens da recepção." route="/estoque" />
             <ModuleCard number="03" title="Serviço de quarto" description="Status de limpeza, ocupação e manutenção reportada." />
-            <ModuleCard number="04" title="Escala de funcionários" description="Calendário de turnos e equipe operacional." />
-            <ModuleCard number="05" title="Gestão financeira" description="Fluxo de caixa, folha e despesas do hotel." disabled={userRole !== 'admin'} />
+            <ModuleCard number="04" title="Escala de funcionários" description="Calendário de turnos e equipe operacional." route="/escala" />
+            <ModuleCard number="05" title="Gestão financeira" description="Fluxo de caixa, folha e despesas do hotel." route={userRole === 'admin' ? '/financeiro/caixa' : undefined} disabled={userRole !== 'admin'} />
             <ModuleCard number="06" title="Recepção e reservas" description="Check-in, check-out e gestão de hóspedes." />
           </div>
         </section>

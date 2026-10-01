@@ -1,27 +1,36 @@
 import { useState, type FormEvent } from 'react';
-import type { UserRole } from '../types';
 import './login.css';
 
 interface LoginProps {
-  onLogin: (role: UserRole) => void;
+  onLogin: (email: string, password: string) => Promise<void>;
 }
 
 export function Login({ onLogin }: LoginProps) {
-  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState(false);
+  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
-  function handleLogin(event: FormEvent<HTMLFormElement>) {
+  async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const user = username.trim().toLowerCase();
-    const pass = password.trim();
-
-    if (user === 'admin' && pass === 'admin123') {
-      onLogin('admin');
-    } else if (user === 'equipe' && pass === 'lindoia') {
-      onLogin('viewer');
-    } else {
-      setError(true);
+    setSubmitting(true);
+    setError('');
+    try {
+      await onLogin(email, password);
+    } catch (loginError) {
+      const message = loginError instanceof Error ? loginError.message : '';
+      const code = loginError && typeof loginError === 'object' && 'code' in loginError
+        ? String(loginError.code)
+        : '';
+      if (message === 'Conta autenticada sem perfil de acesso.') {
+        setError('Conta sem perfil de acesso. Solicite à gerência a liberação do usuário.');
+      } else if (code === 'auth/network-request-failed') {
+        setError('Não foi possível conectar ao Firebase. Verifique sua conexão.');
+      } else {
+        setError('E-mail ou senha inválidos. Verifique os dados e tente novamente.');
+      }
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -42,10 +51,10 @@ export function Login({ onLogin }: LoginProps) {
           <p className="login-intro">Use suas credenciais para acessar a operação do hotel.</p>
 
           <form onSubmit={handleLogin} className="login-form">
-            <label className="login-field"><span>Usuário</span><input autoComplete="username" required value={username} onChange={(event) => { setUsername(event.target.value); setError(false); }} placeholder="Digite seu usuário" /></label>
-            <label className="login-field"><span>Senha</span><input autoComplete="current-password" required type="password" value={password} onChange={(event) => { setPassword(event.target.value); setError(false); }} placeholder="Digite sua senha" /></label>
-            {error && <div className="login-error" role="alert">Usuário ou senha inválidos. Tente novamente.</div>}
-            <button className="login-submit" type="submit">Entrar <span aria-hidden="true">→</span></button>
+            <label className="login-field"><span>E-mail</span><input autoComplete="username" required type="email" value={email} onChange={(event) => { setEmail(event.target.value); setError(''); }} placeholder="nome@hotel.com.br" /></label>
+            <label className="login-field"><span>Senha</span><input autoComplete="current-password" required type="password" value={password} onChange={(event) => { setPassword(event.target.value); setError(''); }} placeholder="Digite sua senha" /></label>
+            {error && <div className="login-error" role="alert">{error}</div>}
+            <button className="login-submit" type="submit" disabled={submitting}>{submitting ? 'Entrando...' : 'Entrar'} <span aria-hidden="true">→</span></button>
           </form>
 
           <p className="login-footnote">Acesso interno <span>·</span> Hotel Lindoia</p>

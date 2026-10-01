@@ -15,11 +15,15 @@ O módulo de estoque fica em `/estoque` e inclui:
 
 O módulo usa o Realtime Database padrão do projeto Firebase (`hotel-lindoia-erp-default-rtdb.firebaseio.com`) e grava em `erp_geral/estoque`. Para apontar para outra instância, configure `VITE_FIREBASE_DATABASE_URL` no `.env.local` e reinicie o Vite.
 
-Se o banco estiver indisponível ou as regras negarem leitura/gravação, o sistema mostra o erro em vez de trocar silenciosamente para dados locais.
+O login usa Firebase Authentication com e-mail e senha. O papel de cada usuário é lido em `roles/{uid}/role` no Realtime Database: `admin` para gerência ou `viewer` para funcionários. A escala permite leitura para ambos e gravação somente para admin; estoque permite leitura e gravação para ambos; financeiro fica restrito a admin.
 
-As regras do Realtime Database precisam permitir leitura e gravação somente aos usuários autorizados. O login atual do projeto é demonstrativo e não autentica no Firebase; não libere acesso público ao banco para contornar isso. A cobrança pendente fica registrada no histórico do estoque, mas ainda não é lançada automaticamente na conta da reserva.
+As regras de negação padrão estão em `database.rules.json`, vinculadas ao projeto `hotel-lindoia-erp` por `firebase.json` e `.firebaserc`. O provedor **E-mail/senha** está habilitado e as regras já foram publicadas no Realtime Database. As contas de gerência (`admin`) e funcionário (`viewer`) estão provisionadas; os papéis ficam em `/roles/{uid}/role`.
 
-**Segurança pendente:** a verificação de conexão feita em 30/09/2026 confirmou que o nó de estoque aceita leitura e escrita sem autenticação. Não cadastre dados reais até habilitar autenticação Firebase e restringir as regras do Realtime Database.
+Para liberar outro usuário, crie a conta em **Authentication → Users**, copie o UID e, no Realtime Database, crie `/roles/{uid}/role` com o valor string `viewer` para equipe ou `admin` para gerência. O usuário só acessa os módulos permitidos pelo papel após esse cadastro.
+
+Cadastre papéis pelo Console Firebase, que tem permissão administrativa. As regras impedem que usuários alterem o próprio papel. Para publicar futuras alterações ao arquivo de regras, use `firebase deploy --only database`.
+
+Não coloque senhas ou credenciais de conta de serviço no código ou no repositório. A cobrança pendente fica registrada no histórico do estoque, mas ainda não é lançada automaticamente na conta da reserva.
 
 Execute `npm install` e `npm run dev` para iniciar o projeto. Use `npm run build` e `npm run lint` para validar.
 

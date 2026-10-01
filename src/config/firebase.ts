@@ -11,9 +11,10 @@ const firebaseConfig = {
   appId: "1:101095801473:web:339d6ad1184b2393ac4380"
 };
 
-const app = initializeApp(firebaseConfig);
+export const app = initializeApp(firebaseConfig);
 
-const databaseUrl = import.meta.env.VITE_FIREBASE_DATABASE_URL;
+const databaseUrl = import.meta.env.VITE_FIREBASE_DATABASE_URL
+  ?? 'https://hotel-lindoia-erp-default-rtdb.firebaseio.com';
 export const db: Database = getDatabase(app, databaseUrl);
 
 export const dbRef = ref(db, 'erp_geral');
