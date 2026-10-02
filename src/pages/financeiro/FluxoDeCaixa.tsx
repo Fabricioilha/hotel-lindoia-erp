@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
+import type { AuditEvent } from '../../types/audit';
+import { DateInput } from '../../components/ui/DateInput';
 import { emptyFinance, financeStorageMode, subscribeFinance, updateFinance } from '../../services/financeStore';
 import {
 	DAILY_INCOME_ITEMS,
@@ -21,6 +23,8 @@ import './financeiro.css';
 
 type Tab = 'resumo' | 'entradas' | 'saidas' | 'transferencias' | 'categorias';
 type Modal = 'entrada' | 'saida' | 'transferencia' | 'saldo' | null;
+// Categorias usadas por lançamentos automáticos (hospedagem, venda, estoque, OYO).
+const LOCKED_CATEGORIES = { income: ['Diária', 'Rotativo', 'Consumo'], expense: ['Estoque', 'OYO'] };
 type Activity = { id: string; date: string; title: string; detail: string; amount: number; paid: number; type: 'entrada' | 'saida' | 'folha'; wallet: string };
 
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -240,10 +244,25 @@ export function FluxoDeCaixa() {
 	}
 
 	async function removeCategory(kind: 'income' | 'expense', category: string) {
+		if (LOCKED_CATEGORIES[kind].includes(category)) { setError(`"${category}" é usada automaticamente pelo sistema e não pode ser removida.`); return; }
 		if (!window.confirm(`Remover a categoria "${category}"? Os lançamentos existentes serão preservados.`)) return;
 		await commit((latest) => kind === 'income'
 			? { ...latest, incomeCategories: latest.incomeCategories.filter((item) => item !== category) }
 			: { ...latest, expenseCategories: latest.expenseCategories.filter((item) => item !== category) }, 'Categoria removida. Lançamentos existentes preservados.');
+	}
+
+	async function renameCategory(kind: 'income' | 'expense', from: string, to: string) {
+		const normalized = to.trim();
+		const key = normalized.toLocaleLowerCase('pt-BR');
+		if (!normalized || normalized === from) return;
+		if (LOCKED_CATEGORIES[kind].includes(from)) { setError(`"${from}" é usada automaticamente pelo sistema e não pode ser renomeada.`); return; }
+		if (kind === 'income' && key === 'oyo') { setError('OYO é uma categoria de despesa e não pode ser cadastrada como entrada.'); return; }
+		const categories = kind === 'income' ? data.incomeCategories : data.expenseCategories;
+		if (categories.some((item) => item !== from && item.toLocaleLowerCase('pt-BR') === key)) { setError('Essa categoria já existe.'); return; }
+		const timestamp = new Date().toISOString();
+		await commit((latest) => kind === 'income'
+			? { ...latest, incomeCategories: latest.incomeCategories.map((item) => item === from ? normalized : item), incomes: Object.fromEntries(Object.entries(latest.incomes).map(([key, entry]) => [key, entry.category === from ? { ...entry, category: normalized, updatedAt: timestamp } : entry])) }
+			: { ...latest, expenseCategories: latest.expenseCategories.map((item) => item === from ? normalized : item), expenses: Object.fromEntries(Object.entries(latest.expenses).map(([key, entry]) => [key, entry.category === from ? { ...entry, category: normalized, updatedAt: timestamp } : entry])) }, 'Categoria renomeada; os lançamentos existentes foram atualizados.');
 	}
 
 	async function removeRecord(kind: 'entrada' | 'saida' | 'transferencia', recordId: string) {
@@ -302,6 +321,7 @@ export function FluxoDeCaixa() {
 							<section className="finance-panel finance-wallet-panel"><div className="finance-panel-heading"><div><h2>Movimento entre carteiras</h2><p>Transferências não alteram o resultado financeiro.</p></div><button className="finance-text-button" onClick={() => openModal('transferencia')}>+ Registrar</button></div>{transfers.length === 0 ? <p className="finance-empty-inline">Sem transferências no mês.</p> : transfers.slice(0, 5).map((item) => <div className="finance-transfer-row" key={item.id}><span>{dateLabel(item.date)}</span><strong>{WALLET_LABELS[item.from]} → {WALLET_LABELS[item.to]}</strong><b>{money(item.amount)}</b></div>)}</section>
 						</section>
 						<ActivityTable activities={activities.slice(0, 10)} onEdit={(activity) => activity.type === 'entrada' ? openModal('entrada', activity.id) : activity.type === 'saida' ? openModal('saida', activity.id) : undefined} onDelete={(activity) => activity.type !== 'folha' && void removeRecord(activity.type, activity.id)} title="Lançamentos recentes" />
+						<AuditTable events={Object.values(data.auditLog).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0, 20)} />
 					</>}
 
 					  {tab === 'entradas' && <section className="finance-panel"><div className="finance-panel-heading"><div><h2>Entradas da competência</h2><p>{incomes.length} registros · total {money(totalIncome)}</p></div><div className="finance-heading-actions"><button className="finance-button finance-button-soft" onClick={() => exportCsv(`entradas-${month}.csv`, [['Data', 'Origem', 'Itens', 'Pagamentos', 'Valor total', 'Observação'], ...incomes.map((item) => [item.date, item.category, incomeItems(item).map((line) => `${line.description}: ${money(line.amount)}`).join(' | '), incomePaymentSummary(item), item.amount, item.note])])}>Exportar CSV</button><button className="finance-button finance-button-dark" onClick={() => openModal('entrada')}>+ Entrada</button></div></div><ActivityTable activities={incomes.map((item) => ({ id: item.id, date: item.date, title: item.category, detail: `${item.note}${item.note ? ' · ' : ''}${incomeItems(item).map((line) => line.description).join(', ')}`, amount: item.amount, paid: item.amount, type: 'entrada', wallet: incomePaymentSummary(item) }))} onEdit={(activity) => openModal('entrada', activity.id)} onDelete={(activity) => void removeRecord('entrada', activity.id)} title="" /></section>}
@@ -310,7 +330,7 @@ export function FluxoDeCaixa() {
 
 					  {tab === 'transferencias' && <section className="finance-panel"><div className="finance-panel-heading"><div><h2>Transferências da competência</h2><p>{transfers.length} registros · sem impacto no resultado</p></div><div className="finance-heading-actions"><button className="finance-button finance-button-soft" onClick={() => exportCsv(`transferencias-${month}.csv`, [['Data', 'Origem', 'Destino', 'Valor', 'Observação'], ...transfers.map((item) => [item.date, WALLET_LABELS[item.from], WALLET_LABELS[item.to], item.amount, item.note])])}>Exportar CSV</button><button className="finance-button finance-button-dark" onClick={() => openModal('transferencia')}>+ Transferência</button></div></div>{transfers.length === 0 ? <div className="finance-empty">Nenhuma transferência neste mês.</div> : <div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Data</th><th>Origem</th><th>Destino</th><th>Observação</th><th className="numeric">Valor</th><th><span className="sr-only">Ações</span></th></tr></thead><tbody>{transfers.map((item) => <tr key={item.id}><td>{dateLabel(item.date)}</td><td>{WALLET_LABELS[item.from]}</td><td>{WALLET_LABELS[item.to]}</td><td>{item.note || '—'}</td><td className="numeric">{money(item.amount)}</td><td><div className="finance-row-actions"><button onClick={() => openModal('transferencia', item.id)}>Editar</button><button className="danger" onClick={() => void removeRecord('transferencia', item.id)}>Excluir</button></div></td></tr>)}</tbody></table></div>}</section>}
 
-					  {tab === 'categorias' && <div className="finance-category-grid"><CategoryManager title="Categorias de entrada" categories={data.incomeCategories} onAdd={(category) => void addCategory('income', category)} onRemove={(category) => void removeCategory('income', category)} /><CategoryManager title="Categorias de despesa" categories={data.expenseCategories} onAdd={(category) => void addCategory('expense', category)} onRemove={(category) => void removeCategory('expense', category)} /></div>}
+					  {tab === 'categorias' && <div className="finance-category-grid"><CategoryManager title="Categorias de entrada" categories={data.incomeCategories} locked={LOCKED_CATEGORIES.income} onRename={(from, to) => void renameCategory('income', from, to)} onAdd={(category) => void addCategory('income', category)} onRemove={(category) => void removeCategory('income', category)} /><CategoryManager title="Categorias de despesa" categories={data.expenseCategories} locked={LOCKED_CATEGORIES.expense} onRename={(from, to) => void renameCategory('expense', from, to)} onAdd={(category) => void addCategory('expense', category)} onRemove={(category) => void removeCategory('expense', category)} /></div>}
 				</>}
 
 				<footer className="finance-page-footer"><span>Armazenamento: {financeStorageMode}</span><span>Fluxo de caixa · Hotel Lindoia</span></footer>
@@ -336,19 +356,26 @@ function CategorySummary({ title, items, empty }: { title: string; items: [strin
 	return <section className="finance-panel"><div className="finance-panel-heading"><div><h2>{title}</h2><p>{rows.length} categorias</p></div></div>{rows.length === 0 ? <p className="finance-empty-inline">{empty}</p> : rows.slice(0, 7).map(([category, amount]) => <div className="finance-category-row" key={category}><span>{category}</span><strong>{money(amount)}</strong></div>)}</section>;
 }
 
-function CategoryManager({ title, categories, onAdd, onRemove }: { title: string; categories: string[]; onAdd: (category: string) => void; onRemove: (category: string) => void }) {
+function CategoryManager({ title, categories, locked, onAdd, onRename, onRemove }: { title: string; categories: string[]; locked: string[]; onAdd: (category: string) => void; onRename: (from: string, to: string) => void; onRemove: (category: string) => void }) {
 	const [category, setCategory] = useState('');
+	const [editing, setEditing] = useState('');
+	const [draft, setDraft] = useState('');
 	function submit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		if (!category.trim()) return;
 		onAdd(category);
 		setCategory('');
 	}
-	return <section className="finance-panel finance-category-manager"><div className="finance-panel-heading"><div><h2>{title}</h2><p>{categories.length} categorias disponíveis nos lançamentos</p></div></div><form className="finance-category-form" onSubmit={submit}><label className="finance-field"><span>Nova categoria</span><input value={category} onChange={(event) => setCategory(event.target.value)} maxLength={50} placeholder="Digite um nome" /></label><button className="finance-button finance-button-dark" type="submit" disabled={!category.trim()}>Adicionar</button></form>{categories.length === 0 ? <p className="finance-empty-inline">Nenhuma categoria cadastrada.</p> : <ul className="finance-category-list">{categories.map((item) => <li key={item}><span>{item}</span><button type="button" title={`Remover categoria ${item}`} aria-label={`Remover categoria ${item}`} onClick={() => onRemove(item)}>×</button></li>)}</ul>}</section>;
+	return <section className="finance-panel finance-category-manager"><div className="finance-panel-heading"><div><h2>{title}</h2><p>{categories.length} categorias disponíveis nos lançamentos</p></div></div><form className="finance-category-form" onSubmit={submit}><label className="finance-field"><span>Nova categoria</span><input value={category} onChange={(event) => setCategory(event.target.value)} maxLength={50} placeholder="Digite um nome" /></label><button className="finance-button finance-button-dark" type="submit" disabled={!category.trim()}>Adicionar</button></form>{categories.length === 0 ? <p className="finance-empty-inline">Nenhuma categoria cadastrada.</p> : <ul className="finance-category-list">{categories.map((item) => <li key={item}>{editing === item ? <><input value={draft} maxLength={50} autoFocus aria-label={`Novo nome de ${item}`} onChange={(event) => setDraft(event.target.value)} /><button type="button" title="Salvar" aria-label="Salvar nome" disabled={!draft.trim()} onClick={() => { onRename(item, draft); setEditing(''); }}>✓</button><button type="button" title="Cancelar" aria-label="Cancelar edição" onClick={() => setEditing('')}>↶</button></> : <><span>{item}{locked.includes(item) ? ' · automática' : ''}</span>{!locked.includes(item) && <button type="button" title={`Editar categoria ${item}`} aria-label={`Editar categoria ${item}`} onClick={() => { setEditing(item); setDraft(item); }}>✎</button>}{!locked.includes(item) && <button type="button" title={`Remover categoria ${item}`} aria-label={`Remover categoria ${item}`} onClick={() => onRemove(item)}>×</button>}</>}</li>)}</ul>}</section>;
 }
 
 function ActivityTable({ activities, onEdit, onDelete, title }: { activities: Activity[]; onEdit: (activity: Activity) => void; onDelete: (activity: Activity) => void; title: string }) {
 	return <section className="finance-panel finance-activity-panel">{title && <div className="finance-panel-heading"><div><h2>{title}</h2><p>Registros da competência selecionada</p></div></div>}{activities.length === 0 ? <div className="finance-empty">Nenhum lançamento nesta competência.</div> : <div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Data / vencimento</th><th>Origem / categoria</th><th>Carteira / pagamentos</th><th className="numeric">Valor</th><th><span className="sr-only">Ações</span></th></tr></thead><tbody>{activities.map((item) => <tr key={`${item.type}-${item.id}`}><td>{dateLabel(item.date)}</td><td><strong>{item.title}</strong>{item.detail && <small>{item.detail}</small>}{item.type === 'folha' && <small>Folha de pagamento</small>}</td><td>{item.wallet}</td><td className={`numeric ${item.type === 'entrada' ? 'positive-value' : ''}`}>{item.type === 'entrada' ? money(item.amount) : <>{money(item.amount)}<small>Previsto</small><small>Pago {money(item.paid)}</small><small>Falta {money(Math.max(0, item.amount - item.paid))}</small></>}</td><td><div className="finance-row-actions">{item.type !== 'folha' && <><button onClick={() => onEdit(item)}>Editar</button><button className="danger" onClick={() => onDelete(item)}>Excluir</button></>}</div></td></tr>)}</tbody></table></div>}</section>;
+}
+
+function AuditTable({ events }: { events: AuditEvent[] }) {
+	const actionLabels: Record<AuditEvent['action'], string> = { criado: 'Criado', alterado: 'Alterado', excluido: 'Excluído' };
+	return <section className="finance-panel"><div className="finance-panel-heading"><div><h2>Auditoria recente</h2><p>Ações sobre lançamentos e configurações financeiras</p></div></div>{events.length === 0 ? <p className="finance-empty-inline">Nenhuma alteração registrada ainda.</p> : <div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Data</th><th>Ação</th><th>Registro</th><th>Usuário</th></tr></thead><tbody>{events.map((event) => <tr key={event.id}><td>{new Date(event.occurredAt).toLocaleString('pt-BR')}</td><td>{actionLabels[event.action]}</td><td>{event.entity} · {event.recordId}</td><td>{event.actorUid}</td></tr>)}</tbody></table></div>}</section>;
 }
 
 function ModalHeader({ title, onClose }: { title: string; onClose: () => void }) {
@@ -384,7 +411,7 @@ function IncomeForm({ record, month, categories, saving, onClose, onSubmit }: { 
 	}
 
 	return <form onSubmit={submit}><ModalHeader title={record ? 'Editar entrada' : 'Nova entrada'} onClose={onClose} /><div className="finance-modal-body">
-		<label className="finance-field"><span>Data *</span><input name="date" type="date" required defaultValue={record?.date ?? monthDueDate(month)} /></label>
+		<label className="finance-field"><span>Data *</span><DateInput name="date" required defaultValue={record?.date ?? monthDueDate(month)} /></label>
 		<label className="finance-field"><span>Tipo de entrada *</span><select value={category} onChange={(event) => changeCategory(event.target.value)} required>{record && !categories.includes(record.category) && <option value={record.category}>{record.category} (histórica)</option>}{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
 		<div className="finance-income-section finance-field-wide"><div className="finance-income-section-heading"><div><strong>{isDaily ? 'Composição da diária' : 'Itens recebidos'}</strong><small>Defina o valor e o pagamento de cada item.</small></div><button type="button" className="finance-button finance-button-soft" disabled={isDaily && !nextDailyItem} onClick={() => setItems((current) => [...current, newIncomeItem(isDaily ? nextDailyItem ?? DAILY_INCOME_ITEMS[1] : category)])}>{isDaily ? '+ Adicional' : '+ Dividir recebimento'}</button></div>
 			<div className="finance-income-lines">{items.map((item, index) => <div className="finance-income-line" key={item.id}>
@@ -402,7 +429,7 @@ function IncomeForm({ record, month, categories, saving, onClose, onSubmit }: { 
 
 function ExpenseForm({ record, month, categories, saving, onClose, onSubmit }: { record?: FinanceExpense; month: string; categories: string[]; saving: boolean; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
 	return <form onSubmit={onSubmit}><ModalHeader title={record ? 'Editar despesa' : 'Nova despesa'} onClose={onClose} /><div className="finance-modal-body">
-		<label className="finance-field"><span>Vencimento *</span><input name="dueDate" type="date" required defaultValue={record?.dueDate ?? monthDueDate(month)} /></label>
+		<label className="finance-field"><span>Vencimento *</span><DateInput name="dueDate" required defaultValue={record?.dueDate ?? monthDueDate(month)} /></label>
 		<label className="finance-field"><span>Categoria *</span><select name="category" required defaultValue={record?.category ?? ''}><option value="" disabled>Selecione uma categoria</option>{record && !categories.includes(record.category) && <option value={record.category}>{record.category} (histórica)</option>}{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
 		<label className="finance-field"><span>Valor previsto</span><input name="plannedAmount" type="number" min="0" step="0.01" defaultValue={record?.plannedAmount ?? 0} /></label>
 		<label className="finance-field"><span>Pago em dinheiro</span><input name="paidCash" type="number" min="0" step="0.01" defaultValue={record?.paidCash ?? 0} /></label>
@@ -414,7 +441,7 @@ function ExpenseForm({ record, month, categories, saving, onClose, onSubmit }: {
 
 function TransferForm({ record, month, saving, onClose, onSubmit }: { record?: FinanceTransfer; month: string; saving: boolean; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
 	return <form onSubmit={onSubmit}><ModalHeader title={record ? 'Editar transferência' : 'Nova transferência'} onClose={onClose} /><div className="finance-modal-body">
-		<label className="finance-field"><span>Data *</span><input name="date" type="date" required defaultValue={record?.date ?? monthDueDate(month)} /></label>
+		<label className="finance-field"><span>Data *</span><DateInput name="date" required defaultValue={record?.date ?? monthDueDate(month)} /></label>
 		<label className="finance-field"><span>Valor *</span><input name="amount" type="number" min="0.01" step="0.01" required defaultValue={record?.amount} /></label>
 		<label className="finance-field"><span>Origem *</span><select name="from" defaultValue={record?.from ?? 'cash'}>{(Object.entries(WALLET_LABELS) as [FinanceWallet, string][]).map(([wallet, label]) => <option key={wallet} value={wallet}>{label}</option>)}</select></label>
 		<label className="finance-field"><span>Destino *</span><select name="to" defaultValue={record?.to ?? 'bank'}>{(Object.entries(WALLET_LABELS) as [FinanceWallet, string][]).map(([wallet, label]) => <option key={wallet} value={wallet}>{label}</option>)}</select></label>

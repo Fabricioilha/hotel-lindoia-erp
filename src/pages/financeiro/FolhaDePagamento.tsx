@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { emptyFinance, financeStorageMode, subscribeFinance, updateFinance } from '../../services/financeStore';
+import { DateInput } from '../../components/ui/DateInput';
 import { payrollNet, type FinanceData, type PayrollEntry } from '../../types/finance';
 import './financeiro.css';
 
@@ -160,7 +161,7 @@ export function FolhaDePagamento() {
 				<div className="finance-modal-body">
 					<label className="finance-field"><span>Funcionário *</span><input name="employee" required defaultValue={selected?.employee} placeholder="Nome completo" /></label>
 					<label className="finance-field"><span>Função</span><input name="position" defaultValue={selected?.position} placeholder="Cargo / setor" /></label>
-					<label className="finance-field"><span>Vencimento *</span><input name="dueDate" type="date" required defaultValue={selected?.dueDate ?? monthDueDate(month)} /></label>
+					<label className="finance-field"><span>Vencimento *</span><DateInput name="dueDate" required defaultValue={selected?.dueDate ?? monthDueDate(month)} /></label>
 					<label className="finance-field"><span>Salário-base *</span><input name="basePay" type="number" min="0" step="0.01" required defaultValue={selected?.basePay ?? 0} /></label>
 					<label className="finance-field"><span>Acréscimos</span><input name="additions" type="number" min="0" step="0.01" defaultValue={selected?.additions ?? 0} /></label>
 					<label className="finance-field"><span>Descontos</span><input name="deductions" type="number" min="0" step="0.01" defaultValue={selected?.deductions ?? 0} /></label>

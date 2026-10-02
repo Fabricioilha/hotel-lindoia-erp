@@ -31,6 +31,13 @@
 .sales-operator strong { color: #425a7b; }
 
 .sales-layout { display: grid; grid-template-columns: minmax(0, 1.4fr) minmax(310px, .72fr); align-items: start; gap: 14px; }
+.pending-minibar-panel { display: grid; gap: 10px; margin-top: 18px; padding: 14px; border-top: 1px solid #dfe5ee; background: #fff; }
+.pending-minibar-panel h2 { margin: 0; color: #1c3147; font-size: 15px; }
+.pending-minibar-panel p { margin: 4px 0 0; color: #6a7888; font-size: 11px; }
+.pending-minibar-sale { display: grid; grid-template-columns: minmax(130px, 1fr) auto minmax(145px, 180px) auto; align-items: center; gap: 9px; padding-top: 10px; border-top: 1px solid #edf0f3; color: #394b5c; font-size: 11px; }
+.pending-minibar-sale > strong { color: #1c3147; }
+.pending-minibar-sale select { width: 100%; min-height: 34px; border: 1px solid #cfd8e1; border-radius: 3px; padding: 0 8px; background: #fff; }
+.pending-minibar-sale button { min-height: 34px; border: 0; border-radius: 3px; padding: 0 10px; color: #fff; background: #315f87; cursor: pointer; font-weight: 700; }
 .catalog-panel,
 .sale-order { min-width: 0; border: 1px solid #dfe5ee; border-radius: 5px; background: #fff; }
 .catalog-heading { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 17px; border-bottom: 1px solid #e8edf3; }
@@ -74,6 +81,9 @@
 .order-count { display: grid; width: 27px; height: 27px; place-items: center; border-radius: 4px; color: var(--sales-blue); background: #edf3fb; font-size: 10px; font-weight: 800; }
 .order-empty { padding: 20px 5px; color: #8995a6; font-size: 10px; text-align: center; }
 .order-lines { display: grid; max-height: 260px; overflow-y: auto; }
+.sales-extra-order-lines { border-top: 1px dashed #d8e1eb; }
+.remove-extra-button { width: 26px; height: 26px; flex: 0 0 auto; border: 1px solid #ead5d8; border-radius: 3px; color: #a52c3b; background: #fff; font-size: 17px; cursor: pointer; }
+.remove-extra-button:hover { background: #fff2f3; }
 .order-line { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 11px 0; border-bottom: 1px solid #edf0f4; }
 .order-line-info { display: grid; min-width: 0; gap: 2px; }
 .order-line-info strong { overflow: hidden; color: #293d5a; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
@@ -85,6 +95,18 @@
 .quantity-stepper span { min-width: 22px; color: #31445f; font-size: 10px; font-weight: 700; text-align: center; }
 
 .settlement-fieldset { min-width: 0; margin: 15px 0 12px; padding: 0; border: 0; }
+.sales-extras-fieldset { display: grid; gap: 9px; margin-top: 14px; padding-top: 12px; border-top: 1px solid #e5eaf1; }
+.sales-extras-fieldset > div:first-child strong,
+.sales-extras-fieldset > div:first-child small { display: block; }
+.sales-extras-fieldset > div:first-child strong { color: #52627a; font-size: 10px; }
+.sales-extras-fieldset > div:first-child small { margin-top: 3px; color: #8793a3; font-size: 9px; }
+.sales-extra-grid { display: grid; gap: 6px; }
+.sales-extra-option { display: grid; grid-template-columns: minmax(0, 1fr) 100px; align-items: center; gap: 8px; padding: 7px 8px; border: 1px solid #e1e7ef; border-radius: 3px; }
+.sales-extra-option > label:first-child { display: flex; align-items: center; gap: 7px; color: #3d526a; font-size: 9px; font-weight: 650; }
+.sales-extra-option input[type="checkbox"] { width: 15px; height: 15px; accent-color: #426fa8; }
+.sales-extra-amount { display: grid; gap: 3px; color: #8793a3; font-size: 8px; }
+.sales-extra-amount input { width: 100%; min-width: 0; min-height: 30px; padding: 5px 7px; border: 1px solid #d8e0ea; border-radius: 3px; color: #263b59; font: inherit; font-size: 10px; }
+.sales-extra-option:not(:has(> label:last-child)) { grid-template-columns: minmax(0, 1fr); }
 .settlement-fieldset legend { margin-bottom: 7px; color: #52627a; font-size: 10px; font-weight: 750; }
 .settlement-options { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; }
 .settlement-option { display: flex; min-height: 34px; align-items: center; justify-content: center; padding: 6px; border: 1px solid #dfe5ee; border-radius: 3px; color: #68778d; background: #fff; font-size: 9px; font-weight: 700; text-align: center; cursor: pointer; }
@@ -137,4 +159,8 @@
   .sales-add-button { font-size: 8px; }
   .room-fields { grid-template-columns: 1fr 1fr; }
   .sales-stock-notice { align-items: flex-start; flex-direction: column; margin: 9px; }
+  .pending-minibar-sale { grid-template-columns: minmax(0, 1fr) auto; }
+  .pending-minibar-sale label,
+  .pending-minibar-sale button { grid-column: 1 / -1; }
+  .reservation-extra-option { grid-template-columns: minmax(0, 1fr) 88px; }
 }

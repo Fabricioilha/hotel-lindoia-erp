@@ -2,6 +2,7 @@ import type { HousekeepingData, HousekeepingRoom, Reservation } from '../types/h
 
 export interface ReservationDayCounts {
   reservations: number;
+  rooms: number;
   guests: number;
 }
 
@@ -36,19 +37,24 @@ export function activeReservationForRoom(data: HousekeepingData, roomId: string)
 
 export function reservationOverlaps(
   data: HousekeepingData,
-  reservation: Pick<Reservation, 'id' | 'roomId' | 'checkInDate' | 'checkOutDate'>,
+  reservation: Pick<Reservation, 'id' | 'roomId' | 'checkInDate' | 'checkOutDate' | 'channel' | 'checkInTime' | 'checkOutTime'>,
 ): boolean {
+  const startOf = (value: Pick<Reservation, 'checkInDate' | 'checkInTime' | 'channel'>) => Date.parse(`${value.checkInDate}T${value.channel === 'rotativo' && value.checkInTime ? value.checkInTime : '00:00'}:00`);
+  const endOf = (value: Pick<Reservation, 'checkOutDate' | 'checkOutTime' | 'channel'>) => Date.parse(`${value.checkOutDate}T${value.channel === 'rotativo' && value.checkOutTime ? value.checkOutTime : '00:00'}:00`);
+  const start = startOf(reservation);
+  const end = endOf(reservation);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end <= start) return true;
   return Object.values(data.reservations).some((existing) => {
     if (existing.id === reservation.id || existing.roomId !== reservation.roomId) return false;
     if (existing.status === 'cancelada' || existing.status === 'encerrada') return false;
-    return reservation.checkInDate < existing.checkOutDate
-      && reservation.checkOutDate > existing.checkInDate;
+    return start < endOf(existing) && end > startOf(existing);
   });
 }
 
 function countGuests(reservations: Reservation[]): ReservationDayCounts {
   return {
     reservations: reservations.length,
+    rooms: new Set(reservations.map((reservation) => reservation.roomId)).size,
     guests: reservations.reduce((total, reservation) => total + reservationGuestCount(reservation), 0),
   };
 }

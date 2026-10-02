@@ -94,16 +94,16 @@ function App() {
         <Route
           path="/estoque"
           element={
-            <ProtectedRoute userRole={userRole}>
+            <ManagementRoute userRole={userRole}>
               <Suspense fallback={<div role="status">Carregando estoque...</div>}><PainelEstoque actor={userRole === 'admin' ? 'Gerência' : 'Equipe'} canViewFinancials={userRole === 'admin'} /></Suspense>
-            </ProtectedRoute>
+            </ManagementRoute>
           }
         />
         <Route
           path="/vendas"
           element={
             <ProtectedRoute userRole={userRole}>
-              <Suspense fallback={<div role="status">Carregando vendas...</div>}><VendaGeladeira actor={userRole === 'admin' ? 'Gerência' : 'Equipe'} /></Suspense>
+              <Suspense fallback={<div role="status">Carregando vendas...</div>}><VendaGeladeira actor={userRole === 'admin' ? 'Gerência' : 'Equipe'} isAdmin={userRole === 'admin'} /></Suspense>
             </ProtectedRoute>
           }
         />

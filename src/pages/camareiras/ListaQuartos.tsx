@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import type { UserRole } from '../../types';
+import { roomCategoryLabels, type DailyCleaningRequest, type HousekeepingAttendant, type RoomCategory } from '../../types/housekeeping';
 import type {
-	DailyCleaningRequest,
 	HousekeepingData,
 	HousekeepingRoom,
 	RoomCleaningLog,
@@ -22,6 +22,7 @@ import './quartos.css';
 type ModalState =
 	| { type: 'room'; room?: HousekeepingRoom }
 	| { type: 'cleaning'; room: HousekeepingRoom }
+	| { type: 'attendants' }
 	| null;
 
 const cleaningLabels = {
@@ -60,6 +61,11 @@ function dateDifference(from: string, to: string) {
 function shortDate(date: string) {
 	return new Date(`${date}T12:00:00`).toLocaleDateString('pt-BR');
 }
+
+const attendantsOf = (data: HousekeepingData): HousekeepingAttendant[] => (data.attendantsConfigured
+	? Object.values(data.attendants ?? {})
+	: DEFAULT_EMPLOYEES.map((name) => ({ id: `default-${name}`, name })))
+	.sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
 
 export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 	const today = todayKey();
@@ -125,6 +131,16 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 		} finally {
 			setSaving(false);
 		}
+	}
+
+	function changeAttendants(mutate: (list: HousekeepingAttendant[]) => HousekeepingAttendant[], message: string) {
+		void changeData((current) => {
+			const next = mutate(attendantsOf(current));
+			const names = next.map((item) => item.name.trim().toLocaleLowerCase('pt-BR'));
+			if (next.some((item) => !item.name.trim())) throw new Error('Informe o nome da camareira.');
+			if (new Set(names).size !== names.length) throw new Error('Já existe uma camareira com este nome.');
+			return { ...current, attendantsConfigured: true, attendants: Object.fromEntries(next.map((item) => [item.id, { id: item.id, name: item.name.trim() }])) };
+		}, message);
 	}
 
 	function saveRoom(room: HousekeepingRoom) {
@@ -221,7 +237,7 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 				<nav className="stock-nav housekeeping-nav" aria-label="Navegação do hotel">
 					<HousekeepingNavLink route="/" label="Painel principal" shortLabel="P" />
 					<HousekeepingNavLink route="/vendas" label="Vendas" shortLabel="V" />
-					<HousekeepingNavLink route="/estoque" label="Estoque" shortLabel="E" />
+					{isAdmin && <HousekeepingNavLink route="/estoque" label="Estoque" shortLabel="E" />}
 					<HousekeepingNavLink route="/quartos" label="Serviço de quarto" shortLabel="Q" active />
 					<HousekeepingNavLink route="/reservas" label="Reservas" shortLabel="R" />
 					<HousekeepingNavLink route="/escala" label="Escala" shortLabel="ES" />
@@ -239,7 +255,7 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 				<div className="stock-content housekeeping-content">
 					<section className="page-heading">
 						<div><p className="eyebrow">OPERAÇÃO DE CAMAREIRAS</p><h1>Serviço de quarto</h1><p className="page-description">Ocupação, limpeza e manutenção de cada quarto.</p></div>
-						<div className="heading-actions"><button className="button button-primary" onClick={() => setModal({ type: 'room' })}>+ Adicionar quarto</button></div>
+						{isAdmin && <div className="heading-actions"><button className="button button-plain" onClick={() => setModal({ type: 'attendants' })}>Camareiras</button><button className="button button-primary" onClick={() => setModal({ type: 'room' })}>+ Adicionar quarto</button></div>}
 					</section>
 
 					{error && <div className="notice notice-error" role="alert">{error}<button onClick={() => setError('')} aria-label="Fechar aviso">×</button></div>}
@@ -258,36 +274,36 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 						<label className="schedule-field"><span>Filtrar quartos</span><select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
 							<option value="todos">Todos os quartos</option><option value="sujo">Sujo</option><option value="limpo">Limpo</option><option value="em_limpeza">Em limpeza</option><option value="livre">Livre</option><option value="ocupado">Ocupado</option><option value="manutencao_necessaria">Manutenção necessária</option><option value="em_manutencao">Em manutenção</option>
 						</select></label>
-						<form className="doors-interval-control" onSubmit={saveInterval}>
+						{isAdmin && <form className="doors-interval-control" onSubmit={saveInterval}>
 							<label className="schedule-field"><span>Portas e janelas, a cada</span><span className="interval-input-wrap"><input type="number" min="1" max="365" value={intervalDraft} onChange={(event) => setIntervalDraft(event.target.value)} /><span>dias</span></span></label>
 							<button className="button button-soft" type="submit" disabled={saving}>Salvar prazo</button>
-						</form>
+						</form>}
 					</section>
 
 					<section className="housekeeping-workspace" aria-label="Quartos e produtividade diária">
 						<div className="room-list-heading"><div><p className="eyebrow">{new Date(`${today}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p><h2>Quartos</h2></div><span>{filteredRooms.length} de {rooms.length}</span></div>
-						{loading ? <div className="loading-state">Carregando quartos...</div> : rooms.length === 0 ? <div className="housekeeping-empty"><strong>Nenhum quarto cadastrado</strong><p>Cadastre os quartos do hotel para iniciar o acompanhamento diário.</p><button className="button button-primary" onClick={() => setModal({ type: 'room' })}>+ Adicionar primeiro quarto</button></div> : filteredRooms.length === 0 ? <div className="housekeeping-empty"><strong>Nenhum quarto encontrado</strong><p>Ajuste a busca ou o filtro.</p></div> : <div className="room-card-grid">{filteredRooms.map((room) => {
+						{loading ? <div className="loading-state">Carregando quartos...</div> : rooms.length === 0 ? <div className="housekeeping-empty"><strong>Nenhum quarto cadastrado</strong><p>Cadastre os quartos do hotel para iniciar o acompanhamento diário.</p>{isAdmin && <button className="button button-primary" onClick={() => setModal({ type: 'room' })}>+ Adicionar primeiro quarto</button>}</div> : filteredRooms.length === 0 ? <div className="housekeeping-empty"><strong>Nenhum quarto encontrado</strong><p>Ajuste a busca ou o filtro.</p></div> : <div className="room-card-grid">{filteredRooms.map((room) => {
 							const plan = data.dailyPlans[today]?.[room.id] ?? { cleaningRequest: 'pendente' as DailyCleaningRequest };
 							const due = dueDays(room.id);
 							const lastDoorsLog = lastDoorsAndWindowsClean(room.id);
 							const unavailable = room.maintenanceStatus === 'em_manutencao';
 							const reservation = activeReservationForRoom(data, room.id);
 							return <article className={`room-card room-cleaning-${room.cleaningStatus}`} key={room.id}>
-								<header className="room-card-header"><div><span className="room-number-label">QUARTO</span><h3>{room.number}</h3></div><button className="room-edit-button" onClick={() => setModal({ type: 'room', room })}>Editar</button></header>
+								<header className="room-card-header"><div><span className="room-number-label">QUARTO</span><h3>{room.number}</h3>{room.category && <small className="room-number-label">{roomCategoryLabels[room.category]}</small>}</div>{isAdmin && <button className="room-edit-button" onClick={() => setModal({ type: 'room', room })}>Editar</button>}</header>
 								<div className="room-status-badges"><span className={`room-badge badge-cleaning-${room.cleaningStatus}`}>{cleaningLabels[room.cleaningStatus]}</span><span className={`room-badge badge-occupancy-${reservation ? 'ocupado' : 'livre'}`}>{reservation ? 'Ocupado' : 'Livre'}</span><span className={`room-badge badge-maintenance-${room.maintenanceStatus}`}>{maintenanceLabels[room.maintenanceStatus]}</span></div>
 								{reservation && <div className="room-stayover">
 									<div className="room-guest-name">Hóspede <strong>{reservation.guestName}</strong></div>
 									<small className="room-plan-status">Checkout previsto: {shortDate(reservation.checkOutDate)}</small>
-									<div className="cleaning-request-row"><span>Limpeza de hoje</span><div className="choice-buttons"><button className={plan.cleaningRequest === 'solicitada' ? 'is-selected' : ''} onClick={() => updateDailyPlan(room.id, { cleaningRequest: 'solicitada' })}>Sim</button><button className={plan.cleaningRequest === 'dispensada' ? 'is-selected' : ''} onClick={() => updateDailyPlan(room.id, { cleaningRequest: 'dispensada' })}>Não</button></div></div>
+									<div className="cleaning-request-row"><span>Limpeza de hoje</span>{isAdmin && <div className="choice-buttons"><button className={plan.cleaningRequest === 'solicitada' ? 'is-selected' : ''} onClick={() => updateDailyPlan(room.id, { cleaningRequest: 'solicitada' })}>Sim</button><button className={plan.cleaningRequest === 'dispensada' ? 'is-selected' : ''} onClick={() => updateDailyPlan(room.id, { cleaningRequest: 'dispensada' })}>Não</button></div>}</div>
 									<small className="room-plan-status">{cleaningRequestLabels[plan.cleaningRequest]}</small>
 								</div>}
 								<div className={`doors-due ${due === null || due === 0 ? 'is-due' : ''}`}><span className="doors-due-mark" />
 									<div><strong>{due === null ? 'Primeira limpeza de portas e janelas' : due === 0 ? 'Portas e janelas vencidas' : `Portas e janelas em ${due} ${due === 1 ? 'dia' : 'dias'}`}</strong><small>{lastDoorsLog ? `Última: ${shortDate(lastDoorsLog.date)}` : `Intervalo: ${data.settings.doorsAndWindowsIntervalDays} dias`}</small></div>
 								</div>
 								{room.note && <p className="room-note">{room.note}</p>}
-								<div className="room-card-actions">
+								{isAdmin && <div className="room-card-actions">
 									{room.cleaningStatus === 'em_limpeza' ? <button className="button button-primary" onClick={() => setModal({ type: 'cleaning', room })} disabled={unavailable}>Concluir limpeza</button> : <button className="button button-primary" onClick={() => setCleaningStatus(room, 'em_limpeza')} disabled={unavailable}>{room.cleaningStatus === 'limpo' ? 'Iniciar nova limpeza' : 'Iniciar limpeza'}</button>}
-								</div>
+								</div>}
 							</article>;
 						})}</div>}
 
@@ -301,8 +317,9 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 				</div>
 			</main>
 
-			{modal?.type === 'room' && <RoomEditor key={modal.room?.id ?? 'new'} room={modal.room} onCancel={() => setModal(null)} onSave={saveRoom} />}
-			{modal?.type === 'cleaning' && <CleaningEditor room={modal.room} due={dueDays(modal.room.id) === null || dueDays(modal.room.id) === 0} onCancel={() => setModal(null)} onSave={(form) => completeCleaning(modal.room, form)} />}
+			{isAdmin && modal?.type === 'room' && <RoomEditor key={modal.room?.id ?? 'new'} room={modal.room} onCancel={() => setModal(null)} onSave={saveRoom} />}
+			{isAdmin && modal?.type === 'attendants' && <AttendantsManager attendants={attendantsOf(data)} saving={saving} error={error} onClose={() => setModal(null)} onAdd={(name) => changeAttendants((list) => [...list, { id: newId(), name }], 'Camareira adicionada.')} onRename={(id, name) => changeAttendants((list) => list.map((item) => item.id === id ? { ...item, name } : item), 'Camareira atualizada.')} onRemove={(id) => changeAttendants((list) => list.filter((item) => item.id !== id), 'Camareira removida.')} />}
+			{isAdmin && modal?.type === 'cleaning' && <CleaningEditor room={modal.room} attendants={attendantsOf(data)} due={dueDays(modal.room.id) === null || dueDays(modal.room.id) === 0} onCancel={() => setModal(null)} onSave={(form) => completeCleaning(modal.room, form)} />}
 		</div>
 	);
 }
@@ -324,6 +341,7 @@ function RoomEditor({ room, onCancel, onSave }: { room?: HousekeepingRoom; onCan
 		onSave({
 			id: room?.id ?? newId(),
 			number: String(values.get('number') ?? '').trim(),
+			category: String(values.get('category')) as RoomCategory,
 			cleaningStatus: String(values.get('cleaningStatus')) as HousekeepingRoom['cleaningStatus'],
 			maintenanceStatus: String(values.get('maintenanceStatus')) as RoomMaintenanceStatus,
 			note: String(values.get('note') ?? '').trim(),
@@ -335,6 +353,7 @@ function RoomEditor({ room, onCancel, onSave }: { room?: HousekeepingRoom; onCan
 			<form onSubmit={submit}>
 				<ModalHeading eyebrow={room ? 'ATUALIZAR QUARTO' : 'CADASTRO DE QUARTO'} title={room ? `Quarto ${room.number}` : 'Adicionar quarto'} onClose={onCancel} id="room-editor-title" />
 				<label className="schedule-field"><span>Número do quarto</span><input name="number" required maxLength={12} defaultValue={room?.number} placeholder="Ex.: 12" /></label>
+				<label className="schedule-field"><span>Categoria</span><select name="category" required defaultValue={room?.category ?? ''}><option value="" disabled>Selecione</option>{(Object.entries(roomCategoryLabels) as [RoomCategory, string][]).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
 			<label className="schedule-field"><span>Limpeza</span><select name="cleaningStatus" defaultValue={room?.cleaningStatus ?? 'sujo'}><option value="sujo">Sujo</option><option value="limpo">Limpo</option><option value="em_limpeza">Em limpeza</option></select></label>
 				<label className="schedule-field"><span>Manutenção</span><select name="maintenanceStatus" defaultValue={room?.maintenanceStatus ?? 'normal'}><option value="normal">Sem manutenção</option><option value="manutencao_necessaria">Precisa manutenção, mas pode usar</option><option value="em_manutencao">Em manutenção, indisponível</option></select></label>
 				<label className="schedule-field"><span>Observação</span><textarea name="note" rows={3} maxLength={300} defaultValue={room?.note} placeholder="Manutenção pendente, preferência, observação da equipe" /></label>
@@ -344,7 +363,7 @@ function RoomEditor({ room, onCancel, onSave }: { room?: HousekeepingRoom; onCan
 	</div>;
 }
 
-function CleaningEditor({ room, due, onCancel, onSave }: { room: HousekeepingRoom; due: boolean; onCancel: () => void; onSave: (form: { attendant: string; doorsAndWindows: boolean; note: string }) => void }) {
+function CleaningEditor({ room, attendants, due, onCancel, onSave }: { room: HousekeepingRoom; attendants: HousekeepingAttendant[]; due: boolean; onCancel: () => void; onSave: (form: { attendant: string; doorsAndWindows: boolean; note: string }) => void }) {
 	const [attendant, setAttendant] = useState('');
 	const [doorsAndWindows, setDoorsAndWindows] = useState(due);
 	const [note, setNote] = useState('');
@@ -359,11 +378,34 @@ function CleaningEditor({ room, due, onCancel, onSave }: { room: HousekeepingRoo
 		<section className="stock-modal housekeeping-modal" role="dialog" aria-modal="true" aria-labelledby="cleaning-editor-title">
 			<form onSubmit={submit}>
 				<ModalHeading eyebrow="CONCLUSÃO DE TAREFA" title={`Limpeza do quarto ${room.number}`} onClose={onCancel} id="cleaning-editor-title" />
-				<label className="schedule-field"><span>Camareira responsável</span><input list="housekeeping-attendants" required maxLength={80} value={attendant} onChange={(event) => setAttendant(event.target.value)} placeholder="Nome da camareira" /><datalist id="housekeeping-attendants">{DEFAULT_EMPLOYEES.map((name) => <option value={name} key={name} />)}</datalist></label>
+				<label className="schedule-field"><span>Camareira responsável</span><select required value={attendant} onChange={(event) => setAttendant(event.target.value)}><option value="" disabled>Selecione a camareira</option>{attendants.map((item) => <option value={item.name} key={item.id}>{item.name}</option>)}</select></label>
 				<label className={`doors-cleaning-option ${due ? 'is-due' : ''}`}><input type="checkbox" checked={doorsAndWindows} onChange={(event) => setDoorsAndWindows(event.target.checked)} /><span><strong>Limpar portas e janelas</strong><small>{due ? 'Esta limpeza está vencida ou é a primeira registrada.' : 'Tarefa periódica; o prazo é configurado no painel.'}</small></span></label>
 				<label className="schedule-field"><span>Observação</span><textarea rows={3} maxLength={300} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Opcional" /></label>
 				<div className="schedule-modal-actions"><button className="button button-plain" type="button" onClick={onCancel}>Cancelar</button><button className="button button-primary" type="submit">Concluir limpeza</button></div>
 			</form>
+		</section>
+	</div>;
+}
+
+function AttendantsManager({ attendants, saving, error, onClose, onAdd, onRename, onRemove }: { attendants: HousekeepingAttendant[]; saving: boolean; error: string; onClose: () => void; onAdd: (name: string) => void; onRename: (id: string, name: string) => void; onRemove: (id: string) => void }) {
+	const [newName, setNewName] = useState('');
+	const [editingId, setEditingId] = useState('');
+	const [draft, setDraft] = useState('');
+
+	return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+		<section className="stock-modal housekeeping-modal" role="dialog" aria-modal="true" aria-labelledby="attendants-title">
+			<ModalHeading eyebrow="EQUIPE DE LIMPEZA" title="Camareiras" onClose={onClose} id="attendants-title" />
+			<form className="attendant-add-form" onSubmit={(event) => { event.preventDefault(); if (!newName.trim()) return; onAdd(newName); setNewName(''); }}>
+				<label className="schedule-field"><span>Nova camareira</span><input value={newName} maxLength={80} onChange={(event) => setNewName(event.target.value)} placeholder="Nome" /></label>
+				<button className="button button-primary" type="submit" disabled={saving || !newName.trim()}>Adicionar</button>
+			</form>
+			{error && <p className="reservation-modal-error" role="alert">{error}</p>}
+			{attendants.length === 0 ? <p className="attendant-empty">Nenhuma camareira cadastrada.</p> : <ul className="attendant-manage-list">{attendants.map((item) => <li key={item.id}>
+				{editingId === item.id
+					? <><input value={draft} maxLength={80} autoFocus aria-label={`Nome de ${item.name}`} onChange={(event) => setDraft(event.target.value)} /><button className="button button-primary" type="button" disabled={saving || !draft.trim()} onClick={() => { onRename(item.id, draft); setEditingId(''); }}>Salvar</button><button className="button button-plain" type="button" onClick={() => setEditingId('')}>Cancelar</button></>
+					: <><span>{item.name}</span><button className="button button-plain" type="button" disabled={saving} onClick={() => { setEditingId(item.id); setDraft(item.name); }}>Editar</button><button className="button button-plain" type="button" disabled={saving} onClick={() => { if (window.confirm(`Remover ${item.name}? O histórico de limpezas é mantido.`)) onRemove(item.id); }}>Remover</button></>}
+			</li>)}</ul>}
+			<div className="schedule-modal-actions"><button className="button button-plain" type="button" onClick={onClose}>Fechar</button></div>
 		</section>
 	</div>;
 }

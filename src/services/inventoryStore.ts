@@ -12,6 +12,8 @@ export function emptyInventory(): InventoryData {
 function normalizeInventory(value: unknown): InventoryData {
   const data = value && typeof value === 'object' ? value as Partial<InventoryData> : {};
   return {
+    categories: data.categories ?? {},
+    categoriesConfigured: Boolean(data.categoriesConfigured),
     products: data.products ?? {},
     suppliers: data.suppliers ?? {},
     movements: data.movements ?? {},

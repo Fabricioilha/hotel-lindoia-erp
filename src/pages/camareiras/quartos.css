@@ -550,14 +550,45 @@
 
 .housekeeping-modal {
   width: min(100%, 500px);
+  max-height: min(90vh, 720px);
+  border-color: #d7e0e2;
+  box-shadow: 0 22px 64px rgb(13 30 42 / 25%);
+}
+
+.housekeeping-modal:not(.reservation-modal) > form {
+  display: grid;
+  gap: 14px;
+  padding-bottom: 20px;
 }
 
 .housekeeping-modal .schedule-modal-heading {
-  margin-bottom: 16px;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin: 0;
+  padding: 19px 22px 15px;
+  border-bottom: 1px solid #e3e9e8;
+  background: #fff;
 }
 
 .housekeeping-modal .schedule-field {
-  margin-top: 12px;
+  margin: 0 22px;
+}
+
+.housekeeping-modal .schedule-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0 22px;
+  padding-top: 13px;
+  border-top: 1px solid #e6eceb;
+}
+
+.housekeeping-modal .doors-cleaning-option {
+  margin: 0 22px;
+  padding: 12px;
+  border-radius: 4px;
 }
 
 .housekeeping-modal .schedule-field input,
@@ -751,4 +782,14 @@
   .housekeeping-modal {
     padding: 18px;
   }
+
+  .housekeeping-modal:not(.reservation-modal) {
+    padding: 0;
+  }
 }
+.attendant-add-form { display: flex; align-items: flex-end; gap: 10px; margin-bottom: 12px; }
+.attendant-add-form .schedule-field { flex: 1; }
+.attendant-manage-list { display: grid; gap: 8px; max-height: 320px; margin: 0 0 14px; padding: 0; overflow-y: auto; list-style: none; }
+.attendant-manage-list li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #e3e9e8; border-radius: 7px; }
+.attendant-manage-list li > span, .attendant-manage-list li > input { flex: 1; min-width: 0; }
+.housekeeping-modal .reservation-modal-error { margin: 0 0 12px; padding: 10px 12px; border-radius: 6px; background: #fdeeee; color: #9b1c1c; font-size: 14px; font-weight: 600; }

@@ -1,3 +1,5 @@
+import type { AuditEvent } from './audit';
+
 export type FinanceWallet = 'cash' | 'bank' | 'oyo';
 export type FinancePaymentMethod = 'credit' | 'debit' | 'cash' | 'pix' | 'bank_transfer' | 'prepaid';
 
@@ -72,6 +74,7 @@ export interface FinanceData {
   openingBalances: FinanceBalances;
   incomeCategories: string[];
   expenseCategories: string[];
+  auditLog: Record<string, AuditEvent>;
 }
 
 export const INCOME_CATEGORIES = [
@@ -103,7 +106,7 @@ export const PAYMENT_METHOD_LABELS: Record<FinancePaymentMethod, string> = {
 
 export function incomePaymentWallet(method: FinancePaymentMethod): FinanceWallet | null {
   if (method === 'cash') return 'cash';
-  if (method === 'prepaid') return null;
+  if (method === 'prepaid') return 'oyo';
   return 'bank';
 }
 
@@ -124,6 +127,7 @@ export const EXPENSE_CATEGORIES = [
   'Consumo',
   'Empréstimos',
   'Energia elétrica',
+  'Estoque',
   'Ecad',
   'Faculdade',
   'FGTS',

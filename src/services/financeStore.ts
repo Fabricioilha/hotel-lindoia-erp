@@ -1,5 +1,6 @@
 import { onValue, ref, runTransaction } from 'firebase/database';
 import { db } from '../config/firebase';
+import { buildAuditEvents } from '../types/audit';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, type FinanceData } from '../types/finance';
 
 const STORAGE_KEY = 'hotel-lindoia:finance:v1';
@@ -15,6 +16,7 @@ export function emptyFinance(): FinanceData {
     openingBalances: { cash: 0, bank: 0, oyo: 0 },
     incomeCategories: [...INCOME_CATEGORIES],
     expenseCategories: [...EXPENSE_CATEGORIES],
+    auditLog: {},
   };
 }
 
@@ -62,6 +64,7 @@ function normalizeFinance(value: unknown): FinanceData {
       .filter((category) => category.toLocaleLowerCase('pt-BR') !== 'oyo'
         && !DEPRECATED_INCOME_CATEGORIES.some((deprecated) => deprecated.toLocaleLowerCase('pt-BR') === category.toLocaleLowerCase('pt-BR'))),
     expenseCategories: normalizeCategories(data.expenseCategories, EXPENSE_CATEGORIES),
+    auditLog: data.auditLog ?? {},
   };
 }
 
@@ -101,15 +104,43 @@ export function subscribeFinance(
 export async function updateFinance(
   update: (current: FinanceData) => FinanceData,
 ): Promise<void> {
+  const operationId = crypto.randomUUID();
+  const occurredAt = new Date().toISOString();
   if (db) {
-    const result = await runTransaction(ref(db, 'erp_geral/financeiro'), (current) =>
-      update(normalizeFinance(current)),
-    );
+    const result = await runTransaction(ref(db, 'erp_geral/financeiro'), (value) => {
+      const current = normalizeFinance(value);
+      const next = update(current);
+      const auditEvents = buildAuditEvents(operationId, occurredAt, [
+        { entity: 'finance-income', before: current.incomes, after: next.incomes },
+        { entity: 'finance-expense', before: current.expenses, after: next.expenses },
+        { entity: 'finance-transfer', before: current.transfers, after: next.transfers },
+        { entity: 'payroll', before: current.payroll, after: next.payroll },
+        {
+          entity: 'finance-settings',
+          before: { openingBalances: current.openingBalances, incomeCategories: current.incomeCategories, expenseCategories: current.expenseCategories },
+          after: { openingBalances: next.openingBalances, incomeCategories: next.incomeCategories, expenseCategories: next.expenseCategories },
+        },
+      ]);
+      return { ...next, auditLog: { ...next.auditLog, ...auditEvents } };
+    });
     if (!result.committed) throw new Error('A gravação financeira não foi confirmada.');
     return;
   }
 
-  const next = update(readLocalFinance());
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+  const current = readLocalFinance();
+  const next = update(current);
+  const auditEvents = buildAuditEvents(operationId, occurredAt, [
+    { entity: 'finance-income', before: current.incomes, after: next.incomes },
+    { entity: 'finance-expense', before: current.expenses, after: next.expenses },
+    { entity: 'finance-transfer', before: current.transfers, after: next.transfers },
+    { entity: 'payroll', before: current.payroll, after: next.payroll },
+    {
+      entity: 'finance-settings',
+      before: { openingBalances: current.openingBalances, incomeCategories: current.incomeCategories, expenseCategories: current.expenseCategories },
+      after: { openingBalances: next.openingBalances, incomeCategories: next.incomeCategories, expenseCategories: next.expenseCategories },
+    },
+  ]);
+  const audited = { ...next, auditLog: { ...next.auditLog, ...auditEvents } };
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(audited));
   window.dispatchEvent(new Event(LOCAL_UPDATE_EVENT));
 }

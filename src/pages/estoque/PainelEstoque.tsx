@@ -1,16 +1,25 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { inventoryStorageMode, subscribeInventory, updateInventory } from '../../services/inventoryStore';
-import { applyMinibarSale } from '../../services/minibarSales';
+import { updateFinance } from '../../services/financeStore';
+import { DateInput } from '../../components/ui/DateInput';
+import { useMinibarFinanceSync } from '../../services/minibarFinanceSync';
+import { createFrigobarSale, emptyFrigobar, subscribeFrigobar, syncFrigobarCatalog } from '../../services/frigobarStore';
+import { useFrigobarFinanceSync } from '../../services/minibarFinanceSync';
+import type { FrigobarData } from '../../types/frigobar';
 import {
-  STOCK_CATEGORIES,
+  SALES_CATEGORY,
+  SALES_CATEGORY_ID,
   STOCK_LOCATIONS,
+  customCategoriesOf,
+  stockCategoriesOf,
   type AssetStatus,
   type InventoryData,
   type MinibarPaymentMethod,
   type MinibarSettlement,
   type MovementType,
   type StockCategory,
+  type StockCategoryRecord,
   type StockMovement,
   type StockProduct,
   type StockSupplier,
@@ -19,13 +28,21 @@ import {
 import './estoque.css';
 
 type View = 'resumo' | 'produtos' | 'movimentacoes' | 'fornecedores' | 'patrimonio';
-type Modal = 'produto' | 'movimento' | 'fornecedor' | 'patrimonio' | 'checkout' | null;
+type Modal = 'produto' | 'movimento' | 'fornecedor' | 'patrimonio' | 'checkout' | 'categorias' | null;
 
 const emptyData: InventoryData = { products: {}, suppliers: {}, movements: {}, assets: {} };
 const newId = () => crypto.randomUUID();
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const dateTime = (value: string) => new Date(value).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
-const categoryName = (category: StockCategory) => STOCK_CATEGORIES.find((item) => item.id === category)?.label ?? category;
+const CategoriesContext = createContext<StockCategoryRecord[]>([]);
+const nameOfCategory = (categories: StockCategoryRecord[], id: StockCategory) => categories.find((item) => item.id === id)?.name ?? 'Sem categoria';
+const NEW_CATEGORY = '__new__';
+const withCategories = (data: InventoryData, list: StockCategoryRecord[]): InventoryData => ({ ...data, categoriesConfigured: true, categories: Object.fromEntries(list.map((item) => [item.id, item])) });
+// Cores fixas são dadas por CSS nas categorias originais; as demais derivam do id.
+const CLASSIC_CATEGORIES = new Set(['limpeza', 'rouparia', 'manutencao', 'frigobar']);
+const hueOf = (id: string) => [...id].reduce((sum, char) => (sum * 31 + char.charCodeAt(0)) % 360, 7);
+const dotStyle = (id: string) => CLASSIC_CATEGORIES.has(id) ? undefined : { background: `hsl(${hueOf(id)} 45% 58%)` };
+const stampStyle = (id: string) => CLASSIC_CATEGORIES.has(id) ? undefined : { color: `hsl(${hueOf(id)} 40% 32%)`, background: `hsl(${hueOf(id)} 55% 92%)` };
 
 function quantityOf(product: StockProduct) {
   return Object.values(product.locationQuantities ?? {}).reduce((total, quantity) => total + Number(quantity || 0), 0);
@@ -63,6 +80,23 @@ function exportCsv(filename: string, rows: (string | number)[][]) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
+// A compra de estoque é despesa do hotel; o id fixo evita duplicar o lançamento.
+async function recordEntryExpense(movementId: string, description: string, total: number, payment: string) {
+  const today = new Date();
+  const dueDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+  const stamp = today.toISOString();
+  await updateFinance((current) => {
+    const id = `stock-entry-${movementId}`;
+    if (current.expenses[id]) return current;
+    const hasCategory = current.expenseCategories.some((item) => item.toLocaleLowerCase('pt-BR') === 'estoque');
+    return {
+      ...current,
+      expenseCategories: hasCategory ? current.expenseCategories : [...current.expenseCategories, 'Estoque'],
+      expenses: { ...current.expenses, [id]: { id, dueDate, category: 'Estoque', plannedAmount: total, paidCash: payment === 'caixa' ? total : 0, paidBank: payment === 'banco' ? total : 0, note: description, createdAt: stamp, updatedAt: stamp } },
+    };
+  });
+}
+
 function StockStatus({ product }: { product: StockProduct }) {
   const quantity = quantityOf(product);
     if (quantity <= 0) return <span className="stock-status status-out">Sem estoque</span>;
@@ -74,6 +108,7 @@ function StockStatus({ product }: { product: StockProduct }) {
 
 export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { actor?: string; canViewFinancials?: boolean }) {
   const [data, setData] = useState<InventoryData>(emptyData);
+  const [frigobar, setFrigobar] = useState<FrigobarData>(emptyFrigobar());
     const [loading, setLoading] = useState(true);
   const [storageError, setStorageError] = useState('');
   const [view, setView] = useState<View>('resumo');
@@ -86,6 +121,11 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
   const [movementType, setMovementType] = useState<MovementType>('entrada');
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
+  const categories = useMemo(() => stockCategoriesOf(data), [data]);
+  const categoryName = (id: StockCategory) => nameOfCategory(categories, id);
+
+  useMinibarFinanceSync(data, setStorageError);
+  useFrigobarFinanceSync(frigobar.sales, true, setStorageError);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -110,20 +150,31 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
     });
   }, []);
 
-  const products = useMemo(() => Object.values(data.products).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')), [data.products]);
+  useEffect(() => subscribeFrigobar(setFrigobar, (error) => setStorageError(error.message)), []);
+
+  useEffect(() => {
+    if (loading) return;
+    void syncFrigobarCatalog(data).catch((error) => setStorageError(error instanceof Error ? error.message : 'Não foi possível atualizar o catálogo da geladeira.'));
+  }, [data, loading]);
+
+  const products = useMemo(() => Object.values(data.products).map((product) => product.category === SALES_CATEGORY_ID
+    ? { ...product, locationQuantities: { ...product.locationQuantities, 'Geladeira - Recepção': Number(frigobar.stock[product.id] ?? product.locationQuantities['Geladeira - Recepção'] ?? 0) } }
+    : product).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')), [data.products, frigobar.stock]);
   const movements = useMemo(() => Object.values(data.movements).sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [data.movements]);
   const suppliers = useMemo(() => Object.values(data.suppliers).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')), [data.suppliers]);
   const assets = useMemo(() => Object.values(data.assets).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')), [data.assets]);
-  const lowStock = products.filter((product) => product.minimumQuantity > 0 && quantityOf(product) <= product.minimumQuantity);
+  const lowStock = products.filter((product) => product.active !== false && product.minimumQuantity > 0 && quantityOf(product) <= product.minimumQuantity);
   const outOfStock = products.filter((product) => quantityOf(product) <= 0);
   const inventoryValue = products.reduce((total, product) => total + quantityOf(product) * product.cost, 0);
   const minibarSales = movements
     .filter((movement) => movement.type === 'consumo_frigobar' && (movement.settlement === 'pago_na_recepcao' || movement.settlement === 'pago_no_checkout'))
-    .reduce((total, movement) => total + movement.quantity * movement.unitPrice, 0);
+    .reduce((total, movement) => total + movement.quantity * movement.unitPrice, 0)
+    + Object.values(frigobar.sales).filter((sale) => sale.settlement !== 'cobrar_no_checkout').reduce((total, sale) => total + sale.amount, 0);
   const minibarPending = movements
     .filter((movement) => movement.type === 'consumo_frigobar' && movement.settlement === 'cobrar_no_checkout')
-    .reduce((total, movement) => total + movement.quantity * movement.unitPrice, 0);
-  const selectedProduct = data.products[movementProductId];
+    .reduce((total, movement) => total + movement.quantity * movement.unitPrice, 0)
+    + Object.values(frigobar.sales).filter((sale) => sale.settlement === 'cobrar_no_checkout').reduce((total, sale) => total + sale.amount, 0);
+  const selectedProduct = products.find((product) => product.id === movementProductId);
   const filteredProducts = products.filter((product) => {
     const matchesCategory = categoryFilter === 'todas' || product.category === categoryFilter;
     const matchesSearch = `${product.name} ${product.sku}`.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR'));
@@ -156,7 +207,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
     setModal('movimento');
   }
 
-  async function commit(update: (current: InventoryData) => InventoryData, successMessage: string) {
+  async function commit(update: (current: InventoryData) => InventoryData, successMessage: string): Promise<boolean> {
     setSaving(true);
     setStorageError('');
     try {
@@ -164,8 +215,10 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
       setModal(null);
       setNotice(successMessage);
       window.setTimeout(() => setNotice(''), 4000);
+      return true;
     } catch (error) {
       setStorageError(error instanceof Error ? error.message : 'Não foi possível salvar os dados.');
+      return false;
     } finally {
       setSaving(false);
     }
@@ -176,15 +229,24 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
     const form = new FormData(event.currentTarget);
     const existing = data.products[editingId];
     const timestamp = new Date().toISOString();
+    const chosenCategory = String(form.get('category'));
+    const newCategoryName = String(form.get('newCategory') ?? '').trim();
+    let newCategory: StockCategoryRecord | undefined;
+    if (chosenCategory === NEW_CATEGORY) {
+      if (!newCategoryName) { setStorageError('Informe o nome da nova categoria.'); return; }
+      const sameName = categories.find((item) => item.name.toLocaleLowerCase('pt-BR') === newCategoryName.toLocaleLowerCase('pt-BR'));
+      newCategory = sameName ?? { id: newId(), name: newCategoryName };
+    }
+    const categoryId = newCategory?.id ?? chosenCategory;
     const product: StockProduct = {
       id: existing?.id ?? newId(),
       name: String(form.get('name')).trim(),
       sku: String(form.get('sku')).trim(),
-      category: String(form.get('category')) as StockCategory,
+      category: categoryId,
       unit: String(form.get('unit')).trim(),
       minimumQuantity: Number(form.get('minimumQuantity')) || 0,
       cost: canViewFinancials ? Number(form.get('cost')) || 0 : existing?.cost ?? 0,
-      salePrice: canViewFinancials ? Number(form.get('salePrice')) || 0 : existing?.salePrice ?? 0,
+      salePrice: categoryId !== SALES_CATEGORY_ID ? 0 : canViewFinancials ? Number(form.get('salePrice')) || 0 : existing?.salePrice ?? 0,
       locationQuantities: existing?.locationQuantities ?? { 'Almoxarifado central': 0 },
       supplierId: String(form.get('supplierId') ?? ''),
       expiresAt: String(form.get('expiresAt') ?? ''),
@@ -193,14 +255,45 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
       createdAt: existing?.createdAt ?? timestamp,
       updatedAt: timestamp,
     };
-    if (product.category === 'frigobar' && product.salePrice <= 0) {
+    if (product.category === SALES_CATEGORY_ID && product.salePrice <= 0) {
       setStorageError('Informe um preço de venda para os produtos da Geladeira - Recepção.');
       return;
     }
-    void commit((current) => ({
-      ...current,
-      products: { ...current.products, [product.id]: product },
-    }), existing ? 'Produto atualizado.' : 'Produto cadastrado. Registre uma entrada para informar o saldo inicial.');
+    void commit((current) => {
+      const base = newCategory && !customCategoriesOf(current).some((item) => item.id === newCategory.id)
+        ? withCategories(current, [...customCategoriesOf(current), newCategory])
+        : current;
+      return { ...base, products: { ...base.products, [product.id]: product } };
+    }, existing ? 'Produto atualizado.' : 'Produto cadastrado. Registre uma entrada para informar o saldo inicial.');
+  }
+
+  async function changeCategories(mutate: (list: StockCategoryRecord[], current: InventoryData) => StockCategoryRecord[], message: string) {
+    setSaving(true);
+    setStorageError('');
+    try {
+      await updateInventory((current) => {
+        const next = mutate(customCategoriesOf(current), current).map((item) => ({ id: item.id, name: item.name.trim() }));
+        if (next.some((item) => !item.name)) throw new Error('Informe o nome da categoria.');
+        const names = [...next.map((item) => item.name), SALES_CATEGORY.name].map((name) => name.toLocaleLowerCase('pt-BR'));
+        if (new Set(names).size !== names.length) throw new Error('Já existe uma categoria com este nome.');
+        return withCategories(current, next);
+      });
+      setNotice(message);
+      window.setTimeout(() => setNotice(''), 4000);
+    } catch (error) {
+      setStorageError(error instanceof Error ? error.message : 'Não foi possível salvar as categorias.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  function removeCategory(category: StockCategoryRecord) {
+    if (!window.confirm(`Excluir a categoria "${category.name}"?`)) return;
+    void changeCategories((list, current) => {
+      if (Object.values(current.products).some((product) => product.category === category.id)) throw new Error('Há produtos nesta categoria. Altere a categoria deles antes de excluí-la.');
+      return list.filter((item) => item.id !== category.id);
+    }, 'Categoria excluída.');
+    if (categoryFilter === category.id) setCategoryFilter('todas');
   }
 
   async function deleteProduct(product: StockProduct) {
@@ -309,21 +402,37 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
     }
 
     if (movementType === 'consumo_frigobar') {
-      void commit((current) => applyMinibarSale(current, {
+      setSaving(true);
+      setStorageError('');
+      void createFrigobarSale({
+        id: newId(),
         items: [{ productId: movementProductId, quantity }],
         settlement,
         paymentMethod,
         roomNumber,
         guestName,
         actor,
-      }), 'Venda da Geladeira - Recepção registrada.');
+        catalog: frigobar.products,
+      }).then(() => {
+        setModal(null);
+        setNotice('Venda da Geladeira - Recepção registrada.');
+        window.setTimeout(() => setNotice(''), 4000);
+      }).catch((error: unknown) => {
+        setStorageError(error instanceof Error ? error.message : 'Não foi possível registrar a venda.');
+      }).finally(() => setSaving(false));
       return;
     }
 
     const movementId = newId();
     const timestamp = new Date().toISOString();
-    const unitPrice = selectedProduct.cost;
-    void commit((current) => {
+    const entryUnitPrice = movementType === 'entrada' && canViewFinancials ? Number(form.get('entryUnitPrice') || 0) : selectedProduct.cost;
+    const entryPayment = String(form.get('entryPayment') ?? 'pendente');
+    if (!Number.isFinite(entryUnitPrice) || entryUnitPrice < 0) {
+      setStorageError('Informe um preço de entrada válido.');
+      return;
+    }
+    const unitPrice = entryUnitPrice;
+    const committed = commit((current) => {
       const product = current.products[movementProductId];
       if (!product) throw new Error('Este produto não está mais disponível.');
       const locations = { ...product.locationQuantities };
@@ -351,7 +460,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
         finalToLocation = '';
       }
 
-      const updatedProduct = { ...product, locationQuantities: locations, updatedAt: timestamp };
+      const updatedProduct = { ...product, locationQuantities: locations, ...(movementType === 'entrada' && canViewFinancials ? { cost: entryUnitPrice } : {}), updatedAt: timestamp };
       const movement: StockMovement = {
         id: movementId,
         productId: product.id,
@@ -374,6 +483,17 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
         movements: { ...current.movements, [movement.id]: movement },
       };
     }, 'Movimentação registrada.');
+    if (movementType === 'entrada' && canViewFinancials && quantity * unitPrice > 0) {
+      void committed.then(async (ok) => {
+        if (!ok) return;
+        try {
+          await recordEntryExpense(movementId, `Entrada de estoque: ${quantity} ${selectedProduct.unit} de ${selectedProduct.name}`, Math.round(quantity * unitPrice * 100) / 100, entryPayment);
+          setNotice('Entrada registrada e lançada como despesa no Financeiro.');
+        } catch (error) {
+          setStorageError(`Entrada registrada, mas a despesa não foi lançada no Financeiro: ${error instanceof Error ? error.message : 'erro desconhecido'}`);
+        }
+      });
+    }
   }
 
   function settleCheckout(event: FormEvent<HTMLFormElement>) {
@@ -393,7 +513,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
         ...current,
         movements: {
           ...current.movements,
-          [movement.id]: { ...movement, settlement: 'pago_no_checkout', paymentMethod, settledAt, settledBy: actor },
+          [movement.id]: { ...movement, settlement: 'pago_no_checkout', paymentMethod, settledAt, settledBy: actor, financeSynced: false },
         },
       };
     }, 'Cobrança do quarto recebida no checkout.');
@@ -422,6 +542,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
   };
 
   return (
+    <CategoriesContext.Provider value={categories}>
     <div className="stock-app">
       <aside className="stock-sidebar">
         <Link to="/" className="stock-brand" aria-label="Voltar ao painel principal">
@@ -446,11 +567,12 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
         <div className="sidebar-label category-label">CATEGORIAS</div>
         <nav className="stock-nav category-nav" aria-label="Filtrar por categoria">
           <button className={`nav-item ${categoryFilter === 'todas' ? 'selected' : ''}`} onClick={() => { setCategoryFilter('todas'); setView('produtos'); }}>Todas as categorias</button>
-          {STOCK_CATEGORIES.map((category) => (
+          {categories.map((category) => (
             <button key={category.id} className={`nav-item ${categoryFilter === category.id ? 'selected' : ''}`} onClick={() => { setCategoryFilter(category.id); setView('produtos'); }}>
-              <span className={`category-dot dot-${category.id}`} />{category.label}
+              <span className={`category-dot dot-${category.id}`} style={dotStyle(category.id)} />{category.name}
             </button>
           ))}
+          <button className="nav-item" onClick={() => setModal('categorias')}>Gerenciar categorias</button>
         </nav>
         <div className="sidebar-footer">
           <span className="connection-dot" />
@@ -483,7 +605,6 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
             </div>
           </section>
 
-          {inventoryStorageMode === 'Firebase' && <div className="notice notice-warning" role="status">Ambiente de desenvolvimento: o acesso ao Firebase permanece sem autenticação até a conclusão do projeto.</div>}
           {storageError && <div className="notice notice-error" role="alert">{storageError}<button onClick={() => setStorageError('')} aria-label="Fechar aviso">×</button></div>}
           {notice && <div className="notice notice-success" role="status">{notice}</div>}
           {loading ? <div className="loading-state">Carregando dados do estoque...</div> : (
@@ -532,6 +653,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
         <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setModal(null); }}>
           <section className="stock-modal" role="dialog" aria-modal="true" aria-labelledby="stock-modal-title">
             {modal === 'produto' && <ProductForm product={data.products[editingId]} suppliers={suppliers} saving={saving} canViewFinancials={canViewFinancials} onClose={() => setModal(null)} onSubmit={saveProduct} />}
+            {modal === 'categorias' && <CategoriesManager categories={customCategoriesOf(data)} usage={products.reduce<Record<string, number>>((all, product) => ({ ...all, [product.category]: (all[product.category] ?? 0) + 1 }), {})} saving={saving} error={storageError} onClose={() => setModal(null)} onAdd={(name) => void changeCategories((list) => [...list, { id: newId(), name }], 'Categoria criada.')} onRename={(id, name) => void changeCategories((list) => list.map((item) => item.id === id ? { ...item, name } : item), 'Categoria atualizada.')} onRemove={removeCategory} />}
             {modal === 'fornecedor' && <SupplierForm supplier={data.suppliers[editingId]} saving={saving} onClose={() => setModal(null)} onSubmit={saveSupplier} />}
             {modal === 'patrimonio' && <AssetForm asset={data.assets[editingId]} saving={saving} canViewFinancials={canViewFinancials} onClose={() => setModal(null)} onSubmit={saveAsset} />}
             {modal === 'movimento' && (
@@ -557,6 +679,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
         </div>
       )}
     </div>
+    </CategoriesContext.Provider>
   );
 }
 
@@ -576,7 +699,9 @@ function Overview({
   onOpenMovements: () => void;
   onEdit: (product?: StockProduct) => void;
 }) {
-  const categoryTotals = STOCK_CATEGORIES.map((category) => ({
+  const categories = useContext(CategoriesContext);
+  const categoryName = (id: StockCategory) => nameOfCategory(categories, id);
+  const categoryTotals = categories.map((category) => ({
     ...category,
     count: products.filter((product) => product.category === category.id).length,
     quantity: products.filter((product) => product.category === category.id).reduce((sum, product) => sum + quantityOf(product), 0),
@@ -597,8 +722,8 @@ function Overview({
           <div className="panel-heading"><div><h2>Estoque por categoria</h2><p>Visão consolidada dos itens cadastrados</p></div><button className="text-button" onClick={onOpenProducts}>Ver produtos</button></div>
           {categoryTotals.map((category) => (
             <div className="category-row" key={category.id}>
-              <div className="category-row-head"><span><i className={`category-dot dot-${category.id}`} />{category.label}</span><strong>{category.count} itens <small>· {category.quantity} un.</small></strong></div>
-              <div className="category-track"><span className={`category-bar bar-${category.id}`} style={{ width: `${Math.max(category.count > 0 ? 6 : 0, category.count / maxCategoryCount * 100)}%` }} /></div>
+              <div className="category-row-head"><span><i className={`category-dot dot-${category.id}`} style={dotStyle(category.id)} />{category.name}</span><strong>{category.count} itens <small>· {category.quantity} un.</small></strong></div>
+              <div className="category-track"><span className={`category-bar bar-${category.id}`} style={{ width: `${Math.max(category.count > 0 ? 6 : 0, category.count / maxCategoryCount * 100)}%`, ...dotStyle(category.id) }} /></div>
             </div>
           ))}
           <div className="category-footnote">Mobiliário e equipamentos são acompanhados separadamente em Patrimônio.</div>
@@ -610,7 +735,7 @@ function Overview({
             <div className="alert-list">
               {lowStock.slice(0, 5).map((product) => (
                 <button className="alert-row" key={product.id} onClick={() => onEdit(product)}>
-                  <span className={`category-stamp stamp-${product.category}`}>{categoryName(product.category).slice(0, 1)}</span>
+                  <span className={`category-stamp stamp-${product.category}`} style={stampStyle(product.category)}>{categoryName(product.category).slice(0, 1)}</span>
                   <span className="alert-product"><strong>{product.name}</strong><small>{categoryName(product.category)}</small></span>
                   <span className="alert-quantity"><strong>{quantityOf(product)} {product.unit}</strong><small>mín. {product.minimumQuantity}</small></span>
                 </button>
@@ -649,19 +774,21 @@ function ProductsView({
   onToggleArchive: (product: StockProduct) => void;
   canViewFinancials: boolean;
 }) {
+  const categories = useContext(CategoriesContext);
+  const categoryName = (id: StockCategory) => nameOfCategory(categories, id);
   return (
     <section className="panel table-panel">
       <div className="filter-bar">
         <label className="search-field"><span>Buscar</span><input value={search} onChange={(event) => onSearchChange(event.target.value)} placeholder="Nome ou código do produto" /></label>
-        <label className="filter-field"><span>Categoria</span><select value={categoryFilter} onChange={(event) => onCategoryChange(event.target.value as StockCategory | 'todas')}><option value="todas">Todas</option>{STOCK_CATEGORIES.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
+        <label className="filter-field"><span>Categoria</span><select value={categoryFilter} onChange={(event) => onCategoryChange(event.target.value as StockCategory | 'todas')}><option value="todas">Todas</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name}</option>)}</select></label>
         <label className="filter-field"><span>Situação</span><select value={stockFilter} onChange={(event) => onStockChange(event.target.value as 'todos' | 'baixo' | 'zerado')}><option value="todos">Todas</option><option value="baixo">Estoque baixo</option><option value="zerado">Sem estoque</option></select></label>
       </div>
       {products.length === 0 ? <EmptyState title="Nenhum produto encontrado" detail="Ajuste os filtros ou cadastre o primeiro item do estoque." action="Cadastrar produto" onAction={() => onEdit()} /> : (
         <div className="table-scroll"><table className="data-table"><thead><tr><th>Produto</th><th>Categoria</th><th>Saldo</th><th>Estoque mínimo</th>{canViewFinancials && <th>Custo unitário</th>}<th>Situação</th><th><span className="sr-only">Ações</span></th></tr></thead><tbody>
           {products.map((product) => (
             <tr key={product.id}>
-              <td><div className="product-cell"><span className={`category-stamp stamp-${product.category}`}>{categoryName(product.category).slice(0, 1)}</span><span><strong>{product.name}</strong><small>{product.sku || 'Sem código'} · {Object.keys(product.locationQuantities).length} locais</small></span></div></td>
-              <td><span className="category-label"><i className={`category-dot dot-${product.category}`} />{categoryName(product.category)}</span></td>
+              <td><div className="product-cell"><span className={`category-stamp stamp-${product.category}`} style={stampStyle(product.category)}>{categoryName(product.category).slice(0, 1)}</span><span><strong>{product.name}</strong><small>{product.sku || 'Sem código'} · {Object.keys(product.locationQuantities).length} locais</small></span></div></td>
+              <td><span className="category-label"><i className={`category-dot dot-${product.category}`} style={dotStyle(product.category)} />{categoryName(product.category)}</span></td>
               <td><strong>{quantityOf(product)} {product.unit}</strong></td>
               <td>{product.minimumQuantity} {product.unit}</td>
               {canViewFinancials && <td>{money(product.cost)}</td>}
@@ -683,6 +810,8 @@ function MovementsView({ movements, canViewFinancials, onCheckout }: { movements
 }
 
 function MovementTable({ movements, onCheckout, canViewFinancials = true }: { movements: StockMovement[]; onCheckout?: (movement: StockMovement) => void; canViewFinancials?: boolean }) {
+  const categories = useContext(CategoriesContext);
+  const categoryName = (id: StockCategory) => nameOfCategory(categories, id);
   const paymentLabels: Record<MinibarPaymentMethod, string> = {
     dinheiro: 'Dinheiro',
     pix: 'Pix',
@@ -720,17 +849,22 @@ function EmptyState({ title, detail, action, onAction }: { title: string; detail
 }
 
 function ProductForm({ product, suppliers, saving, canViewFinancials, onClose, onSubmit }: { product?: StockProduct; suppliers: StockSupplier[]; saving: boolean; canViewFinancials: boolean; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+  const categories = useContext(CategoriesContext);
+  const [category, setCategory] = useState(product?.category ?? categories[0]?.id ?? NEW_CATEGORY);
+  const isSalesItem = category === SALES_CATEGORY_ID;
   return <form onSubmit={onSubmit}><ModalHeader title={product ? 'Editar produto' : 'Novo produto'} onClose={onClose} /><div className="modal-body">
     <label className="form-field form-wide"><span>Nome do produto *</span><input name="name" required defaultValue={product?.name} placeholder="Ex.: Detergente neutro 500 ml" /></label>
-    <label className="form-field"><span>Categoria *</span><select name="category" required defaultValue={product?.category ?? 'limpeza'}>{STOCK_CATEGORIES.map((category) => <option key={category.id} value={category.id}>{category.label}</option>)}</select></label>
-    <label className="form-field"><span>Código / SKU</span><input name="sku" defaultValue={product?.sku} placeholder="Opcional" /></label>
+    <label className="form-field"><span>Categoria *</span><select name="category" required value={category} onChange={(event) => setCategory(event.target.value)}>{categories.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}<option value={NEW_CATEGORY}>+ Nova categoria...</option></select></label>
+    {category === NEW_CATEGORY ? <label className="form-field"><span>Nome da nova categoria *</span><input name="newCategory" required maxLength={60} autoFocus placeholder="Ex.: Piscina" /></label> : <label className="form-field"><span>Código / SKU</span><input name="sku" defaultValue={product?.sku} placeholder="Opcional" /></label>}
     <label className="form-field"><span>Unidade *</span><input name="unit" required defaultValue={product?.unit ?? 'un.'} placeholder="un., kg, L, pacote..." /></label>
     <label className="form-field"><span>Estoque mínimo</span><input name="minimumQuantity" type="number" min="0" step="any" defaultValue={product?.minimumQuantity ?? 0} /></label>
-    {canViewFinancials && <><label className="form-field"><span>Custo unitário (R$)</span><input name="cost" type="number" min="0" step="0.01" defaultValue={product?.cost ?? 0} /></label>
-    <label className="form-field"><span>Preço de venda (R$)</span><input name="salePrice" type="number" min="0" step="0.01" defaultValue={product?.salePrice ?? 0} /></label></>}
+    {canViewFinancials && <><label className="form-field"><span>Preço de entrada (R$)</span><input name="cost" type="number" min="0" step="0.01" defaultValue={product?.cost ?? 0} /></label>
+    {isSalesItem && <label className="form-field"><span>Preço de venda (R$) *</span><input name="salePrice" type="number" min="0.01" step="0.01" required defaultValue={product?.salePrice ?? 0} /></label>}</>}
     <label className="form-field"><span>Fornecedor</span><select name="supplierId" defaultValue={product?.supplierId ?? ''}><option value="">Não informado</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
-    <label className="form-field"><span>Validade</span><input name="expiresAt" type="date" defaultValue={product?.expiresAt} /></label>
+    <label className="form-field"><span>Validade</span><DateInput name="expiresAt" defaultValue={product?.expiresAt} /></label>
     <label className="form-field form-wide"><span>Observações</span><textarea name="description" rows={2} defaultValue={product?.description} placeholder="Detalhes, apresentação ou cuidados" /></label>
+    {category === NEW_CATEGORY && <label className="form-field"><span>Código / SKU</span><input name="sku" defaultValue={product?.sku} placeholder="Opcional" /></label>}
+    <p className="form-hint form-wide">{isSalesItem ? 'Item da geladeira: é o único tipo vendido ao hóspede, por isso tem preço de venda.' : 'Item de uso do hotel: tem apenas preço de entrada, não é vendido.'}</p>
     {product && <p className="form-hint form-wide">O saldo atual por local será preservado. Para alterá-lo, registre uma movimentação ou faça uma conferência.</p>}
   </div><ModalFooter saving={saving} onClose={onClose} submitLabel={product ? 'Salvar alterações' : 'Cadastrar produto'} /></form>;
 }
@@ -752,7 +886,7 @@ function AssetForm({ asset, saving, canViewFinancials, onClose, onSubmit }: { as
     <label className="form-field"><span>Número de série</span><input name="serialNumber" defaultValue={asset?.serialNumber} /></label>
     <label className="form-field form-wide"><span>Localização *</span><input name="location" required list="stock-locations" defaultValue={asset?.location} placeholder="Quarto, setor ou depósito" /></label>
     <label className="form-field"><span>Estado</span><select name="status" defaultValue={asset?.status ?? 'em_uso'}><option value="em_uso">Em uso</option><option value="em_manutencao">Em manutenção</option><option value="baixado">Baixado</option></select></label>
-    <label className="form-field"><span>Data de aquisição</span><input name="acquiredAt" type="date" defaultValue={asset?.acquiredAt} /></label>
+    <label className="form-field"><span>Data de aquisição</span><DateInput name="acquiredAt" defaultValue={asset?.acquiredAt} /></label>
     {canViewFinancials && <label className="form-field"><span>Valor de aquisição (R$)</span><input name="cost" type="number" min="0" step="0.01" defaultValue={asset?.cost ?? 0} /></label>}
     <label className="form-field form-wide"><span>Observações</span><textarea name="notes" rows={2} defaultValue={asset?.notes} /></label>
   </div><ModalFooter saving={saving} onClose={onClose} submitLabel={asset ? 'Salvar alterações' : 'Cadastrar bem'} /></form>;
@@ -798,6 +932,11 @@ function MovementForm({
     {isTransfer || isOutbound || isCount ? <label className="form-field form-wide"><span>{isCount ? 'Local conferido *' : 'Origem *'}</span><input name="fromLocation" required list="stock-locations" defaultValue={source} /></label> : null}
     {isInbound || isTransfer ? <label className="form-field form-wide"><span>{isInbound ? 'Local de destino *' : 'Destino *'}</span><input name="toLocation" required list="stock-locations" defaultValue={isInbound && product?.category === 'frigobar' ? 'Geladeira - Recepção' : isInbound ? 'Almoxarifado central' : ''} placeholder="Informe o local" /></label> : null}
     <label className="form-field"><span>{isCount ? 'Quantidade contada *' : 'Quantidade *'} {product && `(${product.unit})`}</span><input name="quantity" type="number" min="0" step="any" required defaultValue="" placeholder={isCount ? 'Saldo físico' : '0'} /></label>
+    {isInbound && canViewFinancials && <>
+      <label className="form-field"><span>Preço de entrada / unidade (R$)</span><input key={product?.id} name="entryUnitPrice" type="number" min="0" step="0.01" defaultValue={product?.cost ?? 0} /></label>
+      <label className="form-field"><span>Pagamento da compra</span><select name="entryPayment" defaultValue="pendente"><option value="pendente">A pagar (pendente)</option><option value="caixa">Pago em dinheiro (caixa)</option><option value="banco">Pago pelo banco</option></select></label>
+      <p className="form-hint form-wide">A compra será lançada como despesa "Estoque" no Financeiro e o preço de entrada do produto será atualizado.</p>
+    </>}
     {canViewFinancials && movementType === 'consumo_frigobar' && <label className="form-field"><span>Preço cobrado / unidade</span><input value={money(product?.salePrice ?? 0)} readOnly /></label>}
     {movementType === 'consumo_frigobar' ? <>
       <label className="form-field form-wide"><span>Forma de cobrança *</span><select name="settlement" value={minibarSettlement} onChange={(event) => setMinibarSettlement(event.target.value as MinibarSettlement)}><option value="pago_na_recepcao">Cobrar e receber na recepção</option><option value="cobrar_no_checkout">Lançar no quarto para cobrar no checkout</option></select></label>
@@ -818,6 +957,27 @@ function CheckoutForm({ movement, saving, canViewFinancials, onClose, onSubmit }
     <label className="form-field form-wide"><span>Forma de pagamento recebida *</span><select name="paymentMethod" required defaultValue=""><option value="" disabled>Selecione</option><option value="dinheiro">Dinheiro</option><option value="pix">Pix</option><option value="cartao_debito">Cartão de débito</option><option value="cartao_credito">Cartão de crédito</option></select></label>
     <p className="form-hint form-wide">Confirmar o recebimento remove este item do total pendente e registra quem deu baixa no checkout.</p>
   </div><ModalFooter saving={saving} onClose={onClose} submitLabel="Confirmar recebimento" /></form>;
+}
+
+function CategoriesManager({ categories, usage, saving, error, onClose, onAdd, onRename, onRemove }: { categories: StockCategoryRecord[]; usage: Record<string, number>; saving: boolean; error: string; onClose: () => void; onAdd: (name: string) => void; onRename: (id: string, name: string) => void; onRemove: (category: StockCategoryRecord) => void }) {
+  const [newName, setNewName] = useState('');
+  const [editingId, setEditingId] = useState('');
+  const [draft, setDraft] = useState('');
+  return <div><ModalHeader title="Categorias do estoque" onClose={onClose} /><div className="modal-body">
+    <form className="category-add-form form-wide" onSubmit={(event) => { event.preventDefault(); if (!newName.trim()) return; onAdd(newName); setNewName(''); }}>
+      <label className="form-field"><span>Nova categoria</span><input value={newName} maxLength={60} onChange={(event) => setNewName(event.target.value)} placeholder="Ex.: Lavanderia" /></label>
+      <button className="button button-primary" type="submit" disabled={saving || !newName.trim()}>Adicionar</button>
+    </form>
+    {error && <p className="form-hint form-wide category-error" role="alert">{error}</p>}
+    <ul className="category-manage-list form-wide">
+      {categories.map((category) => <li key={category.id}>
+        {editingId === category.id
+          ? <><input value={draft} maxLength={60} autoFocus aria-label={`Nome de ${category.name}`} onChange={(event) => setDraft(event.target.value)} /><button className="button button-primary" type="button" disabled={saving || !draft.trim()} onClick={() => { onRename(category.id, draft); setEditingId(''); }}>Salvar</button><button className="button button-plain" type="button" onClick={() => setEditingId('')}>Cancelar</button></>
+          : <><span>{category.name}<small>{usage[category.id] ?? 0} {(usage[category.id] ?? 0) === 1 ? 'item' : 'itens'}</small></span><button className="button button-plain" type="button" disabled={saving} onClick={() => { setEditingId(category.id); setDraft(category.name); }}>Editar</button><button className="button button-plain" type="button" disabled={saving} onClick={() => onRemove(category)}>Excluir</button></>}
+      </li>)}
+      <li className="category-fixed"><span>{SALES_CATEGORY.name}<small>Fixa · única categoria com itens à venda · {usage[SALES_CATEGORY.id] ?? 0} itens</small></span></li>
+    </ul>
+  </div><div className="modal-footer"><button type="button" className="button button-plain" onClick={onClose}>Fechar</button></div></div>;
 }
 
 function ModalHeader({ title, onClose }: { title: string; onClose: () => void }) {

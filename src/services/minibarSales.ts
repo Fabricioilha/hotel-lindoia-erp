@@ -4,8 +4,10 @@ import type {
   MinibarSettlement,
   StockMovement,
 } from '../types/inventory';
+import { recordOperationalIncome } from './operationalIncome';
 
 export interface MinibarSaleInput {
+  id?: string;
   items: { productId: string; quantity: number }[];
   settlement: MinibarSettlement;
   paymentMethod: MinibarPaymentMethod | '';
@@ -26,6 +28,7 @@ export function applyMinibarSale(current: InventoryData, sale: MinibarSaleInput)
   }
 
   const createdAt = new Date().toISOString();
+  const saleId = sale.id ?? crypto.randomUUID();
   const products = { ...current.products };
   const movements = { ...current.movements };
 
@@ -55,7 +58,7 @@ export function applyMinibarSale(current: InventoryData, sale: MinibarSaleInput)
     };
 
     const movement: StockMovement = {
-      id: crypto.randomUUID(),
+      id: `${saleId}-${product.id}`,
       productId: product.id,
       productName: product.name,
       category: product.category,
@@ -73,10 +76,30 @@ export function applyMinibarSale(current: InventoryData, sale: MinibarSaleInput)
       roomNumber: sale.roomNumber.trim(),
       guestName: sale.guestName.trim(),
       ...(sale.settlement === 'pago_na_recepcao' ? { settledAt: createdAt, settledBy: sale.actor } : {}),
+      ...(sale.settlement === 'pago_na_recepcao' ? { financeSynced: false } : {}),
       createdAt,
     };
     movements[movement.id] = movement;
   }
 
   return { ...current, products, movements };
+}
+
+export async function recordMinibarIncome(movement: StockMovement): Promise<void> {
+  if (movement.type !== 'consumo_frigobar' || !movement.paymentMethod || (movement.settlement !== 'pago_na_recepcao' && movement.settlement !== 'pago_no_checkout')) return;
+  const paymentMethods = {
+    dinheiro: 'cash',
+    pix: 'pix',
+    cartao_debito: 'debit',
+    cartao_credito: 'credit',
+  } as const;
+  await recordOperationalIncome({
+    id: `minibar-${movement.id}`,
+    date: (movement.settledAt ?? movement.createdAt).slice(0, 10),
+    category: 'Consumo',
+    description: `${movement.productName} · ${movement.quantity} ${movement.unit}`,
+    amount: movement.quantity * movement.unitPrice,
+    paymentMethod: paymentMethods[movement.paymentMethod],
+    note: ['Frigobar', movement.roomNumber ? `Quarto ${movement.roomNumber}` : '', movement.guestName].filter(Boolean).join(' · '),
+  });
 }

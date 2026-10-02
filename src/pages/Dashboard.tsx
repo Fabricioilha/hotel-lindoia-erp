@@ -2,10 +2,13 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import type { UserRole } from '../types';
 import { emptyInventory, subscribeInventory } from '../services/inventoryStore';
-import { emptyHousekeeping, subscribeHousekeeping } from '../services/housekeepingStore';
+import { emptyHousekeeping, migrateReservationPayments, subscribeHousekeeping, subscribeReservationCollections, syncReservationCollections } from '../services/housekeepingStore';
 import { hotelOccupancySummary } from '../services/reservationAnalytics';
+import { emptyFrigobar, subscribeFrigobar, syncFrigobarCatalog } from '../services/frigobarStore';
+import { useFrigobarFinanceSync } from '../services/minibarFinanceSync';
 import type { InventoryData } from '../types/inventory';
 import type { HousekeepingData } from '../types/housekeeping';
+import type { FrigobarData } from '../types/frigobar';
 import './dashboard.css';
 
 interface DashboardProps {
@@ -19,10 +22,14 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   const [inventory, setInventory] = useState<InventoryData>(emptyInventory());
   const [metricsLoaded, setMetricsLoaded] = useState(false);
   const [metricsError, setMetricsError] = useState(false);
+  const [frigobar, setFrigobar] = useState<FrigobarData>(emptyFrigobar());
+  const [syncError, setSyncError] = useState('');
+
+  useFrigobarFinanceSync(frigobar.sales, userRole === 'admin', setSyncError);
 
   useEffect(() => {
     let roomsLoaded = false;
-    let inventoryLoaded = false;
+    let inventoryLoaded = userRole !== 'admin';
     const markLoaded = () => {
       if (roomsLoaded && inventoryLoaded) setMetricsLoaded(true);
     };
@@ -35,20 +42,34 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
       roomsLoaded = true;
       markLoaded();
     });
-    const unsubscribeInventory = subscribeInventory((data) => {
+    const unsubscribeInventory = userRole === 'admin' ? subscribeInventory((data) => {
       setInventory(data);
+      void syncFrigobarCatalog(data).catch((cause: unknown) => setSyncError(cause instanceof Error ? cause.message : 'Não foi possível atualizar o catálogo da geladeira.'));
       inventoryLoaded = true;
       markLoaded();
     }, () => {
       setMetricsError(true);
       inventoryLoaded = true;
       markLoaded();
-    });
+    }) : () => {};
     return () => {
       unsubscribeRooms();
       unsubscribeInventory();
     };
-  }, []);
+  }, [userRole]);
+
+  useEffect(() => {
+    if (userRole !== 'admin') return;
+    void migrateReservationPayments().catch((cause: unknown) => setSyncError(cause instanceof Error ? cause.message : 'Não foi possível migrar recebimentos antigos das reservas.'));
+    return subscribeFrigobar(setFrigobar, (cause) => setSyncError(cause.message));
+  }, [userRole]);
+
+  useEffect(() => {
+    if (userRole !== 'admin') return;
+    return subscribeReservationCollections((collections) => {
+      if (Object.keys(collections).length > 0) void syncReservationCollections().catch((cause: unknown) => setSyncError(cause instanceof Error ? cause.message : 'Não foi possível conciliar as cobranças de checkout.'));
+    }, (cause) => setSyncError(cause.message));
+  }, [userRole]);
 
   const occupancy = hotelOccupancySummary(housekeeping);
   const activeRoomIds = new Set(Object.values(housekeeping.reservations)
@@ -61,8 +82,10 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   ).length;
   const roomsInCleaning = Object.values(housekeeping.rooms).filter((room) => room.cleaningStatus === 'em_limpeza').length;
   const lowStockCount = Object.values(inventory.products).filter((product) => {
-    const quantity = Object.values(product.locationQuantities ?? {}).reduce((total, value) => total + Number(value || 0), 0);
-    return product.minimumQuantity > 0 && quantity <= product.minimumQuantity;
+    const quantity = product.category === 'frigobar'
+      ? Number(frigobar.stock[product.id] ?? product.locationQuantities['Geladeira - Recepção'] ?? 0)
+      : Object.values(product.locationQuantities ?? {}).reduce((total, value) => total + Number(value || 0), 0);
+    return product.active !== false && product.minimumQuantity > 0 && quantity <= product.minimumQuantity;
   }).length;
   const valueOrLoading = (value: string | number) => metricsLoaded && !metricsError ? String(value) : '—';
   const detailOrLoading = (detail: string) => metricsError ? 'Dados indisponíveis' : metricsLoaded ? detail : 'Carregando dados';
@@ -85,19 +108,20 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
           <div>
             <p className="dashboard-eyebrow">HOTEL LINDOIA <span>/</span> OPERAÇÃO</p>
             <h1>Visão operacional</h1>
-            <p>Acesse os serviços do hotel e registre vendas da recepção.</p>
+            <p>Acesse os serviços do hotel e acompanhe a operação.</p>
           </div>
         </section>
+        {syncError && <div className="notice notice-error" role="alert">{syncError}</div>}
 
         <section className="dashboard-metrics" aria-label="Indicadores operacionais">
           <MetricCard title="Ocupação atual" value={valueOrLoading(occupancy.occupancyRate === null ? '—' : `${occupancy.occupancyRate}%`)} detail={detailOrLoading(occupancy.usableRooms ? `${occupancy.occupiedRooms} de ${occupancy.usableRooms} quartos utilizáveis` : 'Cadastre os quartos')} tone="blue" />
           <MetricCard title="Prontos para hospedagem" value={valueOrLoading(readyRooms)} detail={detailOrLoading('Limpos, livres e sem bloqueio de manutenção')} tone="green" />
           <MetricCard title="Em limpeza" value={valueOrLoading(roomsInCleaning)} detail={detailOrLoading('Quartos com tarefa em andamento')} tone="gold" />
-          <MetricCard title="Entradas hoje" value={valueOrLoading(occupancy.arrivalsToday.guests)} detail={detailOrLoading(`${occupancy.arrivalsToday.reservations} reservas confirmadas`)} tone="gold" />
-          <MetricCard title="Entradas amanhã" value={valueOrLoading(occupancy.arrivalsTomorrow.guests)} detail={detailOrLoading(`${occupancy.arrivalsTomorrow.reservations} reservas confirmadas`)} tone="blue" />
-          <MetricCard title="Saídas hoje" value={valueOrLoading(occupancy.departuresToday.guests)} detail={detailOrLoading(`${occupancy.departuresToday.reservations} hóspedes hospedados`)} tone="red" />
-          <MetricCard title="Saídas amanhã" value={valueOrLoading(occupancy.departuresTomorrow.guests)} detail={detailOrLoading(`${occupancy.departuresTomorrow.reservations} hóspedes hospedados`)} tone="gold" />
-          <MetricCard title="Alertas de estoque" value={valueOrLoading(lowStockCount)} detail={detailOrLoading('Produtos no mínimo ou abaixo')} tone="neutral" />
+          <MetricCard title="Entradas hoje" value={valueOrLoading(occupancy.arrivalsToday.rooms)} detail={detailOrLoading('Quartos com chegada prevista')} tone="gold" />
+          <MetricCard title="Entradas amanhã" value={valueOrLoading(occupancy.arrivalsTomorrow.rooms)} detail={detailOrLoading('Quartos com chegada prevista')} tone="blue" />
+          <MetricCard title="Saídas hoje" value={valueOrLoading(occupancy.departuresToday.rooms)} detail={detailOrLoading('Quartos com checkout previsto')} tone="red" />
+          <MetricCard title="Saídas amanhã" value={valueOrLoading(occupancy.departuresTomorrow.rooms)} detail={detailOrLoading('Quartos com checkout previsto')} tone="gold" />
+          {userRole === 'admin' && <MetricCard title="Alertas de estoque" value={valueOrLoading(lowStockCount)} detail={detailOrLoading('Produtos no mínimo ou abaixo')} tone="neutral" />}
         </section>
 
         <section className="dashboard-modules">
@@ -105,8 +129,8 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
             <div><p className="dashboard-eyebrow">ACESSO RÁPIDO</p><h2>Módulos do hotel</h2></div>
           </div>
           <div className="module-grid">
-            <ModuleCard number="01" title="Geladeira - Recepção" description="Venda bebidas, receba na hora ou registre por quarto." route="/vendas" />
-            <ModuleCard number="02" title="Controle de estoque" description="Limpeza, rouparia, manutenção e itens da recepção." route="/estoque" />
+            <ModuleCard number="01" title="Lançar Venda" description="Venda bebidas, receba na hora ou registre por quarto." route="/vendas" />
+            {userRole === 'admin' && <ModuleCard number="02" title="Controle de estoque" description="Limpeza, rouparia, manutenção e itens da recepção." route="/estoque" />}
             <ModuleCard number="03" title="Serviço de quarto" description="Status de limpeza, ocupação e manutenção reportada." route="/quartos" />
             <ModuleCard number="04" title="Escala de funcionários" description="Calendário de turnos e equipe operacional." route="/escala" />
             <ModuleCard number="05" title="Gestão financeira" description="Fluxo de caixa, folha e despesas do hotel." route={userRole === 'admin' ? '/financeiro/caixa' : undefined} disabled={userRole !== 'admin'} />
