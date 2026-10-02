@@ -54,6 +54,7 @@
 .metric-red .metric-rule { background: var(--brand-red); }
 .metric-gold .metric-rule { background: #b78332; }
 .metric-neutral .metric-rule { background: #7a8ca8; }
+.metric-green .metric-rule { background: #4e9a78; }
 .dashboard-metric p { color: var(--brand-muted); font-size: 10px; font-weight: 700; }
 .dashboard-metric strong { display: block; margin-top: 8px; color: var(--brand-ink); font-size: 27px; line-height: 1; }
 .dashboard-metric small { display: block; margin-top: 8px; color: #8490a2; font-size: 10px; }

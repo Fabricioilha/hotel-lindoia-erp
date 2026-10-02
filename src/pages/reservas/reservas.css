@@ -1,0 +1,233 @@
+.reservations-app .reservation-content {
+  width: min(100%, 1500px);
+}
+
+.reservation-summary {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 14px;
+}
+
+.reservation-summary .housekeeping-metric {
+  min-height: 92px;
+}
+
+.reservation-summary .housekeeping-metric small {
+  display: block;
+  margin-top: 6px;
+  color: #8490a2;
+  font-size: 10px;
+}
+
+.reservation-panel {
+  overflow: hidden;
+  border: 1px solid #dfe5ee;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.reservation-toolbar {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 13px 15px;
+  border-bottom: 1px solid #e7ebf1;
+}
+
+.reservation-tabs {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.reservation-tabs button {
+  min-height: 34px;
+  padding: 7px 11px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  color: #62738a;
+  background: transparent;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.reservation-tabs button:hover {
+  background: #f5f7fa;
+}
+
+.reservation-tabs button.selected {
+  border-color: #d7e2f0;
+  color: #214d7a;
+  background: #edf3fb;
+}
+
+.reservation-search {
+  width: min(100%, 280px);
+}
+
+.reservation-empty {
+  display: grid;
+  justify-items: start;
+  gap: 9px;
+  padding: 25px;
+}
+
+.reservation-empty strong {
+  color: #263c55;
+  font-size: 14px;
+}
+
+.reservation-empty p {
+  max-width: 540px;
+  color: #738399;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.reservation-table {
+  min-width: 900px;
+}
+
+.reservation-table td > small {
+  display: block;
+  margin-top: 3px;
+  color: #78869a;
+  font-size: 10px;
+}
+
+.reservation-status {
+  display: inline-flex;
+  min-height: 23px;
+  align-items: center;
+  padding: 3px 7px;
+  border: 1px solid transparent;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 700;
+}
+
+.reservation-confirmada {
+  border-color: #efd9b3;
+  color: #875b19;
+  background: #fff8e9;
+}
+
+.reservation-hospedado {
+  border-color: #cbdced;
+  color: #315f87;
+  background: #eef5fb;
+}
+
+.reservation-encerrada {
+  border-color: #dce3eb;
+  color: #68778b;
+  background: #f6f8fa;
+}
+
+.reservation-cancelada {
+  border-color: #ecc8cf;
+  color: #9e3447;
+  background: #fff0f2;
+}
+
+.reservation-row-actions {
+  display: flex;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.reservation-row-actions button {
+  min-height: 29px;
+  padding: 5px 7px;
+  border: 1px solid #d7dee8;
+  border-radius: 3px;
+  color: #455b73;
+  background: #fff;
+  font: inherit;
+  font-size: 10px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.reservation-row-actions button:hover:not(:disabled) {
+  background: #f5f7fa;
+}
+
+.reservation-row-actions button:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+.reservation-row-actions button.reservation-action-primary {
+  border-color: #315f87;
+  color: #fff;
+  background: #315f87;
+}
+
+.reservation-row-actions button.danger {
+  border-color: #ecd6da;
+  color: #a13a4b;
+}
+
+.reservation-modal .schedule-field {
+  margin-top: 12px;
+}
+
+.reservation-hint {
+  margin-top: 12px;
+  color: #738399;
+  font-size: 10px;
+  line-height: 1.5;
+}
+
+@media (max-width: 1100px) {
+  .reservation-summary {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 700px) {
+  .reservation-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+  }
+
+  .reservation-summary .housekeeping-metric {
+    min-height: 78px;
+    padding: 11px 12px;
+  }
+
+  .reservation-toolbar {
+    align-items: stretch;
+    flex-direction: column;
+    padding: 11px;
+  }
+
+  .reservation-search {
+    width: 100%;
+  }
+
+  .reservation-tabs {
+    overflow-x: auto;
+    flex-wrap: nowrap;
+  }
+
+  .reservation-tabs button {
+    flex: 0 0 auto;
+  }
+
+  .reservation-empty {
+    padding: 18px;
+  }
+
+  .reservation-modal {
+    padding: 18px;
+  }
+}

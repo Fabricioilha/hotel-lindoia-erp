@@ -101,6 +101,26 @@ export function FluxoDeCaixa() {
 		+ payroll.reduce((sum, item) => sum + Math.max(0, payrollNet(item) - item.paidCash - item.paidBank), 0);
 	const balances = balancesAt(data, month);
 
+	function exportMonthlyReport() {
+		const incomeRows = incomes.map((item) => {
+			const payments = incomeItems(item);
+			const cash = payments.filter((line) => line.paymentMethod === 'cash').reduce((sum, line) => sum + line.amount, 0);
+			const bank = payments.filter((line) => line.paymentMethod !== 'cash' && line.paymentMethod !== 'prepaid').reduce((sum, line) => sum + line.amount, 0);
+			const receivable = payments.filter((line) => line.paymentMethod === 'prepaid').reduce((sum, line) => sum + line.amount, 0);
+			return ['Entrada', item.date, item.category, payments.map((line) => `${line.description}: ${money(line.amount)}`).join(' | '), '', '', '', item.amount, cash, bank, receivable, 0, incomePaymentSummary(item), item.note];
+		});
+		const expenseRows = expenses.map((item) => ['Despesa', item.dueDate, item.category, item.note, '', '', item.plannedAmount, item.paidCash + item.paidBank, item.paidCash, item.paidBank, 0, Math.max(0, item.plannedAmount - item.paidCash - item.paidBank), '', item.note]);
+		const payrollRows = payroll.map((item) => ['Folha', item.dueDate, 'Folha de pagamento', `${item.employee}${item.position ? ` · ${item.position}` : ''}`, '', '', payrollNet(item), item.paidCash + item.paidBank, item.paidCash, item.paidBank, 0, Math.max(0, payrollNet(item) - item.paidCash - item.paidBank), '', item.note]);
+		const transferRows = transfers.map((item) => ['Transferência', item.date, 'Entre carteiras', item.note, WALLET_LABELS[item.from], WALLET_LABELS[item.to], '', item.amount, 0, 0, 0, 0, '', item.note]);
+		exportCsv(`financeiro-${month}.csv`, [
+			['Tipo', 'Data', 'Categoria', 'Detalhes', 'Origem', 'Destino', 'Previsto', 'Valor registrado', 'Pago em caixa', 'Pago em banco', 'A receber', 'Pendente', 'Forma de pagamento', 'Observação'],
+			...incomeRows,
+			...expenseRows,
+			...payrollRows,
+			...transferRows,
+		]);
+	}
+
 	async function commit(update: (current: FinanceData) => FinanceData, message: string) {
 		setSaving(true);
 		setError('');
@@ -254,7 +274,7 @@ export function FluxoDeCaixa() {
 			<main className="finance-content">
 				<div className="finance-page-heading">
 					<div><p className="finance-eyebrow">FINANCEIRO <span>/</span> CONTROLE</p><h1>Fluxo de caixa</h1><p>Entradas, despesas e saldos por carteira.</p></div>
-					<div className="finance-heading-actions"><label className="finance-month"><span>Competência</span><input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label><button className="finance-button finance-button-soft" onClick={() => openModal('saldo')}>Saldos iniciais</button><button className="finance-button finance-button-dark" onClick={() => openModal('entrada')}>+ Entrada</button><button className="finance-button finance-button-primary" onClick={() => openModal('saida')}>+ Despesa</button></div>
+					<div className="finance-heading-actions"><label className="finance-month"><span>Competência</span><input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label><button className="finance-button finance-button-soft" onClick={exportMonthlyReport}>Exportar competência</button><button className="finance-button finance-button-soft" onClick={() => openModal('saldo')}>Saldos iniciais</button><button className="finance-button finance-button-dark" onClick={() => openModal('entrada')}>+ Entrada</button><button className="finance-button finance-button-primary" onClick={() => openModal('saida')}>+ Despesa</button></div>
 				</div>
 
 				{error && <div className="finance-alert" role="alert">{error}<button onClick={() => setError('')} aria-label="Fechar aviso">×</button></div>}
@@ -288,7 +308,7 @@ export function FluxoDeCaixa() {
 
 					{tab === 'saidas' && <section className="finance-panel"><div className="finance-panel-heading"><div><h2>Despesas da competência</h2><p>{expenses.length + payroll.length} registros · {money(paidExpenses)} pagos · {money(pendingExpenses)} pendentes</p></div><div className="finance-heading-actions"><button className="finance-button finance-button-soft" onClick={() => exportCsv(`despesas-${month}.csv`, [['Vencimento', 'Categoria', 'Previsto', 'Pago em caixa', 'Pago em banco', 'Pendente', 'Observação'], ...expenses.map((item) => [item.dueDate, item.category, item.plannedAmount, item.paidCash, item.paidBank, Math.max(0, item.plannedAmount - item.paidCash - item.paidBank), item.note]), ...payroll.map((item) => [item.dueDate, `Folha · ${item.employee}`, payrollNet(item), item.paidCash, item.paidBank, Math.max(0, payrollNet(item) - item.paidCash - item.paidBank), item.note])])}>Exportar CSV</button><button className="finance-button finance-button-primary" onClick={() => openModal('saida')}>+ Despesa</button></div></div><ActivityTable activities={[...activities.filter((item) => item.type !== 'entrada')]} onEdit={(activity) => activity.type === 'saida' && openModal('saida', activity.id)} onDelete={(activity) => activity.type === 'saida' && void removeRecord('saida', activity.id)} title="" /></section>}
 
-					{tab === 'transferencias' && <section className="finance-panel"><div className="finance-panel-heading"><div><h2>Transferências da competência</h2><p>{transfers.length} registros · sem impacto no resultado</p></div><button className="finance-button finance-button-dark" onClick={() => openModal('transferencia')}>+ Transferência</button></div>{transfers.length === 0 ? <div className="finance-empty">Nenhuma transferência neste mês.</div> : <div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Data</th><th>Origem</th><th>Destino</th><th>Observação</th><th className="numeric">Valor</th><th><span className="sr-only">Ações</span></th></tr></thead><tbody>{transfers.map((item) => <tr key={item.id}><td>{dateLabel(item.date)}</td><td>{WALLET_LABELS[item.from]}</td><td>{WALLET_LABELS[item.to]}</td><td>{item.note || '—'}</td><td className="numeric">{money(item.amount)}</td><td><div className="finance-row-actions"><button onClick={() => openModal('transferencia', item.id)}>Editar</button><button className="danger" onClick={() => void removeRecord('transferencia', item.id)}>Excluir</button></div></td></tr>)}</tbody></table></div>}</section>}
+					  {tab === 'transferencias' && <section className="finance-panel"><div className="finance-panel-heading"><div><h2>Transferências da competência</h2><p>{transfers.length} registros · sem impacto no resultado</p></div><div className="finance-heading-actions"><button className="finance-button finance-button-soft" onClick={() => exportCsv(`transferencias-${month}.csv`, [['Data', 'Origem', 'Destino', 'Valor', 'Observação'], ...transfers.map((item) => [item.date, WALLET_LABELS[item.from], WALLET_LABELS[item.to], item.amount, item.note])])}>Exportar CSV</button><button className="finance-button finance-button-dark" onClick={() => openModal('transferencia')}>+ Transferência</button></div></div>{transfers.length === 0 ? <div className="finance-empty">Nenhuma transferência neste mês.</div> : <div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Data</th><th>Origem</th><th>Destino</th><th>Observação</th><th className="numeric">Valor</th><th><span className="sr-only">Ações</span></th></tr></thead><tbody>{transfers.map((item) => <tr key={item.id}><td>{dateLabel(item.date)}</td><td>{WALLET_LABELS[item.from]}</td><td>{WALLET_LABELS[item.to]}</td><td>{item.note || '—'}</td><td className="numeric">{money(item.amount)}</td><td><div className="finance-row-actions"><button onClick={() => openModal('transferencia', item.id)}>Editar</button><button className="danger" onClick={() => void removeRecord('transferencia', item.id)}>Excluir</button></div></td></tr>)}</tbody></table></div>}</section>}
 
 					  {tab === 'categorias' && <div className="finance-category-grid"><CategoryManager title="Categorias de entrada" categories={data.incomeCategories} onAdd={(category) => void addCategory('income', category)} onRemove={(category) => void removeCategory('income', category)} /><CategoryManager title="Categorias de despesa" categories={data.expenseCategories} onAdd={(category) => void addCategory('expense', category)} onRemove={(category) => void removeCategory('expense', category)} /></div>}
 				</>}

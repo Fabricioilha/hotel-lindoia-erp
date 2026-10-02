@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { applyMinibarSale, type MinibarSaleInput } from '../services/minibarSales';
 import { subscribeInventory, updateInventory } from '../services/inventoryStore';
 import type { InventoryData, MinibarPaymentMethod, MinibarSettlement, StockProduct } from '../types/inventory';
+import { emptyHousekeeping, subscribeHousekeeping } from '../services/housekeepingStore';
+import type { HousekeepingData } from '../types/housekeeping';
 import './venda-geladeira.css';
 
 const LOCATION = 'Geladeira - Recepção';
@@ -11,6 +13,7 @@ const emptyInventory: InventoryData = { products: {}, suppliers: {}, movements: 
 
 export function VendaGeladeira({ actor }: { actor: string }) {
   const [data, setData] = useState<InventoryData>(emptyInventory);
+  const [housekeeping, setHousekeeping] = useState<HousekeepingData>(emptyHousekeeping());
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [saveError, setSaveError] = useState('');
@@ -32,6 +35,8 @@ export function VendaGeladeira({ actor }: { actor: string }) {
     setLoading(false);
   }), []);
 
+  useEffect(() => subscribeHousekeeping(setHousekeeping, () => setHousekeeping(emptyHousekeeping())), []);
+
   const products = Object.values(data.products)
     .filter((product) => product.category === 'frigobar' && product.active !== false)
     .sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
@@ -42,6 +47,9 @@ export function VendaGeladeira({ actor }: { actor: string }) {
     .filter((item): item is { product: StockProduct; quantity: number } => Boolean(item.product) && item.quantity > 0);
   const totalItems = cartItems.reduce((total, item) => total + item.quantity, 0);
   const total = cartItems.reduce((amount, item) => amount + item.product.salePrice * item.quantity, 0);
+  const occupiedReservations = Object.values(housekeeping.reservations)
+    .filter((reservation) => reservation.status === 'hospedado')
+    .sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, 'pt-BR', { numeric: true }));
 
   function changeQuantity(product: StockProduct, change: number) {
     const available = Number(product.locationQuantities[LOCATION] ?? 0);
@@ -86,7 +94,7 @@ export function VendaGeladeira({ actor }: { actor: string }) {
     <div className="sales-page">
       <header className="sales-header">
         <Link to="/" className="sales-brand"><span className="sales-brand-mark">HL</span><span><strong>Hotel Lindoia</strong><small>CAIXA DA RECEPÇÃO</small></span></Link>
-        <nav className="sales-header-links" aria-label="Navegação"><Link to="/estoque">Estoque</Link><Link to="/">Painel inicial</Link></nav>
+        <nav className="sales-header-links" aria-label="Navegação"><Link to="/reservas">Reservas</Link><Link to="/quartos">Serviço de quarto</Link><Link to="/estoque">Estoque</Link><Link to="/">Painel inicial</Link></nav>
       </header>
 
       <main className="sales-content">
@@ -140,7 +148,7 @@ export function VendaGeladeira({ actor }: { actor: string }) {
               </div>
             </fieldset>
 
-            {settlement === 'pago_na_recepcao' ? <label className="sales-field"><span>Forma de pagamento *</span><select required value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as MinibarPaymentMethod | '')}><option value="">Selecione</option><option value="dinheiro">Dinheiro</option><option value="pix">Pix</option><option value="cartao_debito">Cartão de débito</option><option value="cartao_credito">Cartão de crédito</option></select></label> : <div className="room-fields"><label className="sales-field"><span>Quarto *</span><input required value={roomNumber} onChange={(event) => setRoomNumber(event.target.value)} placeholder="Ex.: 205" /></label><label className="sales-field"><span>Hóspede (opcional)</span><input value={guestName} onChange={(event) => setGuestName(event.target.value)} placeholder="Nome do hóspede" /></label></div>}
+            {settlement === 'pago_na_recepcao' ? <label className="sales-field"><span>Forma de pagamento *</span><select required value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as MinibarPaymentMethod | '')}><option value="">Selecione</option><option value="dinheiro">Dinheiro</option><option value="pix">Pix</option><option value="cartao_debito">Cartão de débito</option><option value="cartao_credito">Cartão de crédito</option></select></label> : <div className="room-fields"><label className="sales-field"><span>Quarto ocupado *</span><select required value={roomNumber} onChange={(event) => { const reservation = occupiedReservations.find((item) => item.roomNumber === event.target.value); setRoomNumber(event.target.value); setGuestName(reservation?.guestName ?? ''); }}><option value="">Selecione a hospedagem</option>{occupiedReservations.map((reservation) => <option key={reservation.id} value={reservation.roomNumber}>Quarto {reservation.roomNumber} · {reservation.guestName}</option>)}</select>{occupiedReservations.length === 0 && <small>Nenhuma hospedagem ativa. Faça check-in em Reservas antes de lançar consumo no quarto.</small>}</label><label className="sales-field"><span>Hóspede vinculado</span><input value={guestName} readOnly placeholder="Selecione um quarto ocupado" /></label></div>}
 
             <div className="order-total"><span>Total</span><strong>{money(total)}</strong></div>
             <button className="sale-submit" type="submit" disabled={saving || loading || cartItems.length === 0}>{saving ? 'Registrando venda...' : settlement === 'pago_na_recepcao' ? 'Confirmar e receber' : 'Lançar para checkout'}</button>

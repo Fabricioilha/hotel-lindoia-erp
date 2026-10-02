@@ -17,6 +17,10 @@
         ".read": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')",
         ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')"
       },
+      "quartos": {
+        ".read": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')",
+        ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')"
+      },
       "financeiro": {
         ".read": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
         ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"

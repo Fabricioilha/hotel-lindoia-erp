@@ -15,7 +15,13 @@ O módulo de estoque fica em `/estoque` e inclui:
 
 O módulo usa o Realtime Database padrão do projeto Firebase (`hotel-lindoia-erp-default-rtdb.firebaseio.com`) e grava em `erp_geral/estoque`. Para apontar para outra instância, configure `VITE_FIREBASE_DATABASE_URL` no `.env.local` e reinicie o Vite.
 
-O login usa Firebase Authentication com e-mail e senha. O papel de cada usuário é lido em `roles/{uid}/role` no Realtime Database: `admin` para gerência ou `viewer` para funcionários. A escala permite leitura para ambos e gravação somente para admin; estoque permite leitura e gravação para ambos; financeiro fica restrito a admin.
+O login usa Firebase Authentication com e-mail e senha. O papel de cada usuário é lido em `roles/{uid}/role` no Realtime Database: `admin` para gerência ou `viewer` para funcionários. A escala permite leitura para ambos e gravação somente para admin; estoque e quartos permitem leitura e gravação para ambos; financeiro fica restrito a admin.
+
+### Reservas e quartos
+
+As telas `/reservas` e `/quartos` compartilham `erp_geral/quartos`. Reservas confirmadas bloqueiam o mesmo quarto apenas em períodos sobrepostos; o check-in exige quarto limpo e fora de manutenção; o checkout encerra a hospedagem e marca o quarto como sujo. A ocupação é derivada das reservas com status `hospedado`, não de um campo manual separado.
+
+O painel usa as reservas e os quartos cadastrados para calcular ocupação atual, quartos limpos e liberados, chegadas e saídas de hoje e amanhã (contagem de adultos e crianças). Os alertas de estoque usam os mesmos saldos e limites mínimos da tela de estoque. No desenvolvimento, quartos e reservas são salvos no `localStorage` deste navegador; em produção, usam o Realtime Database.
 
 As regras de negação padrão estão em `database.rules.json`, vinculadas ao projeto `hotel-lindoia-erp` por `firebase.json` e `.firebaserc`. O provedor **E-mail/senha** está habilitado e as regras já foram publicadas no Realtime Database. As contas de gerência (`admin`) e funcionário (`viewer`) estão provisionadas; os papéis ficam em `/roles/{uid}/role`.
 

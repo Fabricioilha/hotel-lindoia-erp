@@ -15,6 +15,17 @@ const monthDueDate = (month: string) => {
 };
 const dateLabel = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR');
 const createId = () => crypto.randomUUID();
+const exportCsv = (filename: string, rows: (string | number)[][]) => {
+	const content = rows.map((row) => row.map((value) => `"${String(value).replaceAll('"', '""')}"`).join(';')).join('\r\n');
+	const url = URL.createObjectURL(new Blob([`\uFEFF${content}`], { type: 'text/csv;charset=utf-8' }));
+	const link = document.createElement('a');
+	link.href = url;
+	link.download = filename;
+	document.body.appendChild(link);
+	link.click();
+	link.remove();
+	window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+};
 
 export function FolhaDePagamento() {
 	const [data, setData] = useState<FinanceData>(emptyFinance());
@@ -96,6 +107,17 @@ export function FolhaDePagamento() {
 		setModal(true);
 	}
 
+	function exportPayroll() {
+		exportCsv(`folha-${month}.csv`, [
+			['Competência', 'Vencimento', 'Funcionário', 'Função', 'Salário-base', 'Acréscimos', 'Descontos', 'Líquido', 'Pago em caixa', 'Pago em banco', 'Total pago', 'Pendente', 'Observação'],
+			...entries.map((entry) => {
+				const net = payrollNet(entry);
+				const paidTotal = entry.paidCash + entry.paidBank;
+				return [month, entry.dueDate, entry.employee, entry.position, entry.basePay, entry.additions, entry.deductions, net, entry.paidCash, entry.paidBank, paidTotal, Math.max(0, net - paidTotal), entry.note];
+			}),
+		]);
+	}
+
 	return (
 		<div className="finance-page">
 			<header className="finance-header">
@@ -106,7 +128,7 @@ export function FolhaDePagamento() {
 			<main className="finance-content">
 				<div className="finance-page-heading">
 					<div><p className="finance-eyebrow">FINANCEIRO <span>/</span> PESSOAL</p><h1>Folha de pagamento</h1><p>Valores e pagamentos por funcionário e competência.</p></div>
-					<div className="finance-heading-actions"><label className="finance-month"><span>Competência</span><input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label><button className="finance-button finance-button-primary" onClick={() => openEntry()}>+ Lançar folha</button></div>
+					<div className="finance-heading-actions"><label className="finance-month"><span>Competência</span><input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label><button className="finance-button finance-button-soft" onClick={exportPayroll}>Exportar CSV</button><button className="finance-button finance-button-primary" onClick={() => openEntry()}>+ Lançar folha</button></div>
 				</div>
 
 				{error && <div className="finance-alert" role="alert">{error}<button onClick={() => setError('')} aria-label="Fechar aviso">×</button></div>}

@@ -2,14 +2,16 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
-import { PainelEstoque } from './pages/estoque/PainelEstoque';
-import { VendaGeladeira } from './pages/VendaGeladeira';
-import { Escala } from './pages/escala/Escala';
 import { observeAuth, readUserRole, signInUser, signOutUser } from './services/authStore';
 import type { UserRole } from './types';
 
+const PainelEstoque = lazy(() => import('./pages/estoque/PainelEstoque').then((module) => ({ default: module.PainelEstoque })));
+const VendaGeladeira = lazy(() => import('./pages/VendaGeladeira').then((module) => ({ default: module.VendaGeladeira })));
+const Escala = lazy(() => import('./pages/escala/Escala').then((module) => ({ default: module.Escala })));
 const FluxoDeCaixa = lazy(() => import('./pages/financeiro/FluxoDeCaixa').then((module) => ({ default: module.FluxoDeCaixa })));
 const FolhaDePagamento = lazy(() => import('./pages/financeiro/FolhaDePagamento').then((module) => ({ default: module.FolhaDePagamento })));
+const ListaQuartos = lazy(() => import('./pages/camareiras/ListaQuartos').then((module) => ({ default: module.ListaQuartos })));
+const MapaReservas = lazy(() => import('./pages/reservas/MapaReservas').then((module) => ({ default: module.MapaReservas })));
 
 function ProtectedRoute({ children, userRole }: { children: ReactNode; userRole: UserRole }) {
   if (!userRole) {
@@ -93,7 +95,7 @@ function App() {
           path="/estoque"
           element={
             <ProtectedRoute userRole={userRole}>
-              <PainelEstoque actor={userRole === 'admin' ? 'Gerência' : 'Equipe'} canViewFinancials={userRole === 'admin'} />
+              <Suspense fallback={<div role="status">Carregando estoque...</div>}><PainelEstoque actor={userRole === 'admin' ? 'Gerência' : 'Equipe'} canViewFinancials={userRole === 'admin'} /></Suspense>
             </ProtectedRoute>
           }
         />
@@ -101,7 +103,7 @@ function App() {
           path="/vendas"
           element={
             <ProtectedRoute userRole={userRole}>
-              <VendaGeladeira actor={userRole === 'admin' ? 'Gerência' : 'Equipe'} />
+              <Suspense fallback={<div role="status">Carregando vendas...</div>}><VendaGeladeira actor={userRole === 'admin' ? 'Gerência' : 'Equipe'} /></Suspense>
             </ProtectedRoute>
           }
         />
@@ -109,7 +111,23 @@ function App() {
           path="/escala"
           element={
             <ProtectedRoute userRole={userRole}>
-              <Escala userRole={userRole} />
+              <Suspense fallback={<div role="status">Carregando escala...</div>}><Escala userRole={userRole} /></Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/quartos"
+          element={
+            <ProtectedRoute userRole={userRole}>
+              <Suspense fallback={<div role="status">Carregando quartos...</div>}><ListaQuartos userRole={userRole} /></Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/reservas"
+          element={
+            <ProtectedRoute userRole={userRole}>
+              <Suspense fallback={<div role="status">Carregando reservas...</div>}><MapaReservas userRole={userRole} /></Suspense>
             </ProtectedRoute>
           }
         />
