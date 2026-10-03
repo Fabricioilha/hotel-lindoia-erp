@@ -1,0 +1,49 @@
+.reception-attendants { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.reception-attendant { display: grid; gap: 6px; }
+.reception-attendant-pick { min-height: 72px; border: 1px solid #cdd6e3; border-radius: 5px; color: var(--sales-blue); background: #fff; font-size: 1rem; font-weight: 750; cursor: pointer; }
+.reception-attendant-pick:hover { border-color: var(--sales-red); }
+.reception-attendant-tools { display: flex; gap: 10px; }
+.reception-link-button { border: 0; padding: 0 0 0 8px; color: #476184; background: none; font-size: 0.625rem; font-weight: 700; cursor: pointer; text-decoration: underline; }
+.reception-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 14px; }
+.reception-panel { display: grid; gap: 12px; padding: 16px; border: 1px solid #cdd6e3; border-radius: 5px; background: #fff; }
+.reception-panel h2 { margin: 0; color: var(--sales-blue); font-size: 0.875rem; font-weight: 750; }
+.reception-add { max-width: 420px; grid-template-columns: 1fr auto; align-items: end; }
+.reception-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.reception-wide { grid-column: 1 / -1; }
+.reception-grid .sales-field { display: grid; gap: 4px; color: #556580; font-size: 0.625rem; font-weight: 700; }
+.reception-grid textarea { width: 100%; padding: 8px 10px; border: 1px solid #d8e0ea; border-radius: 3px; font: inherit; font-size: 0.6875rem; resize: vertical; }
+.reception-check { display: flex; align-items: center; gap: 8px; font-size: 0.6875rem; color: #263b59; }
+.reception-hint { margin: 0; color: #6a7888; font-size: 0.625rem; }
+.reception-primary { min-height: 38px; border: 0; border-radius: 3px; padding: 0 16px; color: #fff; background: var(--sales-blue); font-weight: 700; cursor: pointer; }
+.reception-primary:disabled { opacity: .6; cursor: default; }
+.reception-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.reception-entries { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.reception-entries li { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 10px; border: 1px solid #e1e7ef; border-radius: 4px; font-size: 0.6875rem; }
+.reception-entries strong,
+.reception-entries small { display: block; }
+.reception-entries small { margin-top: 3px; color: #6a7888; }
+.reception-total { margin: 0; font-size: 0.75rem; }
+@media (max-width: 900px) { .reception-layout { grid-template-columns: 1fr; } }
+.reception-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+.reception-sheet { margin-bottom: 14px; }
+.reception-table-wrap { overflow-x: auto; }
+.reception-table { width: 100%; border-collapse: collapse; font-size: 0.6875rem; }
+.reception-table th, .reception-table td { padding: 7px 8px; border: 1px solid #cdd6e3; text-align: left; vertical-align: top; }
+.reception-table th { color: #476184; background: #f1f4f9; font-size: 0.625rem; text-transform: uppercase; }
+.reception-table small { display: block; margin-top: 2px; color: #6a7888; }
+.reception-row-actions { white-space: nowrap; }
+.reception-closed summary { cursor: pointer; font-size: 0.75rem; font-weight: 700; }
+.reception-overlay { position: fixed; inset: 0; z-index: 50; display: grid; place-items: start center; padding: 20px; overflow-y: auto; background: rgb(20 43 77 / 55%); }
+.reception-modal { width: min(100%, 680px); }
+.reception-extras { display: grid; gap: 8px; }
+.reception-extras-head { display: grid; gap: 6px; font-size: 0.6875rem; }
+.reception-extras-head span { display: flex; flex-wrap: wrap; gap: 6px; }
+.reception-chip { border: 1px solid #b8c5d8; border-radius: 12px; padding: 4px 10px; color: #315f87; background: #fff; font-size: 0.625rem; font-weight: 700; cursor: pointer; }
+.reception-extra-row { display: grid; grid-template-columns: 1.2fr 1fr 1.2fr auto; align-items: center; gap: 8px; font-size: 0.6875rem; }
+.reception-extra-row input, .reception-extra-row select { min-height: 34px; padding: 6px 8px; border: 1px solid #d8e0ea; border-radius: 3px; font: inherit; font-size: 0.6875rem; }
+@media (max-width: 600px) { .reception-extra-row { grid-template-columns: 1fr 1fr; } }
+.reception-vacant td { color: #8794a8; background: #fafbfd; }
+.reception-room-form { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: 10px; }
+.bed-icons { display: inline-flex; flex-direction: column; gap: 2px; color: #315f87; }
+.bed-icons-row { display: inline-flex; align-items: flex-end; gap: 4px; }
+.bed-icons-label { color: #6a7888; font-size: 0.625rem; font-weight: 700; }

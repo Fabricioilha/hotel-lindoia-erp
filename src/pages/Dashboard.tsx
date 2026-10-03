@@ -6,6 +6,8 @@ import { emptyHousekeeping, migrateReservationPayments, subscribeHousekeeping, s
 import { hotelOccupancySummary } from '../services/reservationAnalytics';
 import { emptyFrigobar, subscribeFrigobar, syncFrigobarCatalog } from '../services/frigobarStore';
 import { useFrigobarFinanceSync } from '../services/minibarFinanceSync';
+import { emptyReception, subscribeReception, useReceptionFinanceSync } from '../services/receptionStore';
+import type { GuestStay } from '../types/reception';
 import type { InventoryData } from '../types/inventory';
 import type { HousekeepingData } from '../types/housekeeping';
 import type { FrigobarData } from '../types/frigobar';
@@ -24,10 +26,18 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   const [metricsError, setMetricsError] = useState(false);
   const [frigobar, setFrigobar] = useState<FrigobarData>(emptyFrigobar());
   const [syncError, setSyncError] = useState('');
+  const [receptionStays, setReceptionStays] = useState<Record<string, GuestStay>>(emptyReception().stays);
 
   useFrigobarFinanceSync(frigobar.sales, userRole === 'admin', setSyncError);
+  useReceptionFinanceSync(receptionStays, userRole === 'admin', setSyncError);
 
   useEffect(() => {
+    if (userRole !== 'admin') return;
+    return subscribeReception((data) => setReceptionStays(data.stays), (cause) => setSyncError(cause.message));
+  }, [userRole]);
+
+  useEffect(() => {
+    if (userRole !== 'admin') return;
     let roomsLoaded = false;
     let inventoryLoaded = userRole !== 'admin';
     const markLoaded = () => {
@@ -113,7 +123,7 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
         </section>
         {syncError && <div className="notice notice-error" role="alert">{syncError}</div>}
 
-        <section className="dashboard-metrics" aria-label="Indicadores operacionais">
+        {userRole === 'admin' && <section className="dashboard-metrics" aria-label="Indicadores operacionais">
           <MetricCard title="Ocupação atual" value={valueOrLoading(occupancy.occupancyRate === null ? '—' : `${occupancy.occupancyRate}%`)} detail={detailOrLoading(occupancy.usableRooms ? `${occupancy.occupiedRooms} de ${occupancy.usableRooms} quartos utilizáveis` : 'Cadastre os quartos')} tone="blue" />
           <MetricCard title="Prontos para hospedagem" value={valueOrLoading(readyRooms)} detail={detailOrLoading('Limpos, livres e sem bloqueio de manutenção')} tone="green" />
           <MetricCard title="Em limpeza" value={valueOrLoading(roomsInCleaning)} detail={detailOrLoading('Quartos com tarefa em andamento')} tone="gold" />
@@ -122,7 +132,7 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
           <MetricCard title="Saídas hoje" value={valueOrLoading(occupancy.departuresToday.rooms)} detail={detailOrLoading('Quartos com checkout previsto')} tone="red" />
           <MetricCard title="Saídas amanhã" value={valueOrLoading(occupancy.departuresTomorrow.rooms)} detail={detailOrLoading('Quartos com checkout previsto')} tone="gold" />
           {userRole === 'admin' && <MetricCard title="Alertas de estoque" value={valueOrLoading(lowStockCount)} detail={detailOrLoading('Produtos no mínimo ou abaixo')} tone="neutral" />}
-        </section>
+        </section>}
 
         <section className="dashboard-modules">
           <div className="dashboard-section-heading">
@@ -131,10 +141,11 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
           <div className="module-grid">
             <ModuleCard number="01" title="Lançar Venda" description="Venda bebidas, receba na hora ou registre por quarto." route="/vendas" />
             {userRole === 'admin' && <ModuleCard number="02" title="Controle de estoque" description="Limpeza, rouparia, manutenção e itens da recepção." route="/estoque" />}
-            <ModuleCard number="03" title="Serviço de quarto" description="Status de limpeza, ocupação e manutenção reportada." route="/quartos" />
+            {userRole === 'admin' && <ModuleCard number="03" title="Serviço de quarto" description="Status de limpeza, ocupação e manutenção reportada." route="/quartos" />}
             <ModuleCard number="04" title="Escala de funcionários" description="Calendário de turnos e equipe operacional." route="/escala" />
-            <ModuleCard number="05" title="Gestão financeira" description="Fluxo de caixa, folha e despesas do hotel." route={userRole === 'admin' ? '/financeiro/caixa' : undefined} disabled={userRole !== 'admin'} />
-            <ModuleCard number="06" title="Recepção e reservas" description="Check-in, check-out e gestão de hóspedes." route="/reservas" />
+            {userRole === 'admin' && <ModuleCard number="05" title="Gestão financeira" description="Fluxo de caixa, folha e despesas do hotel." route="/financeiro/caixa" />}
+            {userRole === 'admin' && <ModuleCard number="06" title="Recepção e reservas" description="Check-in, check-out e gestão de hóspedes." route="/reservas" />}
+            <ModuleCard number="07" title="Caixa - Recepção" description="Plantão: entrada de hóspedes e movimentação do turno." route="/recepcao" />
           </div>
         </section>
       </main>

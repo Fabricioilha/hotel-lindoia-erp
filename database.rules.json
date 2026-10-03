@@ -94,6 +94,30 @@
           }
         }
       },
+      "recepcao": {
+        ".read": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')",
+        "attendants": {
+          ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"
+        },
+        "rooms": {
+          "$roomId": {
+            ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists()))",
+            ".validate": "newData.child('id').val() === $roomId && newData.child('number').isString() && newData.child('number').val().length > 0 && (newData.child('type').val() === 'casal' || newData.child('type').val() === 'casal_twin' || newData.child('type').val() === 'solteiro' || newData.child('type').val() === 'triplo_casal_solteiro' || newData.child('type').val() === 'triplo_solteiros' || newData.child('type').val() === 'triplo')"
+          }
+        },
+        "stays": {
+          "$stayId": {
+            ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists()))",
+            ".validate": "newData.child('id').val() === $stayId && newData.child('roomNumber').isString() && newData.child('guestName').isString() && newData.child('checkInDate').isString() && newData.child('nights').isNumber() && newData.child('nights').val() >= 1 && newData.child('dailyRate').isNumber() && newData.child('dailyRate').val() > 0 && newData.child('taxAmount').isNumber() && newData.child('taxAmount').val() >= 0 && newData.child('attendant').isString() && (newData.child('status').val() === 'hospedado' || newData.child('status').val() === 'encerrado')",
+            "status": {
+              ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'viewer' && data.val() === 'hospedado' && newData.val() === 'encerrado'"
+            },
+            "checkOutDate": {
+              ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.isString()"
+            }
+          }
+        }
+      },
       "reservationCollectionReconciliations": {
         ".read": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
         ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"

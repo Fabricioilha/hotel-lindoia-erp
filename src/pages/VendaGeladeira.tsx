@@ -4,20 +4,11 @@ import { createFrigobarSale, emptyFrigobar, settleFrigobarSale, subscribeFrigoba
 import { useFrigobarFinanceSync } from '../services/minibarFinanceSync';
 import type { MinibarPaymentMethod, MinibarSettlement } from '../types/inventory';
 import type { FrigobarData, FrigobarProduct } from '../types/frigobar';
-import { emptyHousekeeping, recordReservationExtra, subscribeHousekeeping } from '../services/housekeepingStore';
-import type { HousekeepingData, ReservationExtraType } from '../types/housekeeping';
+import { emptyHousekeeping, subscribeHousekeeping } from '../services/housekeepingStore';
+import type { HousekeepingData } from '../types/housekeeping';
 import './venda-geladeira.css';
 
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const extraLabels: Record<ReservationExtraType, string> = {
-  cafe_manha: 'Café da manhã',
-  colchao_extra: 'Colchão extra',
-  pessoa_adicional: 'Pessoa adicional',
-  checkin_antecipado: 'Check-in antecipado',
-  checkout_tardio: 'Check-out tardio',
-  consumo: 'Consumo',
-};
-const createExtraIds = () => Object.fromEntries(Object.keys(extraLabels).map((type) => [type, crypto.randomUUID()])) as Record<ReservationExtraType, string>;
 
 export function VendaGeladeira({ actor, isAdmin }: { actor: string; isAdmin: boolean }) {
   const [data, setData] = useState<FrigobarData>(emptyFrigobar());
@@ -33,8 +24,6 @@ export function VendaGeladeira({ actor, isAdmin }: { actor: string; isAdmin: boo
   const [roomNumber, setRoomNumber] = useState('');
   const [guestName, setGuestName] = useState('');
   const [selectedReservationId, setSelectedReservationId] = useState('');
-  const [extraAmounts, setExtraAmounts] = useState<Partial<Record<ReservationExtraType, string>>>({});
-  const [extraIds, setExtraIds] = useState(createExtraIds);
   const [saleId, setSaleId] = useState(() => crypto.randomUUID());
   const [saving, setSaving] = useState(false);
   const [settlementMethods, setSettlementMethods] = useState<Record<string, MinibarPaymentMethod>>({});
@@ -62,14 +51,11 @@ export function VendaGeladeira({ actor, isAdmin }: { actor: string; isAdmin: boo
     .filter((item): item is { product: FrigobarProduct; quantity: number; available: number } => Boolean(item.product) && item.quantity > 0);
   const totalItems = cartItems.reduce((total, item) => total + item.quantity, 0);
   const productTotal = cartItems.reduce((amount, item) => amount + item.product.salePrice * item.quantity, 0);
-  const extras = Object.entries(extraAmounts).filter((entry): entry is [ReservationExtraType, string] => entry[1] !== undefined).map(([type, amount]) => ({ type, amount: Number(amount), id: extraIds[type] }));
-  const extrasTotal = extras.reduce((sum, extra) => sum + extra.amount, 0);
-  const total = productTotal + extrasTotal;
+  const total = productTotal;
   const pendingSales = Object.values(data.sales).filter((sale) => sale.settlement === 'cobrar_no_checkout').sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const occupiedReservations = Object.values(housekeeping.reservations)
     .filter((reservation) => reservation.status === 'hospedado')
     .sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, 'pt-BR', { numeric: true }));
-  const selectedReservation = housekeeping.reservations[selectedReservationId];
 
   function changeQuantity(product: FrigobarProduct, change: number) {
     const available = Number(data.stock[product.id] ?? 0);
@@ -86,14 +72,6 @@ export function VendaGeladeira({ actor, isAdmin }: { actor: string; isAdmin: boo
     event.preventDefault();
     setSaveError('');
     setNotice('');
-    if (extras.length > 0 && (!selectedReservation || selectedReservation.status !== 'hospedado')) {
-      setSaveError('Selecione um hóspede com check-in realizado para lançar extras no quarto.');
-      return;
-    }
-    if (extras.some((extra) => !Number.isFinite(extra.amount) || extra.amount <= 0)) {
-      setSaveError('Informe um valor maior que zero para cada adicional.');
-      return;
-    }
     const sale = {
       id: saleId,
       items: cartItems.map(({ product, quantity }) => ({ productId: product.id, quantity })),
@@ -105,30 +83,14 @@ export function VendaGeladeira({ actor, isAdmin }: { actor: string; isAdmin: boo
     };
     setSaving(true);
     try {
-      if (selectedReservation) {
-        for (const extra of extras) {
-          await recordReservationExtra({
-            id: extra.id,
-            reservationId: selectedReservation.id,
-            type: extra.type,
-            description: extraLabels[extra.type],
-            amount: extra.amount,
-            date: new Date().toISOString().slice(0, 10),
-            actor,
-            createdAt: new Date().toISOString(),
-          });
-        }
-      }
       if (cartItems.length > 0) await createFrigobarSale({ ...sale, catalog: data.products });
       setCart({});
       setPaymentMethod('');
       setRoomNumber('');
       setGuestName('');
       setSelectedReservationId('');
-      setExtraAmounts({});
-      setExtraIds(createExtraIds());
       setSaleId(crypto.randomUUID());
-      setNotice(cartItems.length === 0 ? `Adicionais lançados no quarto ${roomNumber}.` : settlement === 'pago_na_recepcao' ? 'Venda recebida na recepção; adicionais lançados no quarto.' : `Venda e adicionais lançados no quarto ${roomNumber}.`);
+      setNotice(settlement === 'pago_na_recepcao' ? 'Venda recebida na recepção.' : `Venda lançada no quarto ${roomNumber}.`);
       window.setTimeout(() => setNotice(''), 4500);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Não foi possível registrar a venda.');
@@ -152,7 +114,7 @@ export function VendaGeladeira({ actor, isAdmin }: { actor: string; isAdmin: boo
     <div className="sales-page">
       <header className="sales-header">
         <Link to="/" className="sales-brand"><span className="sales-brand-mark">HL</span><span><strong>Hotel Lindoia</strong><small>CAIXA DA RECEPÇÃO</small></span></Link>
-        <nav className="sales-header-links" aria-label="Navegação"><Link to="/reservas">Reservas</Link><Link to="/quartos">Serviço de quarto</Link>{isAdmin && <Link to="/estoque">Estoque</Link>}<Link to="/">Painel inicial</Link></nav>
+        <nav className="sales-header-links" aria-label="Navegação">{isAdmin && <><Link to="/reservas">Reservas</Link><Link to="/quartos">Serviço de quarto</Link><Link to="/estoque">Estoque</Link></>}<Link to="/recepcao">Caixa - Recepção</Link><Link to="/">Painel inicial</Link></nav>
       </header>
 
       <main className="sales-content">
@@ -186,8 +148,8 @@ export function VendaGeladeira({ actor, isAdmin }: { actor: string; isAdmin: boo
           </section>
 
           <form className="sale-order" onSubmit={finishSale}>
-            <div className="order-heading"><div><p className="sales-eyebrow">VENDA ATUAL</p><h2>Pedido</h2></div><span className="order-count">{totalItems + extras.length}</span></div>
-            {cartItems.length === 0 && extras.length === 0 ? <div className="order-empty">Adicione produtos ou extras para iniciar a venda.</div> : cartItems.length > 0 && <div className="order-lines">
+            <div className="order-heading"><div><p className="sales-eyebrow">VENDA ATUAL</p><h2>Pedido</h2></div><span className="order-count">{totalItems}</span></div>
+            {cartItems.length === 0 ? <div className="order-empty">Adicione produtos para iniciar a venda.</div> : <div className="order-lines">
               {cartItems.map(({ product, quantity, available }) => {
                 return <div className="order-line" key={product.id}>
                   <div className="order-line-info"><strong>{product.name}</strong><small>{money(product.salePrice)} / {product.unit}</small><b>{money(product.salePrice * quantity)}</b></div>
@@ -195,9 +157,6 @@ export function VendaGeladeira({ actor, isAdmin }: { actor: string; isAdmin: boo
                 </div>;
               })}
             </div>}
-            {extras.length > 0 && <div className="order-lines sales-extra-order-lines">{extras.map((extra) => <div className="order-line" key={extra.type}><div className="order-line-info"><strong>{extraLabels[extra.type]}</strong><small>Adicional da hospedagem</small><b>{money(extra.amount)}</b></div><button type="button" className="remove-extra-button" onClick={() => setExtraAmounts((current) => { const next = { ...current }; delete next[extra.type]; return next; })} aria-label={`Remover ${extraLabels[extra.type]}`}>×</button></div>)}</div>}
-
-            <section className="sales-extras-fieldset"><div><strong>Extras da hospedagem</strong><small>Serão adicionados ao saldo do quarto selecionado.</small></div><div className="sales-extra-grid">{(Object.entries(extraLabels) as [ReservationExtraType, string][]).map(([type, label]) => <div className="sales-extra-option" key={type}><label><input type="checkbox" checked={extraAmounts[type] !== undefined} onChange={(event) => setExtraAmounts((current) => { const next = { ...current }; if (event.target.checked) next[type] = ''; else delete next[type]; return next; })} /><span>{label}</span></label>{extraAmounts[type] !== undefined && <label className="sales-extra-amount"><span>Valor (R$)</span><input type="number" min="0.01" step="0.01" required value={extraAmounts[type] ?? ''} onChange={(event) => setExtraAmounts((current) => ({ ...current, [type]: event.target.value }))} /></label>}</div>)}</div></section>
 
             {cartItems.length > 0 && <fieldset className="settlement-fieldset">
               <legend>Forma de cobrança</legend>
@@ -208,11 +167,11 @@ export function VendaGeladeira({ actor, isAdmin }: { actor: string; isAdmin: boo
             </fieldset>}
 
             {cartItems.length > 0 && settlement === 'pago_na_recepcao' && <label className="sales-field"><span>Forma de pagamento *</span><select required value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as MinibarPaymentMethod | '')}><option value="">Selecione</option><option value="dinheiro">Dinheiro</option><option value="pix">Pix</option><option value="cartao_debito">Cartão de débito</option><option value="cartao_credito">Cartão de crédito</option></select></label>}
-            {extras.length > 0 || (cartItems.length > 0 && settlement === 'cobrar_no_checkout') ? <div className="room-fields"><label className="sales-field"><span>Quarto ocupado *</span><select required value={selectedReservationId} onChange={(event) => { const reservation = occupiedReservations.find((item) => item.id === event.target.value); setSelectedReservationId(event.target.value); setRoomNumber(reservation?.roomNumber ?? ''); setGuestName(reservation?.guestName ?? ''); }}><option value="">Selecione a hospedagem</option>{occupiedReservations.map((reservation) => <option key={reservation.id} value={reservation.id}>Quarto {reservation.roomNumber} · {reservation.guestName}</option>)}</select>{occupiedReservations.length === 0 && <small>Nenhuma hospedagem ativa. Faça check-in em Reservas antes de lançar no quarto.</small>}</label><label className="sales-field"><span>Hóspede vinculado</span><input value={guestName} readOnly placeholder="Selecione um quarto ocupado" /></label></div> : null}
+            {cartItems.length > 0 && settlement === 'cobrar_no_checkout' ? <div className="room-fields"><label className="sales-field"><span>Quarto ocupado *</span><select required value={selectedReservationId} onChange={(event) => { const reservation = occupiedReservations.find((item) => item.id === event.target.value); setSelectedReservationId(event.target.value); setRoomNumber(reservation?.roomNumber ?? ''); setGuestName(reservation?.guestName ?? ''); }}><option value="">Selecione a hospedagem</option>{occupiedReservations.map((reservation) => <option key={reservation.id} value={reservation.id}>Quarto {reservation.roomNumber} · {reservation.guestName}</option>)}</select>{occupiedReservations.length === 0 && <small>Nenhuma hospedagem ativa. Faça check-in em Reservas antes de lançar no quarto.</small>}</label><label className="sales-field"><span>Hóspede vinculado</span><input value={guestName} readOnly placeholder="Selecione um quarto ocupado" /></label></div> : null}
 
             <div className="order-total"><span>Total</span><strong>{money(total)}</strong></div>
-            <button className="sale-submit" type="submit" disabled={saving || loading || (cartItems.length === 0 && extras.length === 0)}>{saving ? 'Registrando venda...' : cartItems.length === 0 ? 'Lançar extras no quarto' : settlement === 'pago_na_recepcao' ? 'Confirmar venda' : 'Lançar para checkout'}</button>
-            <p className="sale-note">Bebidas atualizam o estoque. Extras ficam no saldo da hospedagem selecionada.</p>
+            <button className="sale-submit" type="submit" disabled={saving || loading || cartItems.length === 0}>{saving ? 'Registrando venda...' : settlement === 'pago_na_recepcao' ? 'Confirmar venda' : 'Lançar para checkout'}</button>
+            <p className="sale-note">Bebidas atualizam o estoque. Extras da hospedagem são resolvidos pelo quarto.</p>
           </form>
         </div>
         {pendingSales.length > 0 && <section className="pending-minibar-panel"><div><h2>Cobranças no checkout</h2><p>{pendingSales.length} venda(s) aguardando pagamento</p></div>{pendingSales.map((sale) => <div className="pending-minibar-sale" key={sale.id}><span>Quarto {sale.roomNumber} · {sale.guestName}</span><strong>{money(sale.amount)}</strong><label><span className="sr-only">Forma de pagamento</span><select value={settlementMethods[sale.id] ?? 'dinheiro'} onChange={(event) => setSettlementMethods((current) => ({ ...current, [sale.id]: event.target.value as MinibarPaymentMethod }))}><option value="dinheiro">Dinheiro</option><option value="pix">Pix</option><option value="cartao_debito">Cartão de débito</option><option value="cartao_credito">Cartão de crédito</option></select></label><button type="button" onClick={() => void settlePendingSale(sale.id)}>Receber no checkout</button></div>)}</section>}

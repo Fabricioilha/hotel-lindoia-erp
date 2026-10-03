@@ -16,13 +16,13 @@
 .reservation-summary .housekeeping-metric small {
   display: block;
   margin-top: 6px;
-  color: #8490a2;
-  font-size: 10px;
+  color: #5a6a80;
+  font-size: 0.625rem;
 }
 
 .reservation-panel {
   overflow: hidden;
-  border: 1px solid #dfe5ee;
+  border: 1px solid #cdd6e3;
   border-radius: 4px;
   background: #fff;
 }
@@ -52,7 +52,7 @@
   color: #62738a;
   background: transparent;
   font: inherit;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   cursor: pointer;
 }
@@ -81,7 +81,7 @@
 .reservation-channel-field legend {
   margin-bottom: 6px;
   color: #53627a;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
 }
 
@@ -122,14 +122,14 @@
 }
 
 .reservation-channel-options span {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 750;
 }
 
 .reservation-channel-options small {
   margin-top: 2px;
   color: #7b889a;
-  font-size: 9px;
+  font-size: 0.5625rem;
   font-weight: 500;
 }
 
@@ -150,7 +150,7 @@
 
 .channel-unknown {
   border-color: #dce3eb;
-  color: #68778b;
+  color: #4f5f76;
   background: #f6f8fa;
 }
 
@@ -163,13 +163,13 @@
 
 .reservation-empty strong {
   color: #263c55;
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 .reservation-empty p {
   max-width: 540px;
-  color: #738399;
-  font-size: 12px;
+  color: #5a6a80;
+  font-size: 0.75rem;
   line-height: 1.5;
 }
 
@@ -212,25 +212,25 @@
 }
 
 .rc-title strong {
-  font-size: 15px;
+  font-size: 0.9375rem;
 }
 
 .rc-label {
-  color: #78869a;
-  font-size: 10px;
+  color: #5a6a80;
+  font-size: 0.625rem;
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .rc-field strong {
-  font-size: 14px;
+  font-size: 0.875rem;
 }
 
 .reservation-card small {
   display: block;
-  color: #78869a;
-  font-size: 11px;
+  color: #5a6a80;
+  font-size: 0.6875rem;
   line-height: 1.4;
 }
 
@@ -261,7 +261,7 @@
   padding: 3px 7px;
   border: 1px solid transparent;
   border-radius: 3px;
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 700;
 }
 
@@ -279,7 +279,7 @@
 
 .reservation-encerrada {
   border-color: #dce3eb;
-  color: #68778b;
+  color: #4f5f76;
   background: #f6f8fa;
 }
 
@@ -304,7 +304,7 @@
   color: #455b73;
   background: #fff;
   font: inherit;
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 700;
   cursor: pointer;
 }
@@ -370,14 +370,14 @@
 
 .reservation-live-summary span {
   color: #5b6b6f;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   letter-spacing: 0.04em;
   text-transform: uppercase;
 }
 
 .reservation-live-summary strong {
-  font-size: 16px;
+  font-size: 1rem;
 }
 
 .reservation-live-total {
@@ -385,7 +385,7 @@
 }
 
 .reservation-live-total strong {
-  font-size: 20px;
+  font-size: 1.25rem;
 }
 
 .reservation-modal-error {
@@ -395,7 +395,7 @@
   border-top: 1px solid #f0c4c4;
   background: #fdeeee;
   color: #9b1c1c;
-  font-size: 14px;
+  font-size: 0.875rem;
   font-weight: 600;
 }
 
@@ -421,7 +421,7 @@
 .reservation-modal-heading .eyebrow {
   margin: 0 0 6px;
   color: #a3702f;
-  font-size: 9px;
+  font-size: 0.5625rem;
   font-weight: 800;
   letter-spacing: 1px;
 }
@@ -429,14 +429,14 @@
 .reservation-modal-heading h2 {
   margin: 0;
   color: #203849;
-  font-size: 22px;
+  font-size: 1.375rem;
   line-height: 1.2;
 }
 
 .reservation-modal-heading > div > p:last-child {
   margin: 6px 0 0;
   color: #73828a;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 
 .reservation-modal .schedule-modal-close {
@@ -447,7 +447,7 @@
   border-radius: 4px;
   color: #526773;
   background: #fff;
-  font-size: 20px;
+  font-size: 1.25rem;
 }
 
 .reservation-modal-content {
@@ -478,20 +478,20 @@
   border-radius: 50%;
   color: #8c642e;
   background: #f5eddf;
-  font-size: 9px;
+  font-size: 0.5625rem;
   font-weight: 800;
 }
 
 .reservation-section-heading h3 {
   margin: 0;
   color: #2e4655;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 
 .reservation-section-heading p {
   margin: 3px 0 0;
   color: #829097;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 
 .reservation-form-grid {
@@ -509,7 +509,7 @@
   display: grid;
   gap: 6px;
   color: #455b68;
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 700;
 }
 
@@ -525,7 +525,7 @@
   color: #243b49;
   background: #fff;
   font: inherit;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 500;
   transition: border-color 120ms ease, box-shadow 120ms ease;
 }
@@ -550,7 +550,7 @@
 .reservation-form-section .reservation-channel-field legend {
   margin-bottom: 8px;
   color: #455b68;
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 700;
 }
 
@@ -569,12 +569,12 @@
 
 .reservation-channel-options span {
   color: #2e4655;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .reservation-channel-options small {
   margin-top: 4px;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 
 .reservation-breakfast-option {
@@ -612,7 +612,7 @@
   align-items: center;
   gap: 8px;
   color: #425762;
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 650;
 }
 
@@ -624,13 +624,13 @@
 
 .reservation-extra-option .schedule-field {
   gap: 3px;
-  font-size: 8px;
+  font-size: 0.5rem;
 }
 
 .reservation-extra-option .schedule-field input {
   min-height: 33px;
   padding: 6px 8px;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 
 .reservation-total-row {
@@ -643,13 +643,13 @@
   border-radius: 4px;
   color: #455d62;
   background: #f1f7f4;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
 }
 
 .reservation-total-row strong {
   color: #264a45;
-  font-size: 19px;
+  font-size: 1.188rem;
   font-variant-numeric: tabular-nums;
 }
 
@@ -662,17 +662,17 @@
   border-left: 2px solid #c99043;
   color: #77858b;
   background: #fbf8f1;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 
 .reservation-rotativo-checkout strong {
   color: #334d5a;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .reservation-rotativo-checkout small {
   color: #8a969a;
-  font-size: 9px;
+  font-size: 0.5625rem;
 }
 
 .checkout-remaining-row {
@@ -682,7 +682,7 @@
 
 .checkout-remaining-row strong {
   color: #455d62;
-  font-size: 15px;
+  font-size: 0.9375rem;
 }
 
 .reservation-admin-balance {
@@ -691,7 +691,7 @@
   flex-wrap: wrap;
   gap: 7px 20px;
   color: #718087;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 
 .reservation-admin-balance strong {
@@ -721,13 +721,13 @@
   min-height: 40px;
   padding: 9px 15px;
   border-radius: 4px;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 750;
 }
 .reservation-hint {
   margin-top: 12px;
-  color: #738399;
-  font-size: 10px;
+  color: #5a6a80;
+  font-size: 0.625rem;
   line-height: 1.5;
 }
 
@@ -738,7 +738,7 @@
   border-left: 2px solid #8ca8b7;
   background: #f4f7f7;
   color: #53627a;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 
 .reservation-breakfast-option {
@@ -747,7 +747,7 @@
   gap: 9px;
   margin-top: 12px;
   color: #364e5f;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
 }
 
@@ -762,7 +762,7 @@
   padding-top: 12px;
   border-top: 1px solid #dfe6e8;
   color: #53627a;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 
 .reservation-audit summary {
@@ -786,7 +786,7 @@
 .reservation-audit li span {
   margin-top: 3px;
   overflow-wrap: anywhere;
-  color: #738399;
+  color: #5a6a80;
 }
 
 @media (max-width: 1100px) {
@@ -844,7 +844,7 @@
   .reservation-modal-heading,
   .reservation-form-section { padding: 16px; }
   .reservation-modal-heading { padding-top: 17px; padding-bottom: 14px; }
-  .reservation-modal-heading h2 { font-size: 19px; }
+  .reservation-modal-heading h2 { font-size: 1.188rem; }
   .reservation-form-section { gap: 12px; }
   .reservation-form-grid { grid-template-columns: minmax(0, 1fr); gap: 11px; }
   .reservation-field-wide { grid-column: auto; }

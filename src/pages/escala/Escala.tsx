@@ -64,9 +64,12 @@ export function Escala({ userRole }: { userRole: UserRole }) {
 	const navigationItems = [
 		{ route: '/', label: 'Painel principal', shortLabel: 'P' },
 		{ route: '/vendas', label: 'Vendas', shortLabel: 'V' },
-		{ route: '/estoque', label: 'Estoque', shortLabel: 'E' },
-		{ route: '/quartos', label: 'Serviço de quarto', shortLabel: 'Q' },
-		{ route: '/reservas', label: 'Reservas', shortLabel: 'R' },
+		{ route: '/recepcao', label: 'Caixa - Recepção', shortLabel: 'C' },
+		...(isAdmin ? [
+			{ route: '/estoque', label: 'Estoque', shortLabel: 'E' },
+			{ route: '/quartos', label: 'Serviço de quarto', shortLabel: 'Q' },
+			{ route: '/reservas', label: 'Reservas', shortLabel: 'R' },
+		] : []),
 		{ route: '/escala', label: 'Escala', shortLabel: 'ES' },
 		...(isAdmin ? [{ route: '/financeiro/caixa', label: 'Financeiro', shortLabel: 'F' }] : []),
 	];

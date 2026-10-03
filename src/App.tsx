@@ -4,6 +4,7 @@ import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
 import { observeAuth, readUserRole, signInUser, signOutUser } from './services/authStore';
 import type { UserRole } from './types';
+import { ATTENDANT_STORAGE_KEY } from './types/reception';
 
 const PainelEstoque = lazy(() => import('./pages/estoque/PainelEstoque').then((module) => ({ default: module.PainelEstoque })));
 const VendaGeladeira = lazy(() => import('./pages/VendaGeladeira').then((module) => ({ default: module.VendaGeladeira })));
@@ -12,6 +13,37 @@ const FluxoDeCaixa = lazy(() => import('./pages/financeiro/FluxoDeCaixa').then((
 const FolhaDePagamento = lazy(() => import('./pages/financeiro/FolhaDePagamento').then((module) => ({ default: module.FolhaDePagamento })));
 const ListaQuartos = lazy(() => import('./pages/camareiras/ListaQuartos').then((module) => ({ default: module.ListaQuartos })));
 const MapaReservas = lazy(() => import('./pages/reservas/MapaReservas').then((module) => ({ default: module.MapaReservas })));
+const CaixaRecepcao = lazy(() => import('./pages/caixa/CaixaRecepcao').then((module) => ({ default: module.CaixaRecepcao })));
+
+const FONT_SCALES = [1, 1.15, 1.3, 1.5];
+
+function ThemeToggle() {
+  const [dark, setDark] = useState(() => document.documentElement.dataset.theme === 'dark');
+  const [scale, setScale] = useState(() => FONT_SCALES.indexOf(Number(localStorage.getItem('hotel-lindoia:font-scale') ?? 1)) === -1 ? 0 : FONT_SCALES.indexOf(Number(localStorage.getItem('hotel-lindoia:font-scale') ?? 1)));
+  function changeScale(step: number) {
+    const next = Math.min(FONT_SCALES.length - 1, Math.max(0, scale + step));
+    document.documentElement.style.setProperty('--font-scale', String(FONT_SCALES[next]));
+    localStorage.setItem('hotel-lindoia:font-scale', String(FONT_SCALES[next]));
+    setScale(next);
+  }
+  function toggle() {
+    const next = !dark;
+    document.documentElement.dataset.theme = next ? 'dark' : 'light';
+    localStorage.setItem('hotel-lindoia:theme', next ? 'dark' : 'light');
+    setDark(next);
+  }
+  return <div className="theme-toggle">
+    <button type="button" onClick={() => changeScale(-1)} disabled={scale === 0} aria-label="Diminuir fonte">A-</button>
+    <button type="button" onClick={() => changeScale(1)} disabled={scale === FONT_SCALES.length - 1} aria-label="Aumentar fonte">A+</button>
+    <button type="button" onClick={toggle} aria-pressed={dark}>{dark ? 'Tema claro' : 'Tema escuro'}</button>
+  </div>;
+}
+
+function VendaRoute({ userRole }: { userRole: UserRole }) {
+  const isAdmin = userRole === 'admin';
+  const actor = isAdmin ? 'Gerência' : sessionStorage.getItem(ATTENDANT_STORAGE_KEY) || 'Equipe';
+  return <Suspense fallback={<div role="status">Carregando vendas...</div>}><VendaGeladeira actor={actor} isAdmin={isAdmin} /></Suspense>;
+}
 
 function ProtectedRoute({ children, userRole }: { children: ReactNode; userRole: UserRole }) {
   if (!userRole) {
@@ -75,6 +107,7 @@ function App() {
 
   return (
     <BrowserRouter>
+      <ThemeToggle />
       {!authReady ? <main role="status" style={{ padding: 32 }}>Verificando sessão...</main> : <Routes>
         <Route 
           path="/login" 
@@ -103,7 +136,15 @@ function App() {
           path="/vendas"
           element={
             <ProtectedRoute userRole={userRole}>
-              <Suspense fallback={<div role="status">Carregando vendas...</div>}><VendaGeladeira actor={userRole === 'admin' ? 'Gerência' : 'Equipe'} isAdmin={userRole === 'admin'} /></Suspense>
+              <VendaRoute userRole={userRole} />
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/recepcao"
+          element={
+            <ProtectedRoute userRole={userRole}>
+              <Suspense fallback={<div role="status">Carregando caixa...</div>}><CaixaRecepcao userRole={userRole} /></Suspense>
             </ProtectedRoute>
           }
         />
@@ -118,17 +159,17 @@ function App() {
         <Route
           path="/quartos"
           element={
-            <ProtectedRoute userRole={userRole}>
+            <ManagementRoute userRole={userRole}>
               <Suspense fallback={<div role="status">Carregando quartos...</div>}><ListaQuartos userRole={userRole} /></Suspense>
-            </ProtectedRoute>
+            </ManagementRoute>
           }
         />
         <Route
           path="/reservas"
           element={
-            <ProtectedRoute userRole={userRole}>
+            <ManagementRoute userRole={userRole}>
               <Suspense fallback={<div role="status">Carregando reservas...</div>}><MapaReservas userRole={userRole} /></Suspense>
-            </ProtectedRoute>
+            </ManagementRoute>
           }
         />
         <Route path="/financeiro" element={<Navigate to="/financeiro/caixa" replace />} />

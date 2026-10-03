@@ -3,6 +3,9 @@ import { createRoot } from 'react-dom/client'
 import './index.css'
 import App from './App.tsx'
 
+document.documentElement.dataset.theme = localStorage.getItem('hotel-lindoia:theme') === 'dark' ? 'dark' : 'light';
+document.documentElement.style.setProperty('--font-scale', localStorage.getItem('hotel-lindoia:font-scale') ?? '1');
+
 // O timeout evita que o clique do mouse desfaça a seleção logo após o foco.
 document.addEventListener('focusin', (event) => {
   const target = event.target;

@@ -2,7 +2,7 @@
 
 .schedule-app {
   --schedule-accent: #c52e43;
-  --schedule-line: #dfe5ee;
+  --schedule-line: #cdd6e3;
   grid-template-columns: 246px minmax(0, 1fr);
   transition: grid-template-columns 180ms ease;
 }
@@ -35,7 +35,7 @@
   color: #f5f8ff;
   background: #203e68;
   font: inherit;
-  font-size: 22px;
+  font-size: 1.375rem;
   line-height: 1;
   cursor: pointer;
 }
@@ -106,7 +106,7 @@
   border: 1px solid #496080;
   border-radius: 4px;
   color: #dce7f6;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 800;
 }
 
@@ -136,14 +136,14 @@
 }
 
 .schedule-summary article span {
-  color: #78869a;
-  font-size: 11px;
+  color: #5a6a80;
+  font-size: 0.6875rem;
   font-weight: 650;
 }
 
 .schedule-summary article strong {
   color: #172a46;
-  font-size: 21px;
+  font-size: 1.312rem;
   line-height: 1;
 }
 
@@ -154,7 +154,7 @@
   gap: 13px;
   padding: 10px 16px;
   color: #172a46;
-  font-size: 15px;
+  font-size: 0.9375rem;
 }
 
 .schedule-month-control strong {
@@ -171,7 +171,7 @@
   border-radius: 3px;
   color: #42566d;
   background: #fff;
-  font-size: 24px;
+  font-size: 1.5rem;
   line-height: 1;
   cursor: pointer;
 }
@@ -198,7 +198,7 @@
   min-width: 145px;
   gap: 5px;
   color: #53627a;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
 }
 
@@ -212,7 +212,7 @@
   color: #243951;
   background: #fff;
   font: inherit;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .schedule-filter {
@@ -235,7 +235,7 @@
   border-radius: 3px;
   color: #fff;
   background: #c52e43;
-  font-size: 20px;
+  font-size: 1.25rem;
   line-height: 1;
   cursor: pointer;
 }
@@ -276,7 +276,7 @@
   border: 1px solid #29466d;
   color: #f5f8ff;
   background: #203e68;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   text-align: center;
 }
@@ -325,13 +325,13 @@
   align-items: baseline;
   justify-content: space-between;
   margin-bottom: 5px;
-  color: #7a8798;
-  font-size: 10px;
+  color: #5a6a80;
+  font-size: 0.625rem;
 }
 
 .schedule-day-number strong {
   color: #334760;
-  font-size: 13px;
+  font-size: 0.8125rem;
 }
 
 .schedule-day-shifts {
@@ -367,14 +367,14 @@
 }
 
 .schedule-shift strong {
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 750;
 }
 
 .schedule-shift span {
   margin-top: 1px;
   color: #58697c;
-  font-size: 9px;
+  font-size: 0.5625rem;
 }
 
 .schedule-shift.shift-ferias,
@@ -394,8 +394,8 @@
   gap: 9px;
   padding: 0 12px;
   border-top: 1px solid var(--schedule-line);
-  color: #68778b;
-  font-size: 11px;
+  color: #4f5f76;
+  font-size: 0.6875rem;
 }
 
 .schedule-cloud-status .connection-dot {
@@ -420,7 +420,7 @@
 .schedule-modal-heading h2 {
   margin: 0;
   color: #172a46;
-  font-size: 22px;
+  font-size: 1.375rem;
   letter-spacing: 0;
 }
 
@@ -431,14 +431,14 @@
   border-radius: 3px;
   color: #53627a;
   background: #fff;
-  font-size: 21px;
+  font-size: 1.312rem;
   cursor: pointer;
 }
 
 .schedule-modal-date {
   margin: 10px 0 20px;
   color: #768398;
-  font-size: 12px;
+  font-size: 0.75rem;
   text-transform: capitalize;
 }
 
@@ -561,17 +561,17 @@
 
   .schedule-summary article span {
     min-height: 27px;
-    font-size: 9px;
+    font-size: 0.5625rem;
     line-height: 1.3;
   }
 
   .schedule-summary article strong {
-    font-size: 18px;
+    font-size: 1.125rem;
   }
 
   .schedule-month-control {
     gap: 9px;
-    font-size: 13px;
+    font-size: 0.8125rem;
   }
 
   .schedule-month-control strong {

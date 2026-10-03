@@ -2,7 +2,7 @@
 
 .housekeeping-app {
   --room-red: #c52e43;
-  --room-line: #dfe5ee;
+  --room-line: #cdd6e3;
   grid-template-columns: 246px minmax(0, 1fr);
   transition: grid-template-columns 180ms ease;
 }
@@ -35,7 +35,7 @@
   color: #f5f8ff;
   background: #203e68;
   font: inherit;
-  font-size: 22px;
+  font-size: 1.375rem;
   line-height: 1;
   cursor: pointer;
 }
@@ -82,7 +82,7 @@
   border: 1px solid #496080;
   border-radius: 4px;
   color: #dce7f6;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 800;
 }
 
@@ -127,7 +127,7 @@
 
 .housekeeping-metric p {
   color: #69798d;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 650;
 }
 
@@ -135,7 +135,7 @@
   display: block;
   margin-top: 8px;
   color: #172a46;
-  font-size: 23px;
+  font-size: 1.438rem;
   line-height: 1;
 }
 
@@ -175,8 +175,8 @@
 }
 
 .interval-input-wrap > span {
-  color: #68778b;
-  font-size: 11px;
+  color: #4f5f76;
+  font-size: 0.6875rem;
   font-weight: 600;
 }
 
@@ -198,7 +198,7 @@
 .room-list-heading h2 {
   margin: 0;
   color: #172a46;
-  font-size: 20px;
+  font-size: 1.25rem;
   font-weight: 750;
   letter-spacing: 0;
 }
@@ -206,7 +206,7 @@
 .room-list-heading > span {
   padding-bottom: 2px;
   color: #77869a;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 
 .room-card-grid {
@@ -243,7 +243,7 @@
 
 .room-number-label {
   color: #7a899c;
-  font-size: 9px;
+  font-size: 0.5625rem;
   font-weight: 800;
   letter-spacing: 1px;
 }
@@ -251,7 +251,7 @@
 .room-card-header h3 {
   margin: 1px 0 0;
   color: #172a46;
-  font-size: 23px;
+  font-size: 1.438rem;
   line-height: 1.15;
 }
 
@@ -262,7 +262,7 @@
   color: #40556c;
   background: #fff;
   font: inherit;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 650;
   cursor: pointer;
 }
@@ -286,7 +286,7 @@
   padding: 3px 7px;
   border: 1px solid transparent;
   border-radius: 3px;
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 700;
   line-height: 1.25;
 }
@@ -298,7 +298,7 @@
 .badge-occupancy-ocupado { border-color: #cbdced; color: #315f87; background: #eef5fb; }
 .badge-maintenance-manutencao_necessaria { border-color: #f0d4a7; color: #875b19; background: #fff6e6; }
 .badge-maintenance-em_manutencao { border-color: #ecc8cf; color: #9e3447; background: #fff0f2; }
-.badge-maintenance-normal { border-color: #dce3eb; color: #68778b; background: #f8f9fb; }
+.badge-maintenance-normal { border-color: #dce3eb; color: #4f5f76; background: #f8f9fb; }
 
 .room-stayover {
   display: grid;
@@ -313,13 +313,13 @@
   justify-content: space-between;
   gap: 10px;
   color: #718096;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 
 .room-guest-name strong {
   overflow: hidden;
   color: #263c55;
-  font-size: 11px;
+  font-size: 0.6875rem;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
@@ -331,7 +331,7 @@
 .room-stayover .schedule-field select {
   min-height: 32px;
   padding: 5px 7px;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 
 .cleaning-request-row {
@@ -340,7 +340,7 @@
   justify-content: space-between;
   gap: 8px;
   color: #52647a;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 650;
 }
 
@@ -357,7 +357,7 @@
   color: #52647a;
   background: #fff;
   font: inherit;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   cursor: pointer;
 }
@@ -369,8 +369,8 @@
 }
 
 .room-plan-status {
-  color: #738399;
-  font-size: 10px;
+  color: #5a6a80;
+  font-size: 0.625rem;
 }
 
 .doors-due {
@@ -409,19 +409,19 @@
 
 .doors-due strong {
   color: #47596f;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 
 .doors-due small {
   margin-top: 2px;
-  color: #7a8798;
-  font-size: 9px;
+  color: #5a6a80;
+  font-size: 0.5625rem;
 }
 
 .room-note {
   margin: 9px 0 0;
-  color: #68778b;
-  font-size: 10px;
+  color: #4f5f76;
+  font-size: 0.625rem;
   overflow-wrap: anywhere;
 }
 
@@ -434,7 +434,7 @@
 .room-card-actions .button {
   min-height: 33px;
   padding: 6px 10px;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 
 .room-card-actions .button:disabled {
@@ -454,12 +454,12 @@
 
 .housekeeping-empty strong {
   color: #263c55;
-  font-size: 15px;
+  font-size: 0.9375rem;
 }
 
 .housekeeping-empty p {
-  color: #738399;
-  font-size: 12px;
+  color: #5a6a80;
+  font-size: 0.75rem;
 }
 
 .attendant-panel {
@@ -476,12 +476,12 @@
 }
 
 .attendant-panel .room-list-heading h2 {
-  font-size: 16px;
+  font-size: 1rem;
 }
 
 .attendant-empty {
-  color: #7a8798;
-  font-size: 11px;
+  color: #5a6a80;
+  font-size: 0.6875rem;
   line-height: 1.5;
 }
 
@@ -492,7 +492,7 @@
 .attendant-table {
   width: 100%;
   border-collapse: collapse;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 
 .attendant-table th,
@@ -504,7 +504,7 @@
 
 .attendant-table thead th {
   color: #758399;
-  font-size: 9px;
+  font-size: 0.5625rem;
   font-weight: 750;
   text-transform: uppercase;
 }
@@ -528,16 +528,16 @@
 }
 
 .attendant-log > strong {
-  color: #68778b;
-  font-size: 10px;
+  color: #4f5f76;
+  font-size: 0.625rem;
 }
 
 .attendant-log > div {
   display: flex;
   justify-content: space-between;
   gap: 8px;
-  color: #68778b;
-  font-size: 9px;
+  color: #4f5f76;
+  font-size: 0.5625rem;
 }
 
 .attendant-log > div span:last-child {
@@ -603,7 +603,7 @@
   color: #243951;
   background: #fff;
   font: inherit;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .housekeeping-modal .schedule-field textarea {
@@ -647,13 +647,13 @@
 
 .doors-cleaning-option strong {
   color: #334960;
-  font-size: 12px;
+  font-size: 0.75rem;
 }
 
 .doors-cleaning-option small {
   margin-top: 3px;
   color: #77869a;
-  font-size: 10px;
+  font-size: 0.625rem;
 }
 
 @media (max-width: 1100px) {
@@ -753,7 +753,7 @@
   }
 
   .housekeeping-metric p {
-    font-size: 10px;
+    font-size: 0.625rem;
   }
 
   .housekeeping-controls {
@@ -771,7 +771,7 @@
   }
 
   .room-list-heading h2 {
-    font-size: 18px;
+    font-size: 1.125rem;
   }
 
   .housekeeping-form-grid {
@@ -792,4 +792,4 @@
 .attendant-manage-list { display: grid; gap: 8px; max-height: 320px; margin: 0 0 14px; padding: 0; overflow-y: auto; list-style: none; }
 .attendant-manage-list li { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid #e3e9e8; border-radius: 7px; }
 .attendant-manage-list li > span, .attendant-manage-list li > input { flex: 1; min-width: 0; }
-.housekeeping-modal .reservation-modal-error { margin: 0 0 12px; padding: 10px 12px; border-radius: 6px; background: #fdeeee; color: #9b1c1c; font-size: 14px; font-weight: 600; }
+.housekeeping-modal .reservation-modal-error { margin: 0 0 12px; padding: 10px 12px; border-radius: 6px; background: #fdeeee; color: #9b1c1c; font-size: 0.875rem; font-weight: 600; }

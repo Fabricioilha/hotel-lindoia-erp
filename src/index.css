@@ -1,10 +1,10 @@
 @import "tailwindcss";
 
 :root {
-  --text: #53627a;
+  --text: #46566e;
   --text-h: #172a46;
   --bg: #fff;
-  --border: #dfe5ee;
+  --border: #cdd6e3;
   --code-bg: #f2f5fa;
   --accent: #c52e43;
   --accent-bg: rgba(197, 46, 67, 0.1);
@@ -28,9 +28,11 @@
   -moz-osx-font-smoothing: grayscale;
 
   @media (max-width: 1024px) {
-    font-size: 16px;
+    font-size: calc(16px * var(--font-scale, 1));
   }
 }
+
+html { font-size: calc(16px * var(--font-scale, 1)); }
 
 #root {
   width: 100%;
@@ -90,3 +92,15 @@ code {
   padding: 4px 8px;
   background: var(--code-bg);
 }
+
+html[data-theme='dark'] { color-scheme: dark; background: #fff; filter: invert(1) hue-rotate(180deg); }
+html[data-theme='dark'] img,
+html[data-theme='dark'] video { filter: invert(1) hue-rotate(180deg); }
+
+.theme-toggle { position: fixed; right: 14px; bottom: 14px; z-index: 100; display: flex; gap: 4px; padding: 4px; border: 1px solid #93a5bf; border-radius: 20px; background: #fff; box-shadow: 0 2px 8px rgb(0 0 0 / 15%); }
+.theme-toggle button { min-height: 30px; padding: 0 10px; border: 0; border-radius: 15px; color: #142b4d; background: #eef2f8; font-size: 0.75rem; font-weight: 700; cursor: pointer; }
+.theme-toggle button:disabled { opacity: .4; cursor: default; }
+
+/* Evita estouro horizontal quando a fonte é ampliada */
+.sales-header, .dashboard-header, .sales-title-row, .dashboard-welcome { flex-wrap: wrap; }
+.sales-header-links, .dashboard-header-actions { flex-wrap: wrap; }
