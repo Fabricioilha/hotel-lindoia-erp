@@ -1206,3 +1206,6 @@
 .category-manage-list li > span small { display: block; margin-top: 2px; color: #5a6a80; font-size: 0.6875rem; }
 .category-manage-list .category-fixed { background: #f4f8f7; }
 .category-error { color: #9b1c1c; font-weight: 600; }
+
+.sidebar-section-toggle { display: flex; width: 100%; justify-content: space-between; border: 0; background: none; text-align: left; cursor: pointer; }
+.stock-sidebar-context { display: grid; gap: 4px; }

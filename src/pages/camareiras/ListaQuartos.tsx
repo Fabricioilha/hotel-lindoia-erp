@@ -78,7 +78,6 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 	const [search, setSearch] = useState('');
 	const [statusFilter, setStatusFilter] = useState('todos');
 	const [modal, setModal] = useState<ModalState>(null);
-	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 	const [intervalDraft, setIntervalDraft] = useState('5');
 
 	useEffect(() => subscribeHousekeeping((next) => {
@@ -223,28 +222,7 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 	}
 
 	return (
-		<div className={`stock-app housekeeping-app ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
-			<aside className="stock-sidebar">
-				<div className="housekeeping-sidebar-header">
-					<Link to="/" className="stock-brand" aria-label="Hotel Lindoia, painel principal" title="Painel principal">
-						<span className="brand-mark">HL</span><span><strong>Hotel Lindoia</strong><small>OPERAÇÃO</small></span>
-					</Link>
-					<button className="housekeeping-sidebar-toggle" type="button" onClick={() => setSidebarCollapsed((collapsed) => !collapsed)} aria-label={sidebarCollapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'} aria-expanded={!sidebarCollapsed} title={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}>
-						<span aria-hidden="true">{sidebarCollapsed ? '›' : '‹'}</span>
-					</button>
-				</div>
-				<div className="sidebar-label">HOTEL LINDOIA</div>
-				<nav className="stock-nav housekeeping-nav" aria-label="Navegação do hotel">
-					<HousekeepingNavLink route="/" label="Painel principal" shortLabel="P" />
-					<HousekeepingNavLink route="/vendas" label="Vendas" shortLabel="V" />
-					{isAdmin && <HousekeepingNavLink route="/estoque" label="Estoque" shortLabel="E" />}
-					<HousekeepingNavLink route="/quartos" label="Serviço de quarto" shortLabel="Q" active />
-					<HousekeepingNavLink route="/reservas" label="Reservas" shortLabel="R" />
-					<HousekeepingNavLink route="/escala" label="Escala" shortLabel="ES" />
-					{isAdmin && <HousekeepingNavLink route="/financeiro/caixa" label="Financeiro" shortLabel="F" />}
-				</nav>
-				<div className="sidebar-footer" title={`Salvo ${housekeepingStorageMode}`}><span className="connection-dot" /><span>Salvo {housekeepingStorageMode}</span></div>
-			</aside>
+		<div className={`stock-app housekeeping-app`}>
 
 			<main className="stock-main">
 				<header className="stock-topbar">
@@ -322,12 +300,6 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 			{isAdmin && modal?.type === 'cleaning' && <CleaningEditor room={modal.room} attendants={attendantsOf(data)} due={dueDays(modal.room.id) === null || dueDays(modal.room.id) === 0} onCancel={() => setModal(null)} onSave={(form) => completeCleaning(modal.room, form)} />}
 		</div>
 	);
-}
-
-function HousekeepingNavLink({ route, label, shortLabel, active = false }: { route: string; label: string; shortLabel: string; active?: boolean }) {
-	return <Link className={`nav-item ${active ? 'selected' : ''}`} to={route} title={label} aria-label={label}>
-		<span className="nav-indicator" /><span className="housekeeping-nav-icon" aria-hidden="true">{shortLabel}</span><span className="housekeeping-nav-label">{label}</span>
-	</Link>;
 }
 
 function Metric({ label, value, tone }: { label: string; value: number; tone: string }) {

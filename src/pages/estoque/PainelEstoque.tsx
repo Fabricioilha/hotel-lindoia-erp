@@ -1,6 +1,8 @@
 import { createContext, useContext, useEffect, useMemo, useState, type FormEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
-import { inventoryStorageMode, subscribeInventory, updateInventory } from '../../services/inventoryStore';
+import { SidebarSlotContext } from '../../components/layout/sidebarSlot';
+import { subscribeInventory, updateInventory } from '../../services/inventoryStore';
 import { updateFinance } from '../../services/financeStore';
 import { DateInput } from '../../components/ui/DateInput';
 import { useMinibarFinanceSync } from '../../services/minibarFinanceSync';
@@ -113,6 +115,9 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
   const [storageError, setStorageError] = useState('');
   const [view, setView] = useState<View>('resumo');
   const [categoryFilter, setCategoryFilter] = useState<StockCategory | 'todas'>('todas');
+  const sidebarSlot = useContext(SidebarSlotContext);
+  const [closedSections, setClosedSections] = useState<Record<string, boolean>>({});
+  const toggleSection = (key: string) => setClosedSections((current) => ({ ...current, [key]: !current[key] }));
   const [search, setSearch] = useState('');
   const [stockFilter, setStockFilter] = useState<'todos' | 'baixo' | 'zerado'>('todos');
   const [modal, setModal] = useState<Modal>(null);
@@ -544,13 +549,9 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
   return (
     <CategoriesContext.Provider value={categories}>
     <div className="stock-app">
-      <aside className="stock-sidebar">
-        <Link to="/" className="stock-brand" aria-label="Voltar ao painel principal">
-          <span className="brand-mark">HL</span>
-          <span><strong>Hotel Lindoia</strong><small>OPERAÇÃO</small></span>
-        </Link>
-        <div className="sidebar-label">ESTOQUE</div>
-        <nav className="stock-nav" aria-label="Navegação do estoque">
+      {sidebarSlot && createPortal(<div className="stock-sidebar-context">
+        <button type="button" className="sidebar-label sidebar-section-toggle" aria-expanded={!closedSections.estoque} onClick={() => toggleSection('estoque')}>ESTOQUE <span aria-hidden="true">{closedSections.estoque ? '▸' : '▾'}</span></button>
+        {!closedSections.estoque && <nav className="stock-nav" aria-label="Navegação do estoque">
           {([
             ['resumo', 'Visão geral'],
             ['produtos', 'Produtos'],
@@ -563,9 +564,9 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
               {id === 'produtos' && lowStock.length > 0 && <span className="nav-count">{lowStock.length}</span>}
             </button>
           ))}
-        </nav>
-        <div className="sidebar-label category-label">CATEGORIAS</div>
-        <nav className="stock-nav category-nav" aria-label="Filtrar por categoria">
+        </nav>}
+        <button type="button" className="sidebar-label category-label sidebar-section-toggle" aria-expanded={!closedSections.categorias} onClick={() => toggleSection('categorias')}>CATEGORIAS <span aria-hidden="true">{closedSections.categorias ? '▸' : '▾'}</span></button>
+        {!closedSections.categorias && <nav className="stock-nav category-nav" aria-label="Filtrar por categoria">
           <button className={`nav-item ${categoryFilter === 'todas' ? 'selected' : ''}`} onClick={() => { setCategoryFilter('todas'); setView('produtos'); }}>Todas as categorias</button>
           {categories.map((category) => (
             <button key={category.id} className={`nav-item ${categoryFilter === category.id ? 'selected' : ''}`} onClick={() => { setCategoryFilter(category.id); setView('produtos'); }}>
@@ -573,12 +574,8 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
             </button>
           ))}
           <button className="nav-item" onClick={() => setModal('categorias')}>Gerenciar categorias</button>
-        </nav>
-        <div className="sidebar-footer">
-          <span className="connection-dot" />
-          <span>Salvo {inventoryStorageMode}</span>
-        </div>
-      </aside>
+        </nav>}
+      </div>, sidebarSlot)}
 
       <main className="stock-main">
         <header className="stock-topbar">

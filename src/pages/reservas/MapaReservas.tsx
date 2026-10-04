@@ -88,7 +88,6 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 	const [search, setSearch] = useState('');
 	const [editingId, setEditingId] = useState('');
 	const [modalOpen, setModalOpen] = useState(false);
-	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 	const [financeData, setFinanceData] = useState<FinanceData>(emptyFinance());
 	const [collections, setCollections] = useState<Record<string, ReservationCollection>>({});
 	const [extras, setExtras] = useState<Record<string, ReservationExtra>>({});
@@ -428,21 +427,7 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 	}
 
 	return (
-		<div className={`stock-app housekeeping-app reservations-app ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
-			<aside className="stock-sidebar">
-				<div className="housekeeping-sidebar-header"><Link to="/" className="stock-brand" aria-label="Hotel Lindoia, painel principal" title="Painel principal"><span className="brand-mark">HL</span><span><strong>Hotel Lindoia</strong><small>OPERAÇÃO</small></span></Link><button className="housekeeping-sidebar-toggle" type="button" onClick={() => setSidebarCollapsed((collapsed) => !collapsed)} aria-label={sidebarCollapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'} aria-expanded={!sidebarCollapsed} title={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}><span aria-hidden="true">{sidebarCollapsed ? '›' : '‹'}</span></button></div>
-				<div className="sidebar-label">HOTEL LINDOIA</div>
-				<nav className="stock-nav housekeeping-nav" aria-label="Navegação do hotel">
-					<ReservationsNavLink route="/" label="Painel principal" shortLabel="P" />
-					<ReservationsNavLink route="/vendas" label="Vendas" shortLabel="V" />
-					{isAdmin && <ReservationsNavLink route="/estoque" label="Estoque" shortLabel="E" />}
-					<ReservationsNavLink route="/quartos" label="Serviço de quarto" shortLabel="Q" />
-					<ReservationsNavLink route="/escala" label="Escala" shortLabel="ES" />
-					{isAdmin && <ReservationsNavLink route="/financeiro/caixa" label="Financeiro" shortLabel="F" />}
-					<ReservationsNavLink route="/reservas" label="Reservas" shortLabel="R" active />
-				</nav>
-				<div className="sidebar-footer"><span className="connection-dot" /><span>Salvo {housekeepingStorageMode}</span></div>
-			</aside>
+		<div className={`stock-app housekeeping-app reservations-app`}>
 			<main className="stock-main">
 				<header className="stock-topbar"><div className="breadcrumb"><Link to="/">Painel</Link><span>/</span><strong>Reservas</strong></div><div className="topbar-actions"><span className="user-chip">{isAdmin ? 'Gerência' : 'Equipe'}</span><Link className="back-link" to="/">Voltar ao painel</Link></div></header>
 				<div className="stock-content reservation-content">
@@ -482,10 +467,6 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 			{extraReservation && <ExtraEditor key={extraReservation.id} reservation={extraReservation} saving={saving} error={error} onClose={() => setExtraReservation(null)} onSubmit={(event) => void submitExtra(event, extraReservation)} />}
 		</div>
 	);
-}
-
-function ReservationsNavLink({ route, label, shortLabel, active = false }: { route: string; label: string; shortLabel: string; active?: boolean }) {
-	return <Link className={`nav-item ${active ? 'selected' : ''}`} to={route} title={label} aria-label={label}><span className="nav-indicator" /><span className="housekeeping-nav-icon" aria-hidden="true">{shortLabel}</span><span className="housekeeping-nav-label">{label}</span></Link>;
 }
 
 function ReservationMetric({ label, value, detail, tone }: { label: string; value: string; detail: string; tone: string }) {

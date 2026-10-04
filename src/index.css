@@ -104,3 +104,24 @@ html[data-theme='dark'] video { filter: invert(1) hue-rotate(180deg); }
 /* Evita estouro horizontal quando a fonte é ampliada */
 .sales-header, .dashboard-header, .sales-title-row, .dashboard-welcome { flex-wrap: wrap; }
 .sales-header-links, .dashboard-header-actions { flex-wrap: wrap; }
+
+/* Perfil funcionário (viewer): tela cheia e fontes maiores */
+html[data-role='viewer'] { font-size: calc(20px * var(--font-scale, 1)); }
+html[data-role='viewer'] body { font-size: 1.05rem; }
+html[data-role='viewer'] .sales-content,
+html[data-role='viewer'] .dashboard-content,
+html[data-role='viewer'] .schedule-content,
+html[data-role='viewer'] [class$='-content'] { width: 100%; max-width: none; }
+html[data-role='viewer'] .reception-attendants { grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); }
+html[data-role='viewer'] .modal-backdrop,
+html[data-role='viewer'] .finance-modal-backdrop { display: block; padding: 0; overflow-y: auto; }
+html[data-role='viewer'] .stock-modal,
+html[data-role='viewer'] .finance-modal {
+  width: 100%; max-width: none; min-height: 100vh; max-height: none; border-radius: 0; padding: clamp(18px, 4vw, 48px); overflow-y: visible;
+}
+html[data-role='viewer'] .reception-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+html[data-role='viewer'] .reception-wide { grid-column: 1 / -1; }
+html[data-role='viewer'] input,
+html[data-role='viewer'] select,
+html[data-role='viewer'] textarea,
+html[data-role='viewer'] button { font-size: 1rem; }

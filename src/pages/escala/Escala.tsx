@@ -59,20 +59,7 @@ export function Escala({ userRole }: { userRole: UserRole }) {
 	const [timeEnd, setTimeEnd] = useState('16:00');
 	const [filter, setFilter] = useState('');
 	const [editing, setEditing] = useState<{ date: string; shift?: Shift } | null>(null);
-	const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 	const isAdmin = userRole === 'admin';
-	const navigationItems = [
-		{ route: '/', label: 'Painel principal', shortLabel: 'P' },
-		{ route: '/vendas', label: 'Vendas', shortLabel: 'V' },
-		{ route: '/recepcao', label: 'Caixa - Recepção', shortLabel: 'C' },
-		...(isAdmin ? [
-			{ route: '/estoque', label: 'Estoque', shortLabel: 'E' },
-			{ route: '/quartos', label: 'Serviço de quarto', shortLabel: 'Q' },
-			{ route: '/reservas', label: 'Reservas', shortLabel: 'R' },
-		] : []),
-		{ route: '/escala', label: 'Escala', shortLabel: 'ES' },
-		...(isAdmin ? [{ route: '/financeiro/caixa', label: 'Financeiro', shortLabel: 'F' }] : []),
-	];
 
 	useEffect(() => subscribeSchedule((next) => {
 		setData(next);
@@ -220,24 +207,7 @@ export function Escala({ userRole }: { userRole: UserRole }) {
 	}
 
 	return (
-		<div className={`stock-app schedule-app ${sidebarCollapsed ? 'is-sidebar-collapsed' : ''}`}>
-			<aside className="stock-sidebar">
-				<div className="schedule-sidebar-header">
-					<Link to="/" className="stock-brand" aria-label="Hotel Lindoia, painel principal" title="Painel principal">
-						<span className="brand-mark">HL</span><span><strong>Hotel Lindoia</strong><small>OPERAÇÃO</small></span>
-					</Link>
-					<button className="schedule-sidebar-toggle" type="button" onClick={() => setSidebarCollapsed((collapsed) => !collapsed)} aria-label={sidebarCollapsed ? 'Expandir menu lateral' : 'Recolher menu lateral'} aria-expanded={!sidebarCollapsed} title={sidebarCollapsed ? 'Expandir menu' : 'Recolher menu'}>
-						<span aria-hidden="true">{sidebarCollapsed ? '›' : '‹'}</span>
-					</button>
-				</div>
-				<div className="sidebar-label">EQUIPE</div>
-				<nav className="stock-nav schedule-nav" aria-label="Navegação do hotel">
-					{navigationItems.map((item) => <Link key={item.route} className={`nav-item ${item.route === '/escala' ? 'selected' : ''}`} to={item.route} title={item.label} aria-label={item.label}>
-						<span className="nav-indicator" /><span className="schedule-nav-icon" aria-hidden="true">{item.shortLabel}</span><span className="schedule-nav-label">{item.label}</span>
-					</Link>)}
-				</nav>
-				<div className="sidebar-footer" title={`Salvo ${scheduleStorageMode}`}><span className="connection-dot" /><span>Salvo {scheduleStorageMode}</span></div>
-			</aside>
+		<div className={`stock-app schedule-app`}>
 
 			<main className="stock-main">
 				<header className="stock-topbar">

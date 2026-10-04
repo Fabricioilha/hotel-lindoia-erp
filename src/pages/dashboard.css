@@ -98,3 +98,10 @@
   .dashboard-metric strong { font-size: 1.438rem; }
   .module-grid { grid-template-columns: 1fr; }
 }
+.duty-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 18px; color: #556580; font-size: 0.8125rem; }
+.duty-bar > span { font-weight: 700; }
+.duty-bar small { color: #b22a3e; }
+.duty-option { min-height: 32px; padding: 0 14px; border: 1px solid #b8c5d8; border-radius: 16px; color: #315f87; background: #fff; font: inherit; font-size: 0.8125rem; font-weight: 700; cursor: pointer; }
+.duty-option:hover { background: #eef3fa; }
+.duty-option.is-on { color: #fff; background: #315f87; border-color: #315f87; }
+.duty-bar strong { color: #315f87; font-size: 0.875rem; }

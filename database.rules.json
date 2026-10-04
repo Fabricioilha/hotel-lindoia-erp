@@ -105,6 +105,12 @@
             ".validate": "newData.child('id').val() === $roomId && newData.child('number').isString() && newData.child('number').val().length > 0 && (newData.child('type').val() === 'casal' || newData.child('type').val() === 'casal_twin' || newData.child('type').val() === 'solteiro' || newData.child('type').val() === 'triplo_casal_solteiro' || newData.child('type').val() === 'triplo_solteiros' || newData.child('type').val() === 'triplo')"
           }
         },
+        "cashOuts": {
+          "$cashOutId": {
+            ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists()))",
+            ".validate": "newData.child('id').val() === $cashOutId && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && newData.child('attendant').isString() && newData.child('date').isString() && newData.child('reason').isString()"
+          }
+        },
         "stays": {
           "$stayId": {
             ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists()))",
@@ -115,6 +121,33 @@
             "checkOutDate": {
               ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.isString()"
             }
+          }
+        }
+      },
+      "limpeza": {
+        ".read": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')",
+        "camareiras": {
+          ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"
+        },
+        "camareirasConfigured": {
+          ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"
+        },
+        "tasks": {
+          "$taskId": {
+            ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && newData.exists() && (!data.exists() || (data.child('roomNumber').val() === newData.child('roomNumber').val() && data.child('assignedAt').val() === newData.child('assignedAt').val()))))",
+            ".validate": "newData.child('id').val() === $taskId && newData.child('roomNumber').isString() && newData.child('roomNumber').val().length > 0 && newData.child('camareira').isString() && newData.child('assignedBy').isString() && (newData.child('status').val() === 'em_limpeza' || newData.child('status').val() === 'concluido' || newData.child('status').val() === 'cancelado')"
+          }
+        }
+      },
+      "saidas": {
+        ".read": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')",
+        "catalog": {
+          ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"
+        },
+        "records": {
+          "$recordId": {
+            ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists()))",
+            ".validate": "newData.child('id').val() === $recordId && newData.child('actor').isString() && newData.child('createdAt').isString() && newData.child('items').exists()"
           }
         }
       },

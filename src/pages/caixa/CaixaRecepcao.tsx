@@ -1,55 +1,62 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate, useSearchParams } from 'react-router-dom';
+import { BackToPanel } from '../../components/ui/BackToPanel';
+import { useAttendant } from '../../services/useAttendant';
+import { ActionCard } from '../../components/ui/ActionCard';
 import type { UserRole } from '../../types';
+import { DateInput } from '../../components/ui/DateInput';
 import { PAYMENT_METHOD_LABELS, type FinancePaymentMethod } from '../../types/finance';
 import {
-  ATTENDANT_STORAGE_KEY, DEFAULT_ATTENDANTS, EXTRA_LABELS, FOLIO_PAYMENT_METHODS, ROOM_BEDS, ROOM_TYPE_LABELS, SELECTABLE_ROOM_TYPES, extraTotal, stayTotals,
-  type Attendant, type ExtraMode, type ExtraType, type GuestStay, type ReceptionData, type ReceptionRoom, type RoomType, type StayExtra, type StayKind,
+  DEFAULT_ATTENDANTS, EXTRA_LABELS, FOLIO_PAYMENT_METHODS, SELECTABLE_EXTRAS, extraTotal,
+  type Attendant, type ExtraType, type GuestStay, type ReceptionData, type StayExtra, type StayKind,
 } from '../../types/reception';
-import { deleteAttendant, deleteRoom, deleteStay, emptyReception, localDateKey, saveAttendant, saveRoom, saveStay, seedDefaultAttendants, subscribeReception, useReceptionFinanceSync } from '../../services/receptionStore';
+import { emptyHousekeeping, subscribeHousekeeping } from '../../services/housekeepingStore';
+import { deleteAttendant, emptyReception, localDateKey, saveAttendant, saveStay, seedDefaultAttendants, subscribeReception, useReceptionFinanceSync } from '../../services/receptionStore';
 import '../venda-geladeira.css';
 import './recepcao.css';
 
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const formatDate = (key: string) => key.split('-').reverse().slice(0, 2).join('/');
 const taxLabel = (method: FinancePaymentMethod) => method === 'prepaid' ? 'Pré-pago' : `Balcão - ${PAYMENT_METHOD_LABELS[method]}`;
-
-function addDays(key: string, days: number) {
-  const [year, month, day] = key.split('-').map(Number);
-  return localDateKey(new Date(year, month - 1, day + days));
-}
 
 function parseAmount(value: string) {
   const parsed = Number(value.replace(',', '.'));
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) / 100 : 0;
 }
 
-interface ExtraDraft { id: string; type: ExtraType; label: string; amount: string; mode: ExtraMode }
+interface ExtraDraft { id: string; type: ExtraType; label: string; amount: string; method: FinancePaymentMethod }
 
 export function CaixaRecepcao({ userRole }: { userRole: UserRole }) {
   const isAdmin = userRole === 'admin';
   const [data, setData] = useState<ReceptionData>(emptyReception());
+  const [roomNumbers, setRoomNumbers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
-  const [attendant, setAttendant] = useState(() => sessionStorage.getItem(ATTENDANT_STORAGE_KEY) ?? '');
+  const dutyAttendant = useAttendant();
+  const attendant = isAdmin ? 'Gerência' : dutyAttendant;
+  const navigate = useNavigate();
   const [newName, setNewName] = useState('');
-  const [formKind, setFormKind] = useState<StayKind | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+  const requested = searchParams.get('novo');
+  const [formKind, setFormKind] = useState<StayKind | null>(requested === 'hospede' ? 'hospede' : requested === 'rotativo' ? 'periodo' : null);
+  const [checkInDate, setCheckInDate] = useState(() => localDateKey());
   const [roomNumber, setRoomNumber] = useState('');
   const [guestName, setGuestName] = useState('');
   const [nights, setNights] = useState('1');
+  const [hours, setHours] = useState('4');
   const [dailyRate, setDailyRate] = useState('');
   const [dailyMethod, setDailyMethod] = useState<FinancePaymentMethod>('pix');
+  const [splitPayment, setSplitPayment] = useState(false);
+  const [splitMethod, setSplitMethod] = useState<FinancePaymentMethod>('cash');
+  const [splitAmount, setSplitAmount] = useState('');
   const [hasBreakfast, setHasBreakfast] = useState(false);
   const [breakfastRate, setBreakfastRate] = useState('');
+  const [hasTax, setHasTax] = useState(false);
   const [taxAmount, setTaxAmount] = useState('');
   const [taxMethod, setTaxMethod] = useState<FinancePaymentMethod>('cash');
   const [extras, setExtras] = useState<ExtraDraft[]>([]);
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
-  const [roomsOpen, setRoomsOpen] = useState(false);
-  const [newRoomNumber, setNewRoomNumber] = useState('');
-  const [newRoomType, setNewRoomType] = useState<RoomType>('casal');
 
   useEffect(() => subscribeReception((next) => {
     setData(next);
@@ -58,6 +65,11 @@ export function CaixaRecepcao({ userRole }: { userRole: UserRole }) {
     setError(cause.message);
     setLoading(false);
   }), []);
+
+  useEffect(() => subscribeHousekeeping(
+    (next) => setRoomNumbers(Object.values((next ?? emptyHousekeeping()).rooms).map((room) => room.number)),
+    () => setRoomNumbers([]),
+  ), []);
 
   useEffect(() => {
     if (isAdmin && !loading && Object.keys(data.attendants).length === 0) {
@@ -71,31 +83,18 @@ export function CaixaRecepcao({ userRole }: { userRole: UserRole }) {
     ? Object.values(data.attendants).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'))
     : DEFAULT_ATTENDANTS.map((name) => ({ id: `default-${name}`, name }));
   const today = localDateKey();
-  const rooms = Object.values(data.rooms).sort((a, b) => a.number.localeCompare(b.number, 'pt-BR', { numeric: true }));
-  const allStays = Object.values(data.stays);
-  const byRoom = (a: GuestStay, b: GuestStay) => a.roomNumber.localeCompare(b.roomNumber, 'pt-BR', { numeric: true });
-  const active = allStays.filter((stay) => stay.kind === 'periodo' ? stay.checkInDate === today : addDays(stay.checkInDate, stay.nights) >= today).sort(byRoom);
-  const guests = active.filter((stay) => stay.kind === 'hospede');
-  const periods = active.filter((stay) => stay.kind === 'periodo');
-  const sheetStart = active.reduce((min, stay) => stay.checkInDate < min ? stay.checkInDate : min, today);
-  const sheetTotal = active.reduce((total, stay) => total + stayTotals(stay).total, 0);
+  const allRoomNumbers = [...new Set([...roomNumbers, ...Object.values(data.rooms).map((room) => room.number)])]
+    .sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
 
+  const draftHours = Math.min(24, Math.max(1, Math.floor(Number(hours) || 4)));
   const draftNights = formKind === 'periodo' ? 1 : Math.min(60, Math.max(1, Math.floor(Number(nights) || 1)));
+  const dailyTotal = parseAmount(dailyRate) * draftNights;
+  const draftSplit = splitPayment ? parseAmount(splitAmount) : 0;
   const draftExtras = extras.map((extra) => ({ ...extra, amount: parseAmount(extra.amount) }));
-  const draftTotal = parseAmount(dailyRate) * draftNights
+  const draftTotal = dailyTotal
     + (formKind === 'hospede' && hasBreakfast ? parseAmount(breakfastRate) * draftNights : 0)
-    + (formKind === 'hospede' ? parseAmount(taxAmount) : 0)
+    + (formKind === 'hospede' && hasTax ? parseAmount(taxAmount) : 0)
     + draftExtras.reduce((total, extra) => total + extraTotal(extra, draftNights), 0);
-
-  function chooseAttendant(name: string) {
-    sessionStorage.setItem(ATTENDANT_STORAGE_KEY, name);
-    setAttendant(name);
-  }
-
-  function changeAttendant() {
-    sessionStorage.removeItem(ATTENDANT_STORAGE_KEY);
-    setAttendant('');
-  }
 
   async function run(action: () => Promise<void>, success = '') {
     setError('');
@@ -133,33 +132,25 @@ export function CaixaRecepcao({ userRole }: { userRole: UserRole }) {
     void run(() => deleteAttendant(item.id));
   }
 
-  function openForm(kind: StayKind, room = '') {
+  function openForm(kind: StayKind) {
+    setExtras([]);
     setError('');
-    setRoomNumber(room);
+    setNotice('');
+    setCheckInDate(localDateKey());
     setFormKind(kind);
   }
 
-  async function addRoom(event: FormEvent) {
-    event.preventDefault();
-    const number = newRoomNumber.trim();
-    if (!number) return;
-    if (rooms.some((room) => room.number.toLocaleLowerCase('pt-BR') === number.toLocaleLowerCase('pt-BR'))) {
-      setError('Já existe um quarto com esse número.');
-      return;
-    }
-    await run(async () => {
-      await saveRoom({ id: crypto.randomUUID(), number, type: newRoomType });
-      setNewRoomNumber('');
-    });
+  function closeForm() {
+    setFormKind(null);
+    if (searchParams.has('novo')) setSearchParams({}, { replace: true });
   }
 
-  function removeRoom(room: ReceptionRoom) {
-    if (!window.confirm(`Excluir o quarto ${room.number} da folha?`)) return;
-    void run(() => deleteRoom(room.id));
+  function cancelForm() {
+    navigate('/');
   }
 
   function addExtra(type: ExtraType) {
-    setExtras((current) => [...current, { id: crypto.randomUUID(), type, label: type === 'outros' ? '' : EXTRA_LABELS[type], amount: '', mode: 'fixo' }]);
+    setExtras((current) => [...current, { id: crypto.randomUUID(), type, label: type === 'outros' ? '' : EXTRA_LABELS[type], amount: '', method: 'pix' }]);
   }
 
   function updateExtra(id: string, patch: Partial<ExtraDraft>) {
@@ -170,9 +161,13 @@ export function CaixaRecepcao({ userRole }: { userRole: UserRole }) {
     setRoomNumber('');
     setGuestName('');
     setNights('1');
+    setHours('4');
     setDailyRate('');
+    setSplitPayment(false);
+    setSplitAmount('');
     setHasBreakfast(false);
     setBreakfastRate('');
+    setHasTax(false);
     setTaxAmount('');
     setExtras([]);
     setNote('');
@@ -184,41 +179,46 @@ export function CaixaRecepcao({ userRole }: { userRole: UserRole }) {
     const rate = parseAmount(dailyRate);
     const withBreakfast = formKind === 'hospede' && hasBreakfast;
     const breakfast = withBreakfast ? parseAmount(breakfastRate) : 0;
-    if (!roomNumber.trim() || !guestName.trim()) return setError('Informe o apartamento e o nome do hóspede titular.');
+    const withTax = formKind === 'hospede' && hasTax;
+    const tax = withTax ? parseAmount(taxAmount) : 0;
+    if (!checkInDate) return setError('Informe uma data válida.');
+    if (!roomNumber.trim()) return setError('Informe o quarto.');
+    if (formKind === 'hospede' && !guestName.trim()) return setError('Informe o nome do hóspede titular.');
     if (!rate) return setError('Informe o valor da diária.');
+    if (splitPayment && (!draftSplit || draftSplit >= dailyTotal)) return setError('O valor da segunda forma de pagamento deve ser maior que zero e menor que o valor da diária.');
     if (withBreakfast && !breakfast) return setError('Informe o valor do café.');
-    if (draftExtras.some((extra) => !extra.amount || !extra.label.trim())) return setError('Preencha o nome e o valor de todos os extras.');
+    if (withTax && !tax) return setError('Informe o valor da taxa ou desmarque "Cobrar taxa".');
+    if (formKind === 'hospede' && draftExtras.some((extra) => !extra.amount || !extra.label.trim())) return setError('Preencha o nome e o valor de todos os extras.');
     const stay: GuestStay = {
       id: crypto.randomUUID(),
       kind: formKind,
-      checkInDate: today,
+      checkInDate,
       nights: draftNights,
       roomNumber: roomNumber.trim(),
-      guestName: guestName.trim(),
+      guestName: formKind === 'hospede' ? guestName.trim() : '',
+      ...(formKind === 'periodo' ? { hours: draftHours } : {}),
       dailyRate: rate,
       dailyMethod,
+      ...(splitPayment ? { dailySplit: { method: splitMethod, amount: draftSplit } } : {}),
       hasBreakfast: withBreakfast,
       breakfastRate: breakfast,
-      taxAmount: formKind === 'hospede' ? parseAmount(taxAmount) : 0,
+      taxAmount: tax,
       taxMethod,
-      extras: draftExtras.map<StayExtra>((extra) => ({ ...extra, label: extra.label.trim() })),
+      extras: formKind === 'periodo' ? [] : draftExtras.map<StayExtra>((extra) => ({ ...extra, label: extra.label.trim() })),
       note: note.trim(),
       attendant,
       status: 'hospedado',
       createdAt: new Date().toISOString(),
     };
     setSaving(true);
+    const message = formKind === 'periodo' ? `Rotativo do quarto ${stay.roomNumber} registrado com sucesso.` : `Hóspede do quarto ${stay.roomNumber} registrado com sucesso.`;
     await run(async () => {
       await saveStay(stay);
       resetForm();
-      setFormKind(null);
-    }, formKind === 'periodo' ? 'Período adicionado à folha.' : 'Hóspede adicionado à folha.');
+      closeForm();
+      navigate('/', { state: { notice: message } });
+    });
     setSaving(false);
-  }
-
-  function removeStay(stay: GuestStay) {
-    if (!window.confirm(`Excluir o lançamento do quarto ${stay.roomNumber}? A receita no financeiro também será removida.`)) return;
-    void run(() => deleteStay(stay), 'Lançamento excluído.');
   }
 
   const header = (
@@ -238,23 +238,8 @@ export function CaixaRecepcao({ userRole }: { userRole: UserRole }) {
       <div className="sales-page">
         {header}
         <main className="sales-content">
-          <div className="sales-title-row"><div><p className="sales-eyebrow">CAIXA <span>/</span> RECEPÇÃO</p><h1>Quem está de plantão?</h1><p>Todos os lançamentos do turno ficarão registrados em nome do plantonista.</p></div></div>
-          {alerts}
-          {loading ? <div className="sales-empty">Carregando plantonistas...</div> : <div className="reception-attendants">
-            {attendants.map((item) => (
-              <div key={item.id} className="reception-attendant">
-                <button type="button" className="reception-attendant-pick" onClick={() => chooseAttendant(item.name)}>{item.name}</button>
-                {isAdmin && !item.id.startsWith('default-') && <span className="reception-attendant-tools">
-                  <button type="button" className="reception-link-button" onClick={() => renameAttendant(item)}>Renomear</button>
-                  <button type="button" className="reception-link-button" onClick={() => removeAttendant(item)}>Excluir</button>
-                </span>}
-              </div>
-            ))}
-          </div>}
-          {isAdmin && <form className="reception-panel reception-add" onSubmit={(event) => void addAttendant(event)}>
-            <label className="sales-field"><span>Novo plantonista</span><input value={newName} onChange={(event) => setNewName(event.target.value)} maxLength={60} placeholder="Nome" /></label>
-            <button className="reception-primary" type="submit">Adicionar</button>
-          </form>}
+          <BackToPanel />
+          <div className="sales-title-row"><div><p className="sales-eyebrow">CAIXA <span>/</span> RECEPÇÃO</p><h1>Sem plantonista na escala</h1><p>O plantonista é definido automaticamente pela escala do dia. Não há ninguém escalado neste horário; avise a gerência para ajustar a escala.</p></div></div>
         </main>
       </div>
     );
@@ -263,68 +248,82 @@ export function CaixaRecepcao({ userRole }: { userRole: UserRole }) {
   return (
     <div className="sales-page">
       {header}
-      <main className="sales-content">
+      <main className="sales-content" style={formKind ? { display: 'none' } : undefined}>
+        <BackToPanel />
         <div className="sales-title-row">
-          <div><p className="sales-eyebrow">CAIXA <span>/</span> RECEPÇÃO</p><h1>Folha de diárias</h1><p>Data de <strong>{formatDate(sheetStart)}</strong> a <strong>{formatDate(today)}</strong> · hóspedes ficam na folha até o fim das diárias; períodos valem apenas no dia.</p></div>
-          <span className="sales-operator">Plantonista <strong>{attendant}</strong><button type="button" className="reception-link-button" onClick={changeAttendant}>Trocar</button></span>
+          <div><p className="sales-eyebrow">CAIXA <span>/</span> RECEPÇÃO</p><h1>O que você quer lançar?</h1><p>Toque em uma das opções abaixo para registrar a movimentação do seu plantão.</p></div>
+          <span className="reception-today"><small>Hoje</small><strong>{new Date(`${today}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}</strong></span>
+          <span className="sales-operator reception-duty">Plantonista <strong>{attendant}</strong></span>
         </div>
         {alerts}
 
-        <div className="reception-actions">
-          <button type="button" className="reception-primary" onClick={() => openForm('hospede')}>Adicionar hóspede</button>
-          <button type="button" className="reception-primary" onClick={() => openForm('periodo')}>Adicionar período</button>
-          <button type="button" className="sales-outline-button" onClick={() => { setError(''); setRoomsOpen(true); }}>Cadastrar quartos</button>
-          <Link className="sales-outline-button" to="/vendas">Lançar venda da geladeira →</Link>
+        <div className="action-grid">
+          <ActionCard tone="blue" title="Adicionar hóspede" hint="Check-in com diárias, café, taxa e extras" icon="bed" onClick={() => openForm('hospede')} />
+          <ActionCard tone="gold" title="Adicionar rotativo" hint="Estadia por horas" icon="clock" onClick={() => openForm('periodo')} />
+          <ActionCard tone="red" title="Vender itens da geladeira" hint="Bebidas e itens da recepção" icon="cart" to="/vendas" />
         </div>
 
-        <StaySheet title="Hóspedes" stays={guests} rooms={rooms} loading={loading} isAdmin={isAdmin} onDelete={removeStay} onFill={(room) => openForm('hospede', room)} />
-        <StaySheet title="Períodos" stays={periods} loading={loading} isAdmin={isAdmin} onDelete={removeStay} />
-        <p className="reception-total">Total da folha: <strong>{money(sheetTotal)}</strong></p>
+        {isAdmin && <details className="reception-panel reception-manage">
+          <summary>Plantonistas cadastrados (a escala define quem está de plantão)</summary>
+          <ul className="reception-entries">
+            {attendants.map((item) => <li key={item.id}><strong>{item.name}</strong>{!item.id.startsWith('default-') && <span>
+              <button type="button" className="reception-link-button" onClick={() => renameAttendant(item)}>Renomear</button>
+              <button type="button" className="reception-link-button" onClick={() => removeAttendant(item)}>Excluir</button>
+            </span>}</li>)}
+          </ul>
+          <form className="reception-add" onSubmit={(event) => void addAttendant(event)}>
+            <label className="sales-field"><span>Novo plantonista</span><input value={newName} onChange={(event) => setNewName(event.target.value)} maxLength={60} placeholder="Nome" /></label>
+            <button className="reception-primary" type="submit">Adicionar</button>
+          </form>
+        </details>}
       </main>
 
-      {roomsOpen && <div className="reception-overlay" role="dialog" aria-modal="true" aria-label="Cadastrar quartos">
-        <div className="reception-panel reception-modal">
-          <h2>Quartos da folha</h2>
-          {error && <div className="sales-alert" role="alert">{error}</div>}
-          <form className="reception-room-form" onSubmit={(event) => void addRoom(event)}>
-            <label className="sales-field"><span>Número</span><input value={newRoomNumber} onChange={(event) => setNewRoomNumber(event.target.value)} maxLength={10} required /></label>
-            <label className="sales-field"><span>Tipo</span><select value={newRoomType} onChange={(event) => setNewRoomType(event.target.value as RoomType)}>
-              {SELECTABLE_ROOM_TYPES.map((type) => <option key={type} value={type}>{ROOM_TYPE_LABELS[type]}</option>)}
-            </select></label>
-            <button className="reception-primary" type="submit">Cadastrar</button>
-          </form>
-          {rooms.length === 0 ? <div className="sales-empty">Nenhum quarto cadastrado.</div> : <ul className="reception-entries">
-            {rooms.map((room) => <li key={room.id}><div><strong>Quarto {room.number}</strong><small><BedIcons type={room.type} /></small></div>{isAdmin && <button type="button" className="reception-link-button" onClick={() => removeRoom(room)}>Excluir</button>}</li>)}
-          </ul>}
-          <div className="reception-actions"><button type="button" className="sales-outline-button" onClick={() => setRoomsOpen(false)}>Fechar</button></div>
-        </div>
-      </div>}
-
-      {formKind && <div className="reception-overlay" role="dialog" aria-modal="true" aria-label={formKind === 'periodo' ? 'Adicionar período' : 'Adicionar hóspede'}>
+      {formKind && <div className="reception-overlay" role="dialog" aria-modal="true" aria-label={formKind === 'periodo' ? 'Adicionar rotativo' : 'Adicionar hóspede'}>
         <form className="reception-panel reception-modal" onSubmit={(event) => void submitStay(event)}>
-          <h2>{formKind === 'periodo' ? 'Adicionar período' : 'Adicionar hóspede'}</h2>
+          <div className="reception-modal-head">
+            <h2>{formKind === 'periodo' ? 'Adicionar rotativo' : 'Adicionar hóspede'}</h2>
+            <button type="button" className="reception-close" onClick={cancelForm} aria-label="Fechar">×</button>
+          </div>
           {error && <div className="sales-alert" role="alert">{error}</div>}
           <div className="reception-grid">
-            <label className="sales-field"><span>Data (automática)</span><input value={today.split('-').reverse().join('/')} readOnly /></label>
-            <label className="sales-field"><span>Apartamento</span><input value={roomNumber} list="reception-room-options" onChange={(event) => setRoomNumber(event.target.value)} maxLength={10} required /><datalist id="reception-room-options">{rooms.map((room) => <option key={room.id} value={room.number}>{ROOM_TYPE_LABELS[room.type]}</option>)}</datalist></label>
-            <label className="sales-field reception-wide"><span>Hóspede titular</span><input value={guestName} onChange={(event) => setGuestName(event.target.value)} maxLength={120} required /></label>
+            <label className="sales-field"><span>Data de entrada (digite ou use o calendário)</span><DateInput name="checkInDate" value={checkInDate} onValueChange={setCheckInDate} required /></label>
+            <label className="sales-field"><span>Quarto</span><input value={roomNumber} list="reception-room-options" onChange={(event) => setRoomNumber(event.target.value)} maxLength={10} required /><datalist id="reception-room-options">{allRoomNumbers.map((number) => <option key={number} value={number} />)}</datalist></label>
+            {formKind === 'hospede' && <label className="sales-field reception-wide"><span>Hóspede titular</span><input value={guestName} onChange={(event) => setGuestName(event.target.value)} maxLength={120} required /></label>}
+            {formKind === 'periodo' && <label className="sales-field"><span>Quantidade de horas</span><input type="number" min={1} max={24} value={hours} onChange={(event) => setHours(event.target.value)} /></label>}
             {formKind === 'hospede' && <label className="sales-field"><span>Quantidade de diárias</span><input type="number" min={1} max={60} value={nights} onChange={(event) => setNights(event.target.value)} /></label>}
-            <label className="sales-field"><span>{formKind === 'hospede' ? 'Valor de 1 diária (R$)' : 'Valor do período (R$)'}</span><input inputMode="decimal" value={dailyRate} onChange={(event) => setDailyRate(event.target.value)} required /></label>
-            <label className="sales-field"><span>Forma de pagamento (FP)</span><select value={dailyMethod} onChange={(event) => setDailyMethod(event.target.value as FinancePaymentMethod)}>
+            <label className="sales-field"><span>{formKind === 'hospede' ? 'Valor de 1 diária (R$)' : 'Valor do rotativo (R$)'}</span><input inputMode="decimal" value={dailyRate} onChange={(event) => setDailyRate(event.target.value)} required /></label>
+            <label className="sales-field"><span>{splitPayment ? '1ª forma de pagamento' : 'Forma de pagamento (FP)'}</span><select value={dailyMethod} onChange={(event) => setDailyMethod(event.target.value as FinancePaymentMethod)}>
               {FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}
             </select></label>
-            {formKind === 'periodo' && <p className="reception-hint reception-wide">Período com duração fixa de 4 horas, sem café da manhã e sem taxa.</p>}
-            {formKind === 'hospede' && <label className="reception-check reception-wide"><input type="checkbox" checked={hasBreakfast} onChange={(event) => setHasBreakfast(event.target.checked)} /> Inclui café da manhã</label>}
-            {formKind === 'hospede' && hasBreakfast && <label className="sales-field reception-wide"><span>Valor do café por dia (R$)</span><input inputMode="decimal" value={breakfastRate} onChange={(event) => setBreakfastRate(event.target.value)} /></label>}
-            {formKind === 'hospede' && <><label className="sales-field"><span>Taxa (R$)</span><input inputMode="decimal" value={taxAmount} onChange={(event) => setTaxAmount(event.target.value)} /></label>
-            <label className="sales-field"><span>Pagamento da taxa</span><select value={taxMethod} onChange={(event) => setTaxMethod(event.target.value as FinancePaymentMethod)}>
-              {FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{taxLabel(method)}</option>)}
-            </select></label></>}
+            <label className="reception-check reception-wide"><input type="checkbox" checked={splitPayment} onChange={(event) => setSplitPayment(event.target.checked)} /> Combinar pagamento (o cliente vai pagar com duas formas)</label>
+            {splitPayment && <div className="reception-split reception-wide">
+              <label className="sales-field"><span>2ª forma de pagamento</span><select value={splitMethod} onChange={(event) => setSplitMethod(event.target.value as FinancePaymentMethod)}>
+                {FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}
+              </select></label>
+              <label className="sales-field"><span>Valor na 2ª forma (R$)</span><input inputMode="decimal" value={splitAmount} onChange={(event) => setSplitAmount(event.target.value)} /></label>
+              <p className="reception-hint">{dailyTotal > 0 && draftSplit > 0 && draftSplit < dailyTotal
+                ? <>{PAYMENT_METHOD_LABELS[dailyMethod]}: <strong>{money(dailyTotal - draftSplit)}</strong> · {PAYMENT_METHOD_LABELS[splitMethod]}: <strong>{money(draftSplit)}</strong></>
+                : 'Informe quanto será pago na 2ª forma; o restante da diária fica na 1ª.'}</p>
+            </div>}
+            {formKind === 'periodo' && <p className="reception-hint reception-wide">Rotativo por hora, sem café da manhã e sem taxa. Altere a quantidade de horas se precisar.</p>}
+            {formKind === 'hospede' && <div className="reception-optional reception-wide">
+              <label className="reception-check"><input type="checkbox" checked={hasBreakfast} onChange={(event) => setHasBreakfast(event.target.checked)} /> Inclui café da manhã</label>
+              {hasBreakfast && <label className="reception-small-field"><span>Café por dia (R$)</span><input inputMode="decimal" value={breakfastRate} onChange={(event) => setBreakfastRate(event.target.value)} /></label>}
+            </div>}
+            {formKind === 'hospede' && <div className="reception-optional reception-wide">
+              <label className="reception-check"><input type="checkbox" checked={hasTax} onChange={(event) => setHasTax(event.target.checked)} /> Cobrar taxa</label>
+              {hasTax && <>
+                <label className="reception-small-field"><span>Taxa (R$)</span><input inputMode="decimal" value={taxAmount} onChange={(event) => setTaxAmount(event.target.value)} /></label>
+                <label className="reception-small-field"><span>Pagamento da taxa</span><select value={taxMethod} onChange={(event) => setTaxMethod(event.target.value as FinancePaymentMethod)}>
+                  {FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{taxLabel(method)}</option>)}
+                </select></label>
+              </>}
+            </div>}
           </div>
 
-          <div className="reception-extras">
+          {formKind === 'hospede' && <div className="reception-extras">
             <div className="reception-extras-head"><strong>Extras</strong>
-              <span>{(Object.keys(EXTRA_LABELS) as ExtraType[]).map((type) => <button key={type} type="button" className="reception-chip" onClick={() => addExtra(type)}>+ {EXTRA_LABELS[type]}</button>)}</span>
+              <span>{SELECTABLE_EXTRAS.map((type) => <button key={type} type="button" className="reception-chip" onClick={() => addExtra(type)}>+ {EXTRA_LABELS[type]}</button>)}</span>
             </div>
             {extras.map((extra) => (
               <div key={extra.id} className="reception-extra-row">
@@ -332,91 +331,22 @@ export function CaixaRecepcao({ userRole }: { userRole: UserRole }) {
                   ? <input aria-label="Descrição do extra" placeholder="Descrição" value={extra.label} onChange={(event) => updateExtra(extra.id, { label: event.target.value })} maxLength={60} />
                   : <strong>{extra.label}</strong>}
                 <input aria-label={`Valor de ${extra.label || 'extra'}`} inputMode="decimal" placeholder="Valor (R$)" value={extra.amount} onChange={(event) => updateExtra(extra.id, { amount: event.target.value })} />
-                <select aria-label="Tipo de cobrança" value={extra.mode} onChange={(event) => updateExtra(extra.id, { mode: event.target.value as ExtraMode })}>
-                  <option value="fixo">Valor fixo</option>
-                  <option value="por_diaria">Varia com as diárias</option>
+                <select aria-label="Forma de pagamento do extra" value={extra.method} onChange={(event) => updateExtra(extra.id, { method: event.target.value as FinancePaymentMethod })}>
+                  {FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}
                 </select>
                 <button type="button" className="reception-link-button" onClick={() => setExtras((current) => current.filter((item) => item.id !== extra.id))}>Remover</button>
               </div>
             ))}
-          </div>
+          </div>}
 
-          <label className="sales-field"><span>Observações</span><textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} rows={2} /></label>
+          <label className="reception-note"><span>Observações</span><textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} rows={3} placeholder="Escreva aqui qualquer informação importante sobre este registro" /></label>
           <p className="reception-total">Total: <strong>{money(draftTotal)}</strong></p>
           <div className="reception-actions">
-            <button className="reception-primary" type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar na folha'}</button>
-            <button type="button" className="sales-outline-button" onClick={() => setFormKind(null)}>Cancelar</button>
+            <button className="reception-primary" type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar Registro'}</button>
+            <button type="button" className="sales-outline-button" onClick={cancelForm}>Cancelar</button>
           </div>
         </form>
       </div>}
     </div>
-  );
-}
-
-const ROOM_SHORT_LABELS: Record<RoomType, string> = {
-  casal: 'Casal', casal_twin: 'Casal (Twin)', solteiro: 'Solteiro', triplo_casal_solteiro: 'Triplo', triplo_solteiros: 'Triplo', triplo: 'Triplo',
-};
-
-function BedIcon({ double }: { double: boolean }) {
-  return (
-    <svg className="bed-icon" width={double ? 26 : 20} height="16" viewBox={double ? '0 0 26 16' : '0 0 20 16'} aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-      <path d={double ? 'M1 14V2M25 14v-3M1 11h24V8a2 2 0 0 0-2-2H3v5M4 6V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1M14 6V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v1' : 'M1 14V2M19 14v-3M1 11h18V8a2 2 0 0 0-2-2H3v5M4 6V5a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v1'} />
-    </svg>
-  );
-}
-
-function BedIcons({ type }: { type: RoomType }) {
-  return (
-    <span className="bed-icons" title={ROOM_TYPE_LABELS[type]}>
-      <span className="bed-icons-row">{ROOM_BEDS[type].map((bed, index) => <BedIcon key={index} double={bed === 'd'} />)}</span>
-      <span className="bed-icons-label">{ROOM_SHORT_LABELS[type]}</span>
-      <span className="sr-only">{ROOM_TYPE_LABELS[type]}</span>
-    </span>
-  );
-}
-
-function StaySheet({ title, stays, rooms, loading, isAdmin, onDelete, onFill }: {
-  title: string; stays: GuestStay[]; rooms?: ReceptionRoom[]; loading: boolean; isAdmin: boolean; onDelete: (stay: GuestStay) => void; onFill?: (room: string) => void;
-}) {
-  const rows: { key: string; room?: ReceptionRoom; stay?: GuestStay }[] = rooms
-    ? [
-      ...rooms.map((room) => ({ key: room.id, room, stay: stays.find((stay) => stay.roomNumber === room.number) })),
-      ...stays.filter((stay) => !rooms.some((room) => room.number === stay.roomNumber)).map((stay) => ({ key: stay.id, stay })),
-    ]
-    : stays.map((stay) => ({ key: stay.id, stay }));
-  return (
-    <section className="reception-panel reception-sheet">
-      <h2>{title}</h2>
-      {loading ? <div className="sales-empty">Carregando folha...</div> : rows.length === 0 ? <div className="sales-empty">{rooms ? 'Cadastre os quartos para exibi-los na folha.' : 'Nenhum lançamento em aberto.'}</div> : <div className="reception-table-wrap"><table className="reception-table">
-        <thead><tr><th>Apto</th>{rooms && <th>Tipo</th>}<th>Hóspede</th><th>Entrada</th><th>Diária</th><th>FP</th><th>Café</th><th>Tx</th><th>Extras</th><th>Obs.</th><th>Total</th><th /></tr></thead>
-        <tbody>
-          {rows.map(({ key, room, stay }) => stay ? (
-            <tr key={key}>
-              <td><strong>{stay.roomNumber}</strong></td>
-              {rooms && <td>{room ? <BedIcons type={room.type} /> : '—'}</td>}
-              <td>{stay.guestName}<small>Plantão {stay.attendant}</small></td>
-              <td>{formatDate(stay.checkInDate)}</td>
-              <td>{stay.kind === 'hospede' ? `${money(stay.dailyRate)} × ${stay.nights}` : '4 horas'}<small>{money(stay.dailyRate * stay.nights)}</small></td>
-              <td>{PAYMENT_METHOD_LABELS[stay.dailyMethod]}</td>
-              <td>{stay.hasBreakfast ? <>{money(stay.breakfastRate * stay.nights)}{stay.kind === 'hospede' && <small>{money(stay.breakfastRate)}/dia</small>}</> : '—'}</td>
-              <td>{stay.taxAmount > 0 ? <>{money(stay.taxAmount)}<small>{taxLabel(stay.taxMethod)}</small></> : '—'}</td>
-              <td>{(stay.extras ?? []).length === 0 ? '—' : (stay.extras ?? []).map((extra) => <small key={extra.id}>{extra.label}: {money(extraTotal(extra, stay.nights))} ({extra.mode === 'fixo' ? 'fixo' : `${money(extra.amount)}/dia`})</small>)}</td>
-              <td>{stay.note || '—'}</td>
-              <td><strong>{money(stayTotals(stay).total)}</strong></td>
-              <td className="reception-row-actions">
-                {isAdmin && <button type="button" className="reception-link-button" onClick={() => onDelete(stay)}>Excluir</button>}
-              </td>
-            </tr>
-          ) : room && (
-            <tr key={key} className="reception-vacant">
-              <td><strong>{room.number}</strong></td>
-              <td><BedIcons type={room.type} /></td>
-              <td colSpan={8}>Livre</td>
-              <td className="reception-row-actions"><button type="button" className="reception-link-button" onClick={() => onFill?.(room.number)}>Lançar</button></td>
-            </tr>
-          ))}
-        </tbody>
-      </table></div>}
-    </section>
   );
 }

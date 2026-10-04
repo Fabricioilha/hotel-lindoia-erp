@@ -2,9 +2,10 @@ import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
+import { AppShell } from './components/layout/Sidebar';
 import { observeAuth, readUserRole, signInUser, signOutUser } from './services/authStore';
 import type { UserRole } from './types';
-import { ATTENDANT_STORAGE_KEY } from './types/reception';
+import { useAttendant } from './services/useAttendant';
 
 const PainelEstoque = lazy(() => import('./pages/estoque/PainelEstoque').then((module) => ({ default: module.PainelEstoque })));
 const VendaGeladeira = lazy(() => import('./pages/VendaGeladeira').then((module) => ({ default: module.VendaGeladeira })));
@@ -13,6 +14,10 @@ const FluxoDeCaixa = lazy(() => import('./pages/financeiro/FluxoDeCaixa').then((
 const FolhaDePagamento = lazy(() => import('./pages/financeiro/FolhaDePagamento').then((module) => ({ default: module.FolhaDePagamento })));
 const ListaQuartos = lazy(() => import('./pages/camareiras/ListaQuartos').then((module) => ({ default: module.ListaQuartos })));
 const MapaReservas = lazy(() => import('./pages/reservas/MapaReservas').then((module) => ({ default: module.MapaReservas })));
+const ControleLimpeza = lazy(() => import('./pages/limpeza/ControleLimpeza').then((module) => ({ default: module.ControleLimpeza })));
+const SaidaProdutos = lazy(() => import('./pages/saidas/SaidaProdutos').then((module) => ({ default: module.SaidaProdutos })));
+const SaidaCaixa = lazy(() => import('./pages/caixa/SaidaCaixa').then((module) => ({ default: module.SaidaCaixa })));
+const ConferirCaixa = lazy(() => import('./pages/caixa/ConferirCaixa').then((module) => ({ default: module.ConferirCaixa })));
 const CaixaRecepcao = lazy(() => import('./pages/caixa/CaixaRecepcao').then((module) => ({ default: module.CaixaRecepcao })));
 
 const FONT_SCALES = [1, 1.15, 1.3, 1.5];
@@ -41,7 +46,8 @@ function ThemeToggle() {
 
 function VendaRoute({ userRole }: { userRole: UserRole }) {
   const isAdmin = userRole === 'admin';
-  const actor = isAdmin ? 'Gerência' : sessionStorage.getItem(ATTENDANT_STORAGE_KEY) || 'Equipe';
+  const attendant = useAttendant();
+  const actor = isAdmin ? 'Gerência' : attendant || 'Equipe';
   return <Suspense fallback={<div role="status">Carregando vendas...</div>}><VendaGeladeira actor={actor} isAdmin={isAdmin} /></Suspense>;
 }
 
@@ -96,6 +102,11 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (userRole) document.documentElement.dataset.role = userRole;
+    else delete document.documentElement.dataset.role;
+  }, [userRole]);
+
   async function handleLogin(email: string, password: string) {
     setUserRole(await signInUser(email, password));
   }
@@ -116,6 +127,7 @@ function App() {
           } 
         />
         
+        <Route element={<ProtectedRoute userRole={userRole}><AppShell userRole={userRole} onLogout={() => void handleLogout()} /></ProtectedRoute>}>
         <Route 
           path="/" 
           element={
@@ -149,6 +161,38 @@ function App() {
           }
         />
         <Route
+          path="/saida-caixa"
+          element={
+            <ProtectedRoute userRole={userRole}>
+              <Suspense fallback={<div role="status">Carregando...</div>}><SaidaCaixa userRole={userRole} /></Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/conferir-caixa"
+          element={
+            <ProtectedRoute userRole={userRole}>
+              <Suspense fallback={<div role="status">Carregando...</div>}><ConferirCaixa userRole={userRole} /></Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/limpeza"
+          element={
+            <ProtectedRoute userRole={userRole}>
+              <Suspense fallback={<div role="status">Carregando limpeza...</div>}><ControleLimpeza userRole={userRole} /></Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
+          path="/saidas"
+          element={
+            <ProtectedRoute userRole={userRole}>
+              <Suspense fallback={<div role="status">Carregando saídas...</div>}><SaidaProdutos userRole={userRole} /></Suspense>
+            </ProtectedRoute>
+          }
+        />
+        <Route
           path="/escala"
           element={
             <ProtectedRoute userRole={userRole}>
@@ -175,6 +219,7 @@ function App() {
         <Route path="/financeiro" element={<Navigate to="/financeiro/caixa" replace />} />
         <Route path="/financeiro/caixa" element={<ManagementRoute userRole={userRole}><Suspense fallback={<div role="status">Carregando fluxo financeiro...</div>}><FluxoDeCaixa /></Suspense></ManagementRoute>} />
         <Route path="/financeiro/folha" element={<ManagementRoute userRole={userRole}><Suspense fallback={<div role="status">Carregando folha...</div>}><FolhaDePagamento /></Suspense></ManagementRoute>} />
+        </Route>
       </Routes>}
     </BrowserRouter>
   );
