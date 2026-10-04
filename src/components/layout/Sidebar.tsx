@@ -2,6 +2,7 @@ import { useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import type { UserRole } from '../../types';
 import { DutyContext } from '../../services/dutyContext';
+import { FloatCheckGate } from './FloatCheckGate';
 import { useDuty, useDutyRoster } from '../../services/useAttendant';
 import { SidebarSlotContext } from './sidebarSlot';
 import './sidebar.css';
@@ -125,7 +126,7 @@ export function AppShell({ userRole, onLogout }: { userRole: UserRole; onLogout:
         </div>
       </aside>
       <div className="app-shell-main">
-        <DutyContext.Provider value={duty}><SidebarSlotContext.Provider value={slot}><ShiftEndBanner /><Outlet /></SidebarSlotContext.Provider></DutyContext.Provider>
+        <DutyContext.Provider value={duty}><SidebarSlotContext.Provider value={slot}><ShiftEndBanner />{!isAdmin && <FloatCheckGate />}<Outlet /></SidebarSlotContext.Provider></DutyContext.Provider>
       </div>
     </div>
   );

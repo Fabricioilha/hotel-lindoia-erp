@@ -52,3 +52,19 @@
 
 .shift-banner { position: sticky; top: 0; z-index: 30; padding: 10px 18px; color: #6b4a07; background: #fff1c2; border-bottom: 2px solid #e0b24a; font-size: 0.875rem; font-weight: 700; }
 .shift-banner a { color: #8f1d2e; }
+
+.float-gate { position: fixed; z-index: 100; inset: 0; display: grid; place-items: center; padding: 20px; background: rgb(20 43 77 / 70%); }
+.float-box { display: grid; gap: 14px; width: min(100%, 520px); padding: 28px; border-radius: 14px; color: #172a46; background: #fff; box-shadow: 0 20px 60px rgb(0 0 0 / 35%); font-family: "DM Sans", "Avenir Next", sans-serif; }
+.float-box h2 { margin: 0; color: #142b4d; font-size: 1.5rem; }
+.float-box p { margin: 0; font-size: 1.0625rem; line-height: 1.5; }
+.float-eyebrow { color: #c52e43; font-size: 0.6875rem !important; font-weight: 800; letter-spacing: 1.2px; }
+.float-error { padding: 10px 12px; border-radius: 6px; color: #8f1d2e; background: #fde8eb; font-size: 0.875rem; font-weight: 600; }
+.float-actions { display: grid; gap: 10px; }
+.float-yes, .float-no, .float-back { min-height: 56px; border-radius: 10px; font: inherit; font-size: 1.0625rem; font-weight: 800; cursor: pointer; transition: transform 100ms ease, filter 100ms ease; }
+.float-yes { border: 0; color: #fff; background: #1f7a4a; }
+.float-no { border: 2px solid #b22a3e; color: #b22a3e; background: #fff; }
+.float-back { border: 1px solid #b8c5d8; color: #476184; background: #fff; min-height: 44px; }
+.float-yes:hover:not(:disabled), .float-no:hover:not(:disabled) { transform: translateY(-1px); filter: brightness(1.05); }
+.float-form { display: grid; gap: 12px; }
+.float-form label { display: grid; gap: 4px; color: #556580; font-size: 0.8125rem; font-weight: 700; }
+.float-form input, .float-form textarea { padding: 10px 12px; border: 2px solid #cdd6e3; border-radius: 8px; font: inherit; font-size: 1rem; }

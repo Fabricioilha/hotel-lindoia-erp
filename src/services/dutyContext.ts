@@ -5,6 +5,7 @@ export interface DutyState {
   attendant: string;
   duty: Duty | null;
   minutesLeft: number | null;
+  previous: string;
 }
 
-export const DutyContext = createContext<DutyState>({ attendant: '', duty: null, minutesLeft: null });
+export const DutyContext = createContext<DutyState>({ attendant: '', duty: null, minutesLeft: null, previous: '' });

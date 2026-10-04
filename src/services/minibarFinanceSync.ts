@@ -5,7 +5,8 @@ import type { InventoryData } from '../types/inventory';
 import type { FrigobarSale } from '../types/frigobar';
 import type { FinancePaymentMethod } from '../types/finance';
 import type { MinibarPaymentMethod } from '../types/inventory';
-import { recordOperationalIncome } from './operationalIncome';
+import { recordOperationalIncomes, type OperationalIncomeInput } from './operationalIncome';
+import { localDateKey } from './receptionStore';
 
 export function useMinibarFinanceSync(data: InventoryData, setError: Dispatch<SetStateAction<string>>) {
   const syncingIds = useRef(new Set<string>());
@@ -46,19 +47,20 @@ export function useFrigobarFinanceSync(sales: Record<string, FrigobarSale>, isAd
       cartao_debito: 'debit',
       cartao_credito: 'credit',
     };
-    Object.values(sales).filter((sale) => sale.settlement !== 'cobrar_no_checkout').forEach((sale) => {
-      if (!sale.paymentMethod) return;
-      void recordOperationalIncome({
+    const inputs: OperationalIncomeInput[] = [];
+    Object.values(sales).filter((sale) => sale.settlement !== 'cobrar_no_checkout' && sale.paymentMethod).forEach((sale) => {
+      inputs.push({
         id: `frigobar-${sale.id}`,
-        date: (sale.settledAt ?? sale.createdAt).slice(0, 10),
+        date: localDateKey(new Date(sale.settledAt ?? sale.createdAt)),
         category: 'Consumo',
         description: sale.items.map((item) => `${item.productName} × ${item.quantity}`).join(', '),
         amount: sale.amount,
-        paymentMethod: paymentMethods[sale.paymentMethod],
+        paymentMethod: paymentMethods[sale.paymentMethod as MinibarPaymentMethod],
         note: ['Geladeira - Recepção', sale.roomNumber ? `Quarto ${sale.roomNumber}` : '', sale.guestName].filter(Boolean).join(' · '),
-      }).catch((cause: unknown) => {
-        setError(cause instanceof Error ? `Venda da recepção não conciliada no Financeiro: ${cause.message}` : 'Venda da recepção não conciliada no Financeiro.');
       });
+    });
+    void recordOperationalIncomes(inputs).catch((cause: unknown) => {
+      setError(cause instanceof Error ? `Venda da recepção não conciliada no Financeiro: ${cause.message}` : 'Venda da recepção não conciliada no Financeiro.');
     });
   }, [isAdmin, sales, setError]);
 }

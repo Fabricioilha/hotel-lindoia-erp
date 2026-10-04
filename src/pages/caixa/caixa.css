@@ -47,3 +47,7 @@
 .cx-methods { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
 .cx-methods li { display: flex; justify-content: space-between; padding: 10px 12px; border-radius: 8px; background: #f1f6fc; font-size: 0.875rem; }
 
+.cx-delete { margin-left: 12px; border: 0; color: #b22a3e; background: none; font: inherit; font-size: 0.75rem; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.cx-stat.is-store { background: #6a3f9a; }
+.cx-float { margin: 0; padding: 8px 12px; border-radius: 8px; background: #f1f6fc; color: #556580; font-size: 0.8125rem; }
+.cx-float.is-diff { color: #8f1d2e; background: #fde8eb; font-weight: 600; }

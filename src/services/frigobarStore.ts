@@ -1,5 +1,6 @@
 import { get, onValue, ref, runTransaction, set } from 'firebase/database';
 import { db } from '../config/firebase';
+import { updateFinance } from './financeStore';
 import type { InventoryData, MinibarPaymentMethod, MinibarSettlement, StockProduct } from '../types/inventory';
 import type { FrigobarData, FrigobarOperations, FrigobarProduct, FrigobarSale } from '../types/frigobar';
 
@@ -145,6 +146,27 @@ export async function createFrigobarSale(input: {
     return { ...current, stock, sales: { ...current.sales, [sale.id]: sale } };
   });
   if (!result.committed) throw new Error('A venda não foi confirmada. Atualize o saldo e tente novamente.');
+}
+
+// Exclui a venda, devolve os itens ao saldo da geladeira e remove a receita do Financeiro.
+export async function deleteFrigobarSale(sale: FrigobarSale): Promise<void> {
+  const result = await runTransaction(ref(db, OPERATIONS_PATH), (value) => {
+    const current = normalizeOperations(value);
+    if (!current.sales[sale.id]) return current;
+    const sales = { ...current.sales };
+    delete sales[sale.id];
+    const stock = { ...current.stock };
+    sale.items.forEach((item) => { stock[item.productId] = Number(stock[item.productId] ?? 0) + item.quantity; });
+    return { ...current, sales, stock };
+  });
+  if (!result.committed) throw new Error('Não foi possível excluir a venda da geladeira.');
+  await updateFinance((current) => {
+    const id = `frigobar-${sale.id}`;
+    if (!current.incomes[id]) return current;
+    const incomes = { ...current.incomes };
+    delete incomes[id];
+    return { ...current, incomes };
+  });
 }
 
 export async function settleFrigobarSale(saleId: string, paymentMethod: MinibarPaymentMethod, actor: string): Promise<void> {

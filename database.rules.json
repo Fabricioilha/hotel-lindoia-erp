@@ -105,6 +105,12 @@
             ".validate": "newData.child('id').val() === $roomId && newData.child('number').isString() && newData.child('number').val().length > 0 && (newData.child('type').val() === 'casal' || newData.child('type').val() === 'casal_twin' || newData.child('type').val() === 'solteiro' || newData.child('type').val() === 'triplo_casal_solteiro' || newData.child('type').val() === 'triplo_solteiros' || newData.child('type').val() === 'triplo')"
           }
         },
+        "floatChecks": {
+          "$checkId": {
+            ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists()))",
+            ".validate": "newData.child('id').val() === $checkId && newData.child('attendant').isString() && newData.child('expected').isNumber() && newData.child('counted').isNumber() && newData.child('counted').val() >= 0 && (newData.child('counted').val() === newData.child('expected').val() || (newData.child('justification').isString() && newData.child('justification').val().length > 0))"
+          }
+        },
         "cashOuts": {
           "$cashOutId": {
             ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists()))",

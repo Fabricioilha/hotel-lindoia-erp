@@ -75,6 +75,8 @@ export interface FinanceData {
   incomeCategories: string[];
   expenseCategories: string[];
   auditLog: Record<string, AuditEvent>;
+  // Ids de lançamentos automáticos excluídos pela gerência; a sincronização não os recria.
+  suppressed: Record<string, boolean>;
 }
 
 export const INCOME_CATEGORIES = [

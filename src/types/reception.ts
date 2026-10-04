@@ -63,11 +63,24 @@ export interface CashOut {
 
 export const CASH_OUT_REASONS = ['Mercado', 'Padaria', 'Farmácia', 'Material de limpeza', 'Manutenção', 'Outros'];
 
+export const FLOAT_AMOUNT = 300;
+
+export interface FloatCheck {
+  id: string;
+  attendant: string;
+  previousAttendant: string;
+  expected: number;
+  counted: number;
+  justification: string;
+  createdAt: string;
+}
+
 export interface ReceptionData {
   attendants: Record<string, Attendant>;
   stays: Record<string, GuestStay>;
   rooms: Record<string, ReceptionRoom>;
   cashOuts: Record<string, CashOut>;
+  floatChecks: Record<string, FloatCheck>;
 }
 
 export type RoomType = 'casal' | 'casal_twin' | 'solteiro' | 'triplo_casal_solteiro' | 'triplo_solteiros' | 'triplo';

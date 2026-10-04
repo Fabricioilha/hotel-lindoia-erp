@@ -35,5 +35,6 @@ export function useDutyRoster(enabled: boolean): DutyState {
   }, [enabled]);
 
   const duty = enabled ? currentDuty(schedule.days, names, now) : null;
-  return { attendant: duty?.name ?? '', duty, minutesLeft: duty ? Math.ceil((duty.end.getTime() - now.getTime()) / 60000) : null };
+  const previous = duty ? currentDuty(schedule.days, names, new Date(duty.start.getTime() - 60000))?.name ?? '' : '';
+  return { attendant: duty?.name ?? '', duty, previous, minutesLeft: duty ? Math.ceil((duty.end.getTime() - now.getTime()) / 60000) : null };
 }

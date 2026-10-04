@@ -17,6 +17,7 @@ export function emptyFinance(): FinanceData {
     incomeCategories: [...INCOME_CATEGORIES],
     expenseCategories: [...EXPENSE_CATEGORIES],
     auditLog: {},
+    suppressed: {},
   };
 }
 
@@ -65,6 +66,7 @@ function normalizeFinance(value: unknown): FinanceData {
         && !DEPRECATED_INCOME_CATEGORIES.some((deprecated) => deprecated.toLocaleLowerCase('pt-BR') === category.toLocaleLowerCase('pt-BR'))),
     expenseCategories: normalizeCategories(data.expenseCategories, EXPENSE_CATEGORIES),
     auditLog: data.auditLog ?? {},
+    suppressed: data.suppressed ?? {},
   };
 }
 

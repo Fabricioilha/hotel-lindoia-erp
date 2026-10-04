@@ -268,8 +268,8 @@ export function FluxoDeCaixa() {
 	async function removeRecord(kind: 'entrada' | 'saida' | 'transferencia', recordId: string) {
 		if (!window.confirm('Excluir este lançamento? Esta ação não pode ser desfeita.')) return;
 		await commit((latest) => {
-			if (kind === 'entrada') { const next = { ...latest.incomes }; delete next[recordId]; return { ...latest, incomes: next }; }
-			if (kind === 'saida') { const next = { ...latest.expenses }; delete next[recordId]; return { ...latest, expenses: next }; }
+			if (kind === 'entrada') { const next = { ...latest.incomes }; delete next[recordId]; return { ...latest, incomes: next, suppressed: { ...latest.suppressed, [recordId]: true } }; }
+			if (kind === 'saida') { const next = { ...latest.expenses }; delete next[recordId]; return { ...latest, expenses: next, suppressed: { ...latest.suppressed, [recordId]: true } }; }
 			const next = { ...latest.transfers }; delete next[recordId]; return { ...latest, transfers: next };
 		}, 'Lançamento excluído.');
 	}
