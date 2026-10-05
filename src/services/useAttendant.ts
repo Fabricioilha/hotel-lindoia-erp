@@ -1,4 +1,3 @@
-// src/services/useAttendant.ts
 import { useContext, useEffect, useState } from 'react';
 import { DutyContext, type DutyState } from './dutyContext';
 import { currentDuty } from './dutyRoster';
@@ -37,5 +36,5 @@ export function useDutyRoster(enabled: boolean): DutyState {
 
   const duty = enabled ? currentDuty(schedule.days, names, now) : null;
   const previous = duty ? currentDuty(schedule.days, names, new Date(duty.start.getTime() - 60000))?.name ?? '' : '';
-  return { attendant: duty?.name ?? '', duty, previous, minutesLeft: duty ? Math.ceil((duty.end.getTime() - now.getTime()) / 60000) : null, availableAttendants: names };
+  return { attendant: duty?.name ?? '', duty, previous, minutesLeft: duty ? Math.ceil((duty.end.getTime() - now.getTime()) / 60000) : null };
 }

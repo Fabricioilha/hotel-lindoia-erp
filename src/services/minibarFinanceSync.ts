@@ -40,6 +40,7 @@ export function useMinibarFinanceSync(data: InventoryData, setError: Dispatch<Se
 
 export function useFrigobarFinanceSync(sales: Record<string, FrigobarSale>, isAdmin: boolean, setError: Dispatch<SetStateAction<string>>) {
   useEffect(() => {
+    if (!isAdmin) return;
     const paymentMethods: Record<MinibarPaymentMethod, FinancePaymentMethod> = {
       dinheiro: 'cash',
       pix: 'pix',

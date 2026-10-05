@@ -1,4 +1,3 @@
-// src/services/dutyContext.ts
 import { createContext } from 'react';
 import type { Duty } from './dutyRoster';
 
@@ -7,7 +6,6 @@ export interface DutyState {
   duty: Duty | null;
   minutesLeft: number | null;
   previous: string;
-  availableAttendants: string[];
 }
 
-export const DutyContext = createContext<DutyState>({ attendant: '', duty: null, minutesLeft: null, previous: '', availableAttendants: [] });
+export const DutyContext = createContext<DutyState>({ attendant: '', duty: null, minutesLeft: null, previous: '' });

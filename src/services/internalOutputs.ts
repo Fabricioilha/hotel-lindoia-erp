@@ -103,6 +103,7 @@ export function useInternalOutputSync(isAdmin: boolean, setError: Dispatch<SetSt
   const applying = useRef(new Set<string>());
 
   useEffect(() => {
+    if (!isAdmin) return;
     const fail = (cause: unknown) => setError(cause instanceof Error ? `Saída de produtos não conciliada: ${cause.message}` : 'Saída de produtos não conciliada.');
     const stopInventory = subscribeInventory((inventory) => void syncOutputsCatalog(inventory).catch(fail), fail);
     const stopRecords = onValue(ref(db, `${PATH}/records`), (snapshot) => {

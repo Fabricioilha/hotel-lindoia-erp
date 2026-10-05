@@ -6,7 +6,7 @@ import type { FinancePaymentMethod } from '../types/finance';
 import type { HousekeepingData, Reservation, ReservationCollection, ReservationExtra, ReservationStatus } from '../types/housekeeping';
 import { reservationOverlaps } from './reservationAnalytics';
 
-const USE_LOCAL_STORAGE = false;
+const USE_LOCAL_STORAGE = import.meta.env.VITE_USE_LOCAL_STORAGE === 'true';
 const STORAGE_KEY = 'hotel-lindoia:housekeeping:v1';
 const LOCAL_UPDATE_EVENT = 'hotel-lindoia:housekeeping-updated';
 

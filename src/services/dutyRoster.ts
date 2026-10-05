@@ -4,8 +4,6 @@ export interface Duty {
   name: string;
   start: Date;
   end: Date;
-  originalTime: string;
-  dateKey: string;
 }
 
 const keyOf = (date: Date) => `${date.getFullYear()}-${date.getMonth()}-${date.getDate()}`;
@@ -22,17 +20,14 @@ export function currentDuty(days: ScheduleData, attendantNames: string[], now: D
   let best: Duty | null = null;
   [-1, 0].forEach((offset) => {
     const day = new Date(now.getFullYear(), now.getMonth(), now.getDate() + offset);
-    const key = keyOf(day);
-    (days[key] ?? []).forEach((shift) => {
+    (days[keyOf(day)] ?? []).forEach((shift) => {
       if (shift.type !== 'normal' || !allowed.has(shift.name.trim().toLocaleLowerCase('pt-BR'))) return;
       const [from = '', to = ''] = shift.time.split(' às ');
       const start = atTime(day, from);
       let end = atTime(day, to);
       if (!start || !end) return;
       if (end <= start) end = atTime(day, to, 1) as Date;
-      if (start <= now && now < end && (!best || start > best.start)) {
-        best = { name: shift.name.trim(), start, end, originalTime: shift.time, dateKey: key };
-      }
+      if (start <= now && now < end && (!best || start > best.start)) best = { name: shift.name.trim(), start, end };
     });
   });
   return best;
