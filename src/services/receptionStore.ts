@@ -61,7 +61,6 @@ const ensuredCashOuts = new Set<string>();
 // Roda na sessão da gerência: lança as saídas de caixa como despesas pagas em dinheiro.
 export function useCashOutFinanceSync(cashOuts: Record<string, CashOut>, isAdmin: boolean, setError: Dispatch<SetStateAction<string>>) {
   useEffect(() => {
-    if (!isAdmin) return;
     const pending = Object.values(cashOuts).filter((cashOut) => !ensuredCashOuts.has(cashOut.id));
     if (pending.length === 0) return;
     void updateFinance((current) => {
@@ -111,7 +110,6 @@ export async function deleteCashOut(id: string): Promise<void> {
 
 export function useReceptionFinanceSync(stays: Record<string, GuestStay>, isAdmin: boolean, setError: Dispatch<SetStateAction<string>>) {
   useEffect(() => {
-    if (!isAdmin) return;
     const report = (cause: unknown) => setError(cause instanceof Error ? `Caixa - Recepção não conciliado no Financeiro: ${cause.message}` : 'Caixa - Recepção não conciliado no Financeiro.');
     const inputs: OperationalIncomeInput[] = [];
     Object.values(stays).forEach((stay) => {

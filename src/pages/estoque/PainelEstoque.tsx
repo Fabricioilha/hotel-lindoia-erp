@@ -301,25 +301,19 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
     if (categoryFilter === category.id) setCategoryFilter('todas');
   }
 
-  async function deleteProduct(product: StockProduct) {
-    if (quantityOf(product) > 0) {
-      setStorageError('Este produto ainda tem saldo. Registre uma saída ou arquive-o antes de excluir.');
-      return;
-    }
-    if (movements.some((movement) => movement.productId === product.id)) {
-      setStorageError('Este produto tem movimentações vinculadas e não pode ser excluído sem apagar o histórico. Arquive-o para removê-lo das vendas.');
-      return;
-    }
-    if (!window.confirm(`Excluir o produto "${product.name}"? Esta ação não pode ser desfeita.`)) return;
+async function deleteProduct(product: StockProduct) {
+    if (!window.confirm(`Excluir o produto "${product.name}"? Esta ação excluirá também o histórico de movimentações e não pode ser desfeita.`)) return;
     await commit((current) => {
-      const latest = current.products[product.id];
-      if (!latest) throw new Error('Produto não encontrado.');
-      const hasMovements = Object.values(current.movements).some((movement) => movement.productId === product.id);
-      if (hasMovements || quantityOf(latest) > 0) throw new Error('O produto recebeu estoque ou uma movimentação durante a operação. Ele não foi excluído.');
       const nextProducts = { ...current.products };
       delete nextProducts[product.id];
-      return { ...current, products: nextProducts };
-    }, 'Produto excluído.');
+      const nextMovements = { ...current.movements };
+      Object.keys(nextMovements).forEach(movementId => {
+        if (nextMovements[movementId].productId === product.id) {
+          delete nextMovements[movementId];
+        }
+      });
+      return { ...current, products: nextProducts, movements: nextMovements };
+    }, 'Produto e histórico excluídos.');
   }
 
   async function toggleProductArchive(product: StockProduct) {

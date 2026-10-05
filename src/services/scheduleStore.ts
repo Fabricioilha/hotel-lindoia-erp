@@ -1,6 +1,8 @@
+// src/services/scheduleStore.ts
 import { onValue, ref, runTransaction } from 'firebase/database';
 import { db } from '../config/firebase';
 import type { ScheduleData, Shift } from '../types';
+import type { Duty } from './dutyRoster';
 
 const STORAGE_KEY = 'hotel-lindoia:schedule:v1';
 const LOCAL_UPDATE_EVENT = 'hotel-lindoia:schedule-updated';
@@ -74,4 +76,24 @@ export async function updateSchedule(update: (current: ScheduleStoreData) => Sch
 
 export function withShift(days: ScheduleData, dateKey: string, shift: Shift): ScheduleData {
   return { ...days, [dateKey]: [...(days[dateKey] ?? []), shift] };
+}
+
+export async function transferShift(duty: Duty, nextAttendant: string): Promise<void> {
+  await updateSchedule((current) => {
+    const next = { ...current, days: { ...current.days } };
+    const shifts = [...(next.days[duty.dateKey] || [])];
+    const idx = shifts.findIndex(s => s.name.trim() === duty.name && s.time === duty.originalTime);
+    if (idx >= 0) {
+      const now = new Date();
+      const timeNowStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
+      const [startStr, endStr] = duty.originalTime.split(' às ');
+      
+      const s1 = { ...shifts[idx], time: `${startStr.trim()} às ${timeNowStr}` };
+      const s2 = { ...shifts[idx], id: Date.now(), name: nextAttendant, time: `${timeNowStr} às ${endStr.trim()}` };
+      
+      shifts.splice(idx, 1, s1, s2);
+      next.days[duty.dateKey] = shifts;
+    }
+    return next;
+  });
 }

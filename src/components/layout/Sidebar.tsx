@@ -1,9 +1,11 @@
-import { useState, type ReactNode } from 'react';
+// src/components/layout/Sidebar.tsx
+import { useState, type FormEvent, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import type { UserRole } from '../../types';
 import { DutyContext } from '../../services/dutyContext';
 import { FloatCheckGate } from './FloatCheckGate';
 import { useDuty, useDutyRoster } from '../../services/useAttendant';
+import { transferShift } from '../../services/scheduleStore';
 import { SidebarSlotContext } from './sidebarSlot';
 import './sidebar.css';
 
@@ -83,6 +85,9 @@ export function AppShell({ userRole, onLogout }: { userRole: UserRole; onLogout:
   const [collapsed, setCollapsed] = useState(() => localStorage.getItem('hotel-lindoia:sidebar') === 'collapsed');
   const [closed, setClosed] = useState<Record<string, boolean>>({});
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [transferModalOpen, setTransferModalOpen] = useState(false);
+  const [nextAttendant, setNextAttendant] = useState('');
+  
   const isAdmin = userRole === 'admin';
   const location = useLocation();
   const duty = useDutyRoster(userRole === 'viewer');
@@ -91,6 +96,13 @@ export function AppShell({ userRole, onLogout }: { userRole: UserRole; onLogout:
     const next = !collapsed;
     localStorage.setItem('hotel-lindoia:sidebar', next ? 'collapsed' : 'expanded');
     setCollapsed(next);
+  }
+
+  async function handleTransfer(e: FormEvent) {
+    e.preventDefault();
+    if (!duty.duty || !nextAttendant) return;
+    await transferShift(duty.duty, nextAttendant);
+    setTransferModalOpen(false);
   }
 
   return (
@@ -122,9 +134,41 @@ export function AppShell({ userRole, onLogout }: { userRole: UserRole; onLogout:
 
         <div className="app-sidebar-footer">
           <span className="app-sidebar-profile"><small>{isAdmin ? 'PERFIL' : 'PLANTONISTA'}</small><strong>{isAdmin ? 'Gerência' : duty.attendant || 'Sem plantonista na escala'}</strong></span>
+          {!isAdmin && duty.duty && (
+            <button type="button" className="app-nav-item" onClick={() => setTransferModalOpen(true)} title="Transferir plantão">
+              <Icon name="users" />
+              <span className="app-nav-label">Transferir plantão</span>
+            </button>
+          )}
           <button type="button" className="app-nav-item app-logout" onClick={onLogout} title="Encerrar sessão"><Icon name="logout" /><span className="app-nav-label">Encerrar sessão</span></button>
         </div>
       </aside>
+
+      {transferModalOpen && (
+        <div className="float-gate" role="dialog" aria-modal="true">
+          <div className="float-box">
+            <p className="float-eyebrow">TROCA DE PLANTÃO</p>
+            <h2 id="transfer-title">Transferir Plantão</h2>
+            <p>Selecione o plantonista que assumirá o caixa agora:</p>
+            <form onSubmit={handleTransfer} className="float-form">
+              <label>
+                Plantonista:
+                <select value={nextAttendant} onChange={(e) => setNextAttendant(e.target.value)} required>
+                  <option value="" disabled>Selecione...</option>
+                  {duty.availableAttendants.filter(n => n !== duty.attendant).map(n => (
+                    <option key={n} value={n}>{n}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="float-actions">
+                <button type="submit" className="float-yes">Transferir</button>
+                <button type="button" className="float-back" onClick={() => setTransferModalOpen(false)}>Cancelar</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
       <div className="app-shell-main">
         <DutyContext.Provider value={duty}><SidebarSlotContext.Provider value={slot}><ShiftEndBanner />{!isAdmin && <FloatCheckGate />}<Outlet /></SidebarSlotContext.Provider></DutyContext.Provider>
       </div>
