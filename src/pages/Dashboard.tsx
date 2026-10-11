@@ -39,8 +39,7 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   const location = useLocation();
   const navigate = useNavigate();
   const flash = (location.state as { notice?: string } | null)?.notice;
-  const [temporaryNotice, setTemporaryNotice] = useState('');
-  const [noticeFading, setNoticeFading] = useState(false);
+  const [temporaryNotice, setTemporaryNotice] = useState<{ id: string; message: string } | null>(null);
   const [activeTool, setActiveTool] = useState<DashboardTool | null>(null);
   const [quickReceptionKind, setQuickReceptionKind] = useState<StayKind | null>(null);
   const [housekeeping, setHousekeeping] = useState<HousekeepingData>(emptyHousekeeping());
@@ -54,13 +53,18 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   const [receptionRooms, setReceptionRooms] = useState<Record<string, ReceptionRoom>>({});
   const [roomDirectory, setRoomDirectory] = useState<Record<string, HousekeepingRoom>>({});
   const [reservationDirectory, setReservationDirectory] = useState<Record<string, ReservationDirectoryEntry>>({});
-  const [boardRoomsLoaded, setBoardRoomsLoaded] = useState(false);
-  const [boardReservationsLoaded, setBoardReservationsLoaded] = useState(false);
-  const [boardReceptionLoaded, setBoardReceptionLoaded] = useState(false);
+  const [boardRoomsLoadedKey, setBoardRoomsLoadedKey] = useState('');
+  const [boardReservationsLoadedKey, setBoardReservationsLoadedKey] = useState('');
+  const [boardReceptionLoadedKey, setBoardReceptionLoadedKey] = useState('');
   const [clock, setClock] = useState(() => Date.now());
   const boardTodayKey = localDateKey(new Date(clock));
+  const boardRequestKey = `${userRole}:${boardTodayKey}`;
+  const boardRoomsLoaded = boardRoomsLoadedKey === boardRequestKey;
+  const boardReservationsLoaded = boardReservationsLoadedKey === boardRequestKey;
+  const boardReceptionLoaded = boardReceptionLoadedKey === boardRequestKey;
   const [activeCleaningTasks, setActiveCleaningTasks] = useState<Record<string, CleaningTask>>({});
-  const [boardCleaningLoaded, setBoardCleaningLoaded] = useState(false);
+  const [boardCleaningLoadedRole, setBoardCleaningLoadedRole] = useState<UserRole | null>(null);
+  const boardCleaningLoaded = boardCleaningLoadedRole === userRole;
   const attendant = useAttendant();
   const salesActor = userRole === 'admin' ? 'Gerência' : attendant || 'Equipe';
   const receptionEntryContext = useMemo<ReceptionEntryContext>(() => ({
@@ -82,31 +86,32 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
     setActiveTool(null);
   }
 
+  function showTemporaryNotice(message: string) {
+    setTemporaryNotice({ id: crypto.randomUUID(), message });
+  }
+
   useEffect(() => {
     if (!flash) return;
-    setTemporaryNotice(flash);
-    const nextState = location.state && typeof location.state === 'object'
-      ? { ...(location.state as Record<string, unknown>) }
-      : {};
-    delete nextState.notice;
-    navigate(`${location.pathname}${location.search}${location.hash}`, {
-      replace: true,
-      state: Object.keys(nextState).length > 0 ? nextState : null,
-    });
+    const clearFlash = window.setTimeout(() => {
+      const nextState = location.state && typeof location.state === 'object'
+        ? { ...(location.state as Record<string, unknown>) }
+        : {};
+      delete nextState.notice;
+      navigate(`${location.pathname}${location.search}${location.hash}`, {
+        replace: true,
+        state: Object.keys(nextState).length > 0 ? nextState : null,
+      });
+    }, 3000);
+    return () => window.clearTimeout(clearFlash);
   }, [flash, location.hash, location.pathname, location.search, location.state, navigate]);
 
   useEffect(() => {
     if (!temporaryNotice) return;
-    setNoticeFading(false);
-    const fadeTimer = window.setTimeout(() => setNoticeFading(true), 2400);
+    const noticeId = temporaryNotice.id;
     const clearTimer = window.setTimeout(() => {
-      setTemporaryNotice('');
-      setNoticeFading(false);
+      setTemporaryNotice((current) => current?.id === noticeId ? null : current);
     }, 3000);
-    return () => {
-      window.clearTimeout(fadeTimer);
-      window.clearTimeout(clearTimer);
-    };
+    return () => window.clearTimeout(clearTimer);
   }, [temporaryNotice]);
 
   useEffect(() => {
@@ -122,10 +127,11 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
     if (userRole !== 'admin') return;
     return subscribeCleaning((data) => {
       setCleaning(data);
-      setBoardCleaningLoaded(true);
+      setBoardCleaningLoadedRole(userRole);
     }, (cause) => {
       setSyncError(cause.message);
       setMetricsError(true);
+      setBoardCleaningLoadedRole(userRole);
     });
   }, [userRole]);
 
@@ -133,53 +139,51 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
     if (userRole === 'admin') {
       return;
     }
-    setBoardCleaningLoaded(false);
     return subscribeActiveCleaningTasks((tasks) => {
       setActiveCleaningTasks(tasks);
-      setBoardCleaningLoaded(true);
+      setBoardCleaningLoadedRole(userRole);
     }, (cause) => {
       setSyncError(cause.message);
-      setBoardCleaningLoaded(true);
+      setBoardCleaningLoadedRole(userRole);
     });
   }, [userRole]);
 
   useEffect(() => {
-    setBoardReceptionLoaded(false);
+    const requestKey = boardRequestKey;
     return subscribeReceptionBoard((data) => {
       setBoardStays(data.stays);
       setRoomCharges(data.roomCharges);
       setReceptionRooms(data.rooms);
-      setBoardReceptionLoaded(true);
+      setBoardReceptionLoadedKey(requestKey);
     }, (cause) => {
       setSyncError(cause.message);
       if (userRole === 'admin') setMetricsError(true);
-      setBoardReceptionLoaded(true);
+      setBoardReceptionLoadedKey(requestKey);
     }, { includeRoomCharges: userRole !== 'admin' });
-  }, [userRole, boardTodayKey]);
+  }, [boardRequestKey, userRole]);
 
   useEffect(() => {
     if (userRole === 'admin') return;
-    setBoardRoomsLoaded(false);
-    setBoardReservationsLoaded(false);
+    const requestKey = boardRequestKey;
     const unsubscribeRooms = subscribeRoomDirectory((rooms) => {
       setRoomDirectory(rooms);
-      setBoardRoomsLoaded(true);
+      setBoardRoomsLoadedKey(requestKey);
     }, (cause) => {
       setSyncError(cause.message);
-      setBoardRoomsLoaded(true);
+      setBoardRoomsLoadedKey(requestKey);
     });
     const unsubscribeReservations = subscribeCurrentReservationDirectory((reservations) => {
       setReservationDirectory(reservations);
-      setBoardReservationsLoaded(true);
+      setBoardReservationsLoadedKey(requestKey);
     }, (cause) => {
       setSyncError(cause.message);
-      setBoardReservationsLoaded(true);
+      setBoardReservationsLoadedKey(requestKey);
     });
     return () => {
       unsubscribeRooms();
       unsubscribeReservations();
     };
-  }, [userRole, boardTodayKey]);
+  }, [boardRequestKey, userRole]);
 
   useEffect(() => {
     if (userRole !== 'admin') return;
@@ -263,6 +267,7 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   ).map((room) => room.number.trim())).size;
   const roomsInCleaning = cleaningRoomNumbers.size;
   const allMetricsLoaded = metricsLoaded && boardReceptionLoaded && boardCleaningLoaded;
+  const displayedNotice = temporaryNotice ?? (flash ? { id: location.key, message: flash } : null);
   const valueOrLoading = (value: string | number) => allMetricsLoaded && !metricsError ? String(value) : '—';
   const detailOrLoading = (detail: string) => metricsError ? 'Dados indisponíveis' : allMetricsLoaded ? detail : 'Carregando dados';
 
@@ -288,7 +293,7 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
           </div>
         </section>
         {syncError && <div className="notice notice-error" role="alert">{syncError}</div>}
-        {temporaryNotice && <div className={`dashboard-toast ${noticeFading ? 'is-fading' : ''}`} role="status"><span aria-hidden="true">✓</span>{temporaryNotice}</div>}
+        {displayedNotice && <div key={displayedNotice.id} className="dashboard-toast" role="status"><span aria-hidden="true">✓</span>{displayedNotice.message}</div>}
 
         {userRole === 'admin' && <section className="dashboard-metrics" aria-label="Indicadores operacionais">
           <MetricCard title="Ocupação atual" value={valueOrLoading(occupancy.occupancyRate === null ? '—' : `${occupancy.occupancyRate}%`)} detail={detailOrLoading(occupancy.usableRooms ? `${occupancy.occupiedRooms} de ${occupancy.usableRooms} quartos utilizáveis` : 'Cadastre os quartos')} tone="blue" />
@@ -320,7 +325,7 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
           attendant={attendant}
           userRole={userRole}
           entryContext={receptionEntryContext}
-          onChargeSaved={setTemporaryNotice}
+          onChargeSaved={showTemporaryNotice}
         />}
 
         {userRole !== 'admin' && <section className="dashboard-modules dashboard-employee-modules" aria-label="O que você quer fazer?">
@@ -367,7 +372,7 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
           entryContext={receptionEntryContext}
           onModalClose={(message) => {
             setQuickReceptionKind(null);
-            if (message) setTemporaryNotice(message);
+            if (message) showTemporaryNotice(message);
           }}
         />
       </Suspense>}
@@ -465,9 +470,11 @@ function RoomBoard({ rooms, cleaningRoomNumbers, receptionRooms, stays, roomChar
   const [conversionBreakfastSplitAmount, setConversionBreakfastSplitAmount] = useState('');
   const [productId, setProductId] = useState('');
   const [quantityPerDay, setQuantityPerDay] = useState('1');
-  const [addOnInventory, setAddOnInventory] = useState<Pick<FrigobarData, 'products' | 'stock'> | null>(null);
-  const [inventoryError, setInventoryError] = useState('');
-  const [inventoryLoading, setInventoryLoading] = useState(false);
+  const [addOnInventoryResult, setAddOnInventoryResult] = useState<{
+    requestKey: string;
+    data: Pick<FrigobarData, 'products' | 'stock'> | null;
+    error: string;
+  } | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<FinancePaymentMethod>('pix');
   const [splitPayment, setSplitPayment] = useState(false);
   const [splitMethod, setSplitMethod] = useState<FinancePaymentMethod>('cash');
@@ -535,8 +542,6 @@ function RoomBoard({ rooms, cleaningRoomNumbers, receptionRooms, stays, roomChar
     setConversionBreakfastSplitAmount('');
     setProductId('');
     setQuantityPerDay('1');
-    setAddOnInventory(null);
-    setInventoryError('');
     setPaymentMethod('pix');
     setSplitPayment(false);
     setSplitMethod('cash');
@@ -565,10 +570,20 @@ function RoomBoard({ rooms, cleaningRoomNumbers, receptionRooms, stays, roomChar
   const daysAllowed = selectedOccupant
     ? chargeKind === 'conversao_diaria' ? 60 : Math.max(1, daysBetween(today, selectedOccupant.checkOutDate))
     : 1;
+  const inventoryRequestKey = selectedOccupant && chargeKind === 'bebida'
+    ? `${selectedOccupant.sourceType}:${selectedOccupant.sourceId}`
+    : '';
+  const hasCurrentInventoryResult = addOnInventoryResult?.requestKey === inventoryRequestKey;
+  const addOnInventory = inventoryRequestKey && hasCurrentInventoryResult ? addOnInventoryResult.data : null;
+  const inventoryError = hasCurrentInventoryResult ? addOnInventoryResult?.error ?? '' : '';
+  const inventoryLoading = Boolean(inventoryRequestKey) && !hasCurrentInventoryResult;
   const availableProducts = Object.values(addOnInventory?.products ?? {}).filter((product) =>
     product.active && product.salePrice > 0 && Number(addOnInventory?.stock[product.id] ?? 0) > 0,
   );
-  const selectedProduct = availableProducts.find((product) => product.id === productId);
+  const selectedProductId = availableProducts.some((product) => product.id === productId)
+    ? productId
+    : availableProducts[0]?.id ?? '';
+  const selectedProduct = availableProducts.find((product) => product.id === selectedProductId);
   const selectedStock = selectedProduct ? Number(addOnInventory?.stock[selectedProduct.id] ?? 0) : 0;
   const quantityPerDayValue = Number(quantityPerDay);
   const totalDrinkQuantity = Number.isInteger(validDays) && Number.isInteger(quantityPerDayValue) ? validDays * quantityPerDayValue : 0;
@@ -586,28 +601,18 @@ function RoomBoard({ rooms, cleaningRoomNumbers, receptionRooms, stays, roomChar
   const splitLimit = chargeKind === 'conversao_diaria' ? conversionDailyTotal : chargeTotal;
 
   useEffect(() => {
-    if (!selectedOccupant || chargeKind !== 'bebida') {
-      setInventoryLoading(false);
-      return;
-    }
-    setInventoryLoading(true);
-    setInventoryError('');
+    if (!inventoryRequestKey) return;
+    const requestKey = inventoryRequestKey;
     return subscribeRoomAddOnInventory((data) => {
-      setAddOnInventory(data);
-      setInventoryLoading(false);
+      setAddOnInventoryResult({ requestKey, data, error: '' });
     }, (cause) => {
-      setInventoryError(cause.message || 'Não foi possível consultar o estoque de bebidas.');
-      setInventoryLoading(false);
+      setAddOnInventoryResult({
+        requestKey,
+        data: null,
+        error: cause.message || 'Não foi possível consultar o estoque de bebidas.',
+      });
     });
-  }, [selectedOccupant, chargeKind]);
-
-  useEffect(() => {
-    if (chargeKind !== 'bebida' || !addOnInventory) return;
-    const products = Object.values(addOnInventory.products).filter((product) =>
-      product.active && product.salePrice > 0 && Number(addOnInventory.stock[product.id] ?? 0) > 0,
-    );
-    if (!products.some((product) => product.id === productId)) setProductId(products[0]?.id ?? '');
-  }, [addOnInventory, chargeKind, productId]);
+  }, [inventoryRequestKey]);
 
   async function submitRoomCharge(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -837,7 +842,7 @@ function RoomBoard({ rooms, cleaningRoomNumbers, receptionRooms, stays, roomChar
         <div className="dashboard-room-charge-grid">
           {chargeKind !== 'bebida' && <label className="dashboard-room-charge-field dashboard-room-charge-wide"><span>{chargeKind === 'hospede_extra' ? 'Nome do hóspede extra' : chargeKind === 'conversao_diaria' ? 'Nome do hóspede titular' : chargeKind === 'cafe_avulso' ? 'Quem vai tomar café?' : 'Hóspede responsável pela cama extra'}</span><input value={guestName} onChange={(event) => setGuestName(event.target.value)} maxLength={120} placeholder="Nome completo" required={chargeKind === 'hospede_extra' || chargeKind === 'conversao_diaria'} autoFocus /></label>}
           {chargeKind === 'bebida' && <>
-            <label className="dashboard-room-charge-field"><span>Bebida</span><select value={productId} onChange={(event) => setProductId(event.target.value)} disabled={inventoryLoading || availableProducts.length === 0} required><option value="">{inventoryLoading ? 'Consultando estoque…' : 'Selecione'}</option>{availableProducts.map((product) => <option key={product.id} value={product.id}>{product.name} · {money(product.salePrice)} · saldo {addOnInventory?.stock[product.id] ?? 0}</option>)}</select></label>
+            <label className="dashboard-room-charge-field"><span>Bebida</span><select value={selectedProductId} onChange={(event) => setProductId(event.target.value)} disabled={inventoryLoading || availableProducts.length === 0} required><option value="">{inventoryLoading ? 'Consultando estoque…' : 'Selecione'}</option>{availableProducts.map((product) => <option key={product.id} value={product.id}>{product.name} · {money(product.salePrice)} · saldo {addOnInventory?.stock[product.id] ?? 0}</option>)}</select></label>
             <label className="dashboard-room-charge-field"><span>Unidades por dia</span><input type="number" min="1" max={Math.max(1, Math.floor(selectedStock / Math.max(1, validDays || 1)))} step="1" value={quantityPerDay} onChange={(event) => setQuantityPerDay(event.target.value)} required /></label>
             {inventoryError && <p className="dashboard-room-charge-error dashboard-room-charge-wide" role="alert">{inventoryError}</p>}
             {!inventoryLoading && !inventoryError && availableProducts.length === 0 && <p className="dashboard-room-charge-error dashboard-room-charge-wide">Não há bebidas disponíveis com saldo no estoque da recepção.</p>}

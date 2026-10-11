@@ -5,10 +5,6 @@ import { recordOperationalIncome } from './operationalIncome';
 import type { HousekeepingData, Reservation, ReservationCollection, ReservationDirectoryEntry, ReservationExtra, ReservationStatus } from '../types/housekeeping';
 import { reservationOverlaps } from './reservationAnalytics';
 
-const USE_LOCAL_STORAGE = import.meta.env.VITE_USE_LOCAL_STORAGE === 'true';
-const STORAGE_KEY = 'hotel-lindoia:housekeeping:v1';
-const LOCAL_UPDATE_EVENT = 'hotel-lindoia:housekeeping-updated';
-
 function currentLocalDateKey(): string {
   const now = new Date();
   const pad = (value: number) => String(value).padStart(2, '0');
@@ -61,32 +57,12 @@ function isQuarterHour(time: string | undefined): boolean {
   return Number(time.slice(3)) % 15 === 0;
 }
 
-function readLocalHousekeeping(): HousekeepingData {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? normalizeHousekeeping(JSON.parse(saved)) : emptyHousekeeping();
-  } catch {
-    return emptyHousekeeping();
-  }
-}
-
-export const housekeepingStorageMode = USE_LOCAL_STORAGE ? 'neste navegador' : 'Firebase';
+export const housekeepingStorageMode = 'Firebase';
 
 export function subscribeHousekeeping(
   onChange: (data: HousekeepingData) => void,
   onError: (error: Error) => void,
 ): () => void {
-  if (USE_LOCAL_STORAGE) {
-    const refresh = () => onChange(readLocalHousekeeping());
-    refresh();
-    window.addEventListener('storage', refresh);
-    window.addEventListener(LOCAL_UPDATE_EVENT, refresh);
-    return () => {
-      window.removeEventListener('storage', refresh);
-      window.removeEventListener(LOCAL_UPDATE_EVENT, refresh);
-    };
-  }
-
   const keys = ['rooms', 'dailyPlans', 'cleaningLogs', 'reservations', 'attendants', 'attendantsConfigured', 'settings', 'auditLog'] as const;
   const loaded = new Set<string>();
   const values: Record<string, unknown> = {};
@@ -166,21 +142,6 @@ export async function updateHousekeeping(
 ): Promise<void> {
   const operationId = crypto.randomUUID();
   const occurredAt = new Date().toISOString();
-  if (USE_LOCAL_STORAGE) {
-    const current = readLocalHousekeeping();
-    const next = update(current);
-    const auditLog = buildAuditEvents(operationId, occurredAt, [
-      { entity: 'room', before: current.rooms, after: next.rooms },
-      { entity: 'reservation', before: reservationsForAudit(current.reservations), after: reservationsForAudit(next.reservations) },
-      { entity: 'room-plan', before: current.dailyPlans, after: next.dailyPlans },
-      { entity: 'cleaning-log', before: current.cleaningLogs, after: next.cleaningLogs },
-      { entity: 'housekeeping-settings', before: { hotel: current.settings }, after: { hotel: next.settings } },
-    ]);
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ ...next, auditLog: { ...next.auditLog, ...auditLog } }));
-    window.dispatchEvent(new Event(LOCAL_UPDATE_EVENT));
-    return;
-  }
-
   const result = await runTransaction(ref(db, 'erp_geral/quartos'), (value) => {
     const current = normalizeHousekeeping(value);
     const next = update(current);
@@ -208,14 +169,6 @@ export async function createReservation(reservation: Reservation, current: House
   const nights = Math.round((Date.parse(`${reservation.checkOutDate}T00:00:00Z`) - Date.parse(`${reservation.checkInDate}T00:00:00Z`)) / 86_400_000);
   if (reservation.channel !== 'rotativo' && (nights < 1 || nights > 365)) throw new Error('A hospedagem deve ter entre 1 e 365 noites.');
   if (reservationOverlaps(current, reservation)) throw new Error(`O quarto ${reservation.roomNumber} já está reservado neste horário.`);
-  if (USE_LOCAL_STORAGE) {
-    await updateHousekeeping((latest) => {
-      if (reservationOverlaps(latest, reservation)) throw new Error('Este quarto já foi reservado para as datas escolhidas.');
-      return { ...latest, reservations: { ...latest.reservations, [reservation.id]: reservation } };
-    });
-    return;
-  }
-
   const slotPaths = reservationSlotPaths(reservation);
   const roomSlotsRef = ref(db, `erp_geral/quartos/reservationSlots/${reservation.roomId}`);
   let conflictingSlot = false;
@@ -302,24 +255,6 @@ export function subscribeReservationCollections(
   onChange: (collections: Record<string, ReservationCollection>) => void,
   onError: (error: Error) => void,
 ): () => void {
-  const storageKey = 'hotel-lindoia:reservation-collections:v1';
-  if (USE_LOCAL_STORAGE) {
-    const refresh = () => {
-      try {
-        onChange(JSON.parse(localStorage.getItem(storageKey) ?? '{}') as Record<string, ReservationCollection>);
-      } catch {
-        onChange({});
-      }
-    };
-    refresh();
-    window.addEventListener('storage', refresh);
-    window.addEventListener('hotel-lindoia:reservation-collections-updated', refresh);
-    return () => {
-      window.removeEventListener('storage', refresh);
-      window.removeEventListener('hotel-lindoia:reservation-collections-updated', refresh);
-    };
-  }
-
   return onValue(ref(db, 'erp_geral/reservationCollections'), (snapshot) => {
     const byReservation = snapshot.val() as Record<string, Record<string, ReservationCollection>> | null;
     onChange(Object.values(byReservation ?? {}).reduce<Record<string, ReservationCollection>>((all, collection) => ({ ...all, ...collection }), {}));
@@ -327,13 +262,6 @@ export function subscribeReservationCollections(
 }
 
 export async function recordReservationCollection(collection: ReservationCollection): Promise<void> {
-  if (USE_LOCAL_STORAGE) {
-    const storageKey = 'hotel-lindoia:reservation-collections:v1';
-    const collections = JSON.parse(localStorage.getItem(storageKey) ?? '{}') as Record<string, ReservationCollection>;
-    localStorage.setItem(storageKey, JSON.stringify({ ...collections, [collection.id]: collection }));
-    window.dispatchEvent(new Event('hotel-lindoia:reservation-collections-updated'));
-    return;
-  }
   const collectionRef = ref(db, `erp_geral/reservationCollections/${collection.reservationId}/${collection.id}`);
   const existing = await get(collectionRef);
   if (existing.exists()) {
@@ -348,24 +276,6 @@ export function subscribeReservationExtras(
   onChange: (extras: Record<string, ReservationExtra>) => void,
   onError: (error: Error) => void,
 ): () => void {
-  const storageKey = 'hotel-lindoia:reservation-extras:v1';
-  if (USE_LOCAL_STORAGE) {
-    const refresh = () => {
-      try {
-        onChange(JSON.parse(localStorage.getItem(storageKey) ?? '{}') as Record<string, ReservationExtra>);
-      } catch {
-        onChange({});
-      }
-    };
-    refresh();
-    window.addEventListener('storage', refresh);
-    window.addEventListener('hotel-lindoia:reservation-extras-updated', refresh);
-    return () => {
-      window.removeEventListener('storage', refresh);
-      window.removeEventListener('hotel-lindoia:reservation-extras-updated', refresh);
-    };
-  }
-
   return onValue(ref(db, 'erp_geral/reservationExtras'), (snapshot) => {
     const byReservation = snapshot.val() as Record<string, Record<string, ReservationExtra>> | null;
     onChange(Object.values(byReservation ?? {}).reduce<Record<string, ReservationExtra>>((all, extras) => ({ ...all, ...extras }), {}));
@@ -373,13 +283,6 @@ export function subscribeReservationExtras(
 }
 
 export async function recordReservationExtra(extra: ReservationExtra): Promise<void> {
-  if (USE_LOCAL_STORAGE) {
-    const storageKey = 'hotel-lindoia:reservation-extras:v1';
-    const extras = JSON.parse(localStorage.getItem(storageKey) ?? '{}') as Record<string, ReservationExtra>;
-    localStorage.setItem(storageKey, JSON.stringify({ ...extras, [extra.id]: extra }));
-    window.dispatchEvent(new Event('hotel-lindoia:reservation-extras-updated'));
-    return;
-  }
   const extraRef = ref(db, `erp_geral/reservationExtras/${extra.reservationId}/${extra.id}`);
   const existing = await get(extraRef);
   if (existing.exists()) {
@@ -394,24 +297,6 @@ export async function transitionReservation(
   reservation: Reservation,
   nextStatus: ReservationStatus,
 ): Promise<void> {
-  if (USE_LOCAL_STORAGE) {
-    await updateHousekeeping((current) => {
-      const existing = current.reservations[reservation.id];
-      if (!existing || existing.status !== reservation.status) throw new Error('O status da reserva mudou; atualize a tela.');
-      return {
-        ...current,
-        reservations: {
-          ...current.reservations,
-          [reservation.id]: { ...existing, status: nextStatus, updatedAt: new Date().toISOString() },
-        },
-        rooms: nextStatus === 'encerrada' && current.rooms[reservation.roomId]
-          ? { ...current.rooms, [reservation.roomId]: { ...current.rooms[reservation.roomId], cleaningStatus: 'sujo' } }
-          : current.rooms,
-      };
-    });
-    return;
-  }
-
   const allowedTransition = (reservation.status === 'confirmada' && nextStatus === 'hospedado')
     || (reservation.status === 'hospedado' && nextStatus === 'encerrada');
   if (!allowedTransition) throw new Error('Esta transição de reserva não é permitida.');
@@ -452,7 +337,6 @@ export async function transitionReservation(
 }
 
 export async function syncReservationCollections(): Promise<void> {
-  if (USE_LOCAL_STORAGE) return;
   const collectionsSnapshot = await get(ref(db, 'erp_geral/reservationCollections'));
   const collectionsByReservation = collectionsSnapshot.val() as Record<string, Record<string, ReservationCollection>> | null;
 
@@ -482,7 +366,6 @@ export async function syncReservationCollections(): Promise<void> {
 }
 
 export async function syncReservationSlots(previous: Reservation, next: Reservation): Promise<void> {
-  if (USE_LOCAL_STORAGE) return;
   const updates: Record<string, string | null> = {};
   reservationSlotPaths(previous).forEach((slotPath) => { updates[`erp_geral/quartos/reservationSlots/${previous.roomId}/${slotPath}`] = null; });
   reservationSlotPaths(next).forEach((slotPath) => { updates[`erp_geral/quartos/reservationSlots/${next.roomId}/${slotPath}`] = next.id; });
@@ -490,7 +373,6 @@ export async function syncReservationSlots(previous: Reservation, next: Reservat
 }
 
 export async function releaseReservationSlots(reservation: Reservation): Promise<void> {
-  if (USE_LOCAL_STORAGE) return;
   const updates = Object.fromEntries(reservationSlotPaths(reservation).map((slotPath) => [`erp_geral/quartos/reservationSlots/${reservation.roomId}/${slotPath}`, null]));
   if (Object.keys(updates).length > 0) await update(ref(db), updates);
 }

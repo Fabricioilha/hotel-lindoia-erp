@@ -1,7 +1,7 @@
 import { endAt, get, increment, onValue, orderByChild, query, ref, remove, runTransaction, set, startAt, update } from 'firebase/database';
 import { db } from '../config/firebase';
 import { commitDeletion, removeChargeUpdates, removeFinanceEntries } from './deletionStore';
-import { stayFinanceEntries } from './operationalLedger';
+import { stayFinanceEntries, stayOyoFeeExpense } from './operationalLedger';
 import { type CashOut, type FloatCheck, type GuestStay, type ReceptionData, type ReceptionRoom, type RoomCharge } from '../types/reception';
 import { staffReference } from './staffStore';
 
@@ -187,6 +187,8 @@ export async function deleteStay(stay: GuestStay): Promise<void> {
   stays.filter((item) => ids.has(item.id)).forEach((item) => {
     updates[`${PATH}/stays/${item.id}`] = null;
     removeFinanceEntries(updates, incomeIdsForStay({ ...item, voidedPayments: undefined }));
+    const oyoFee = stayOyoFeeExpense(item);
+    if (oyoFee) removeFinanceEntries(updates, [oyoFee.id], 'expenses');
   });
   if (!Object.keys(updates).length) return;
   const stock: Record<string, number> = {};

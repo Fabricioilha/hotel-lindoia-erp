@@ -7,9 +7,7 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview",
-    "emulators": "npx --yes firebase-tools emulators:start --only auth,database --project demo-hotel-lindoia-erp",
-    "emulator:import": "node scripts/import-rtdb-local.mjs"
+    "preview": "vite preview"
   },
   "dependencies": {
     "firebase": "^12.19.0",

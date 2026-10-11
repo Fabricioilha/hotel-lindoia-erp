@@ -65,16 +65,28 @@ interface CaixaRecepcaoProps {
   onModalClose?: (notice?: string) => void;
 }
 
-export function CaixaRecepcao({ userRole, modalOnly = false, initialKind = 'hospede', initialRoom = '', entryContext, onModalClose }: CaixaRecepcaoProps) {
+export function CaixaRecepcao(props: CaixaRecepcaoProps) {
+  const [searchParams] = useSearchParams();
+  const requested = props.modalOnly
+    ? (props.initialKind === 'periodo' ? 'rotativo' : 'hospede')
+    : searchParams.get('novo');
+  const requestedRoom = props.modalOnly ? props.initialRoom ?? '' : searchParams.get('quarto') ?? '';
+  const formKey = `${props.modalOnly ? 'modal' : 'page'}:${requested ?? ''}:${requestedRoom}`;
+  return <CaixaRecepcaoContent key={formKey} {...props} />;
+}
+
+function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hospede', initialRoom = '', entryContext, onModalClose }: CaixaRecepcaoProps) {
   const isAdmin = userRole === 'admin';
-  const [data, setData] = useState<ReceptionData>(() => ({
-    ...emptyReception(),
-    ...(entryContext ? { stays: entryContext.stays, rooms: entryContext.rooms } : {}),
-  }));
-  const [roomDirectory, setRoomDirectory] = useState<Record<string, HousekeepingRoom>>(() => entryContext?.roomDirectory ?? {});
-  const [reservationDirectory, setReservationDirectory] = useState<Record<string, ReservationDirectoryEntry>>(() => entryContext?.reservations ?? {});
-  const [reservationDirectoryLoaded, setReservationDirectoryLoaded] = useState(Boolean(entryContext));
-  const [, setLoading] = useState(!entryContext);
+  const [receptionData, setReceptionData] = useState<ReceptionData>(() => emptyReception());
+  const [subscribedRoomDirectory, setSubscribedRoomDirectory] = useState<Record<string, HousekeepingRoom>>({});
+  const [subscribedReservationDirectory, setSubscribedReservationDirectory] = useState<Record<string, ReservationDirectoryEntry>>({});
+  const [subscribedReservationDirectoryLoaded, setSubscribedReservationDirectoryLoaded] = useState(false);
+  const data = entryContext
+    ? { ...receptionData, stays: entryContext.stays, rooms: entryContext.rooms }
+    : receptionData;
+  const roomDirectory = entryContext?.roomDirectory ?? subscribedRoomDirectory;
+  const reservationDirectory = entryContext?.reservations ?? subscribedReservationDirectory;
+  const reservationDirectoryLoaded = Boolean(entryContext) || subscribedReservationDirectoryLoaded;
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const dutyAttendant = useAttendant();
@@ -82,10 +94,10 @@ export function CaixaRecepcao({ userRole, modalOnly = false, initialKind = 'hosp
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const requested = modalOnly ? (initialKind === 'periodo' ? 'rotativo' : 'hospede') : searchParams.get('novo');
-  const [formKind, setFormKind] = useState<StayKind | null>(requested === 'hospede' ? 'hospede' : requested === 'rotativo' ? 'periodo' : null);
-  const requestedRoom = modalOnly ? initialRoom : searchParams.get('quarto');
+  const requestedRoom = modalOnly ? initialRoom : searchParams.get('quarto') ?? '';
+  const formKind: StayKind | null = requested === 'hospede' ? 'hospede' : requested === 'rotativo' ? 'periodo' : null;
   const [checkInDate, setCheckInDate] = useState(() => localDateKey());
-  const [roomNumber, setRoomNumber] = useState(() => requestedRoom ?? '');
+  const [roomNumber, setRoomNumber] = useState(() => requestedRoom);
   const [guestName, setGuestName] = useState('');
   const [guestCount, setGuestCount] = useState('1');
   const [nights, setNights] = useState('1');
@@ -110,68 +122,30 @@ export function CaixaRecepcao({ userRole, modalOnly = false, initialKind = 'hosp
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    const nextKind = requested === 'hospede' ? 'hospede' : requested === 'rotativo' ? 'periodo' : null;
-    setFormKind(nextKind);
-    setRoomNumber(requestedRoom ?? '');
-    if (nextKind) {
-      setCheckInDate(localDateKey());
-      setGuestName('');
-      setGuestCount('1');
-      setNights('1');
-      setHours('4');
-      setDailyRate('');
-      setSplitPayment(false);
-      setSplitAmount('');
-      setHasBreakfast(false);
-      setBreakfastCount('1');
-      setBreakfastRate('');
-      setBreakfastMethod('pix');
-      setBreakfastSplitPayment(false);
-      setBreakfastSplitAmount('');
-      setHasTax(false);
-      setTaxAmount('');
-      setExtras([]);
-      setNote('');
-      setError('');
-    }
-  }, [initialKind, initialRoom, modalOnly, requested, requestedRoom]);
-
-  useEffect(() => {
     if (entryContext) return;
     return subscribeReception((next) => {
-    setData(next);
-    setLoading(false);
+      setReceptionData(next);
     }, (cause) => {
       setError(cause.message);
-      setLoading(false);
     });
   }, [entryContext]);
 
   useEffect(() => {
     if (entryContext) return;
     return subscribeRoomDirectory(
-      setRoomDirectory,
-      () => setRoomDirectory({}),
+      setSubscribedRoomDirectory,
+      () => setSubscribedRoomDirectory({}),
     );
-  }, [entryContext]);
-
-  useEffect(() => {
-    if (!entryContext) return;
-    setData((current) => ({ ...current, stays: entryContext.stays, rooms: entryContext.rooms }));
-    setRoomDirectory(entryContext.roomDirectory);
-    setReservationDirectory(entryContext.reservations);
-    setReservationDirectoryLoaded(true);
-    setLoading(false);
   }, [entryContext]);
 
   useEffect(() => {
     if (entryContext) return;
     return subscribeReservationDirectory((next) => {
-      setReservationDirectory(next);
-      setReservationDirectoryLoaded(true);
+      setSubscribedReservationDirectory(next);
+      setSubscribedReservationDirectoryLoaded(true);
     }, (cause) => {
       setError(`Não foi possível consultar a disponibilidade dos quartos: ${cause.message}`);
-      setReservationDirectoryLoaded(false);
+      setSubscribedReservationDirectoryLoaded(false);
     });
   }, [entryContext]);
 
@@ -201,7 +175,7 @@ export function CaixaRecepcao({ userRole, modalOnly = false, initialKind = 'hosp
   const draftExtras = extras.map((extra) => ({ ...extra, amount: parseAmount(extra.amount) }));
   const draftTotal = dailyTotal
     + (formKind === 'hospede' && hasBreakfast ? parseAmount(breakfastRate) * draftBreakfastCount * draftNights : 0)
-    + (formKind === 'hospede' && hasTax ? parseAmount(taxAmount) : 0)
+    + (formKind === 'hospede' && hasTax && taxMethod !== 'prepaid' ? parseAmount(taxAmount) : 0)
     + draftExtras.reduce((total, extra) => total + extraTotal(extra, draftNights), 0);
 
   async function run(action: () => Promise<void>, success = '') {
@@ -216,11 +190,8 @@ export function CaixaRecepcao({ userRole, modalOnly = false, initialKind = 'hosp
   }
 
   function openForm(kind: StayKind) {
-    setExtras([]);
     setError('');
     setNotice('');
-    setCheckInDate(localDateKey());
-    setFormKind(kind);
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set('novo', kind === 'periodo' ? 'rotativo' : 'hospede');
     setSearchParams(nextParams);
@@ -228,11 +199,9 @@ export function CaixaRecepcao({ userRole, modalOnly = false, initialKind = 'hosp
 
   function closeForm() {
     if (modalOnly) {
-      setFormKind(null);
       onModalClose?.();
       return;
     }
-    setFormKind(null);
     setSearchParams({}, { replace: true });
   }
 
@@ -262,27 +231,6 @@ export function CaixaRecepcao({ userRole, modalOnly = false, initialKind = 'hosp
 
   function updateExtra(id: string, patch: Partial<ExtraDraft>) {
     setExtras((current) => current.map((extra) => extra.id === id ? { ...extra, ...patch } : extra));
-  }
-
-  function resetForm() {
-    setRoomNumber('');
-    setGuestName('');
-    setGuestCount('1');
-    setNights('1');
-    setHours('4');
-    setDailyRate('');
-    setSplitPayment(false);
-    setSplitAmount('');
-    setHasBreakfast(false);
-    setBreakfastCount('1');
-    setBreakfastRate('');
-    setBreakfastMethod('pix');
-    setBreakfastSplitPayment(false);
-    setBreakfastSplitAmount('');
-    setHasTax(false);
-    setTaxAmount('');
-    setExtras([]);
-    setNote('');
   }
 
   async function submitStay(event: FormEvent) {
@@ -344,7 +292,6 @@ export function CaixaRecepcao({ userRole, modalOnly = false, initialKind = 'hosp
     const message = formKind === 'periodo' ? `Rotativo do quarto ${stay.roomNumber} registrado com sucesso.` : `Hóspede do quarto ${stay.roomNumber} registrado com sucesso.`;
     await run(async () => {
       await saveStay(stay);
-      resetForm();
       if (modalOnly) {
         onModalClose?.(message);
         return;
@@ -473,6 +420,7 @@ export function CaixaRecepcao({ userRole, modalOnly = false, initialKind = 'hosp
                   <label className="reception-small-field"><span>Pagamento da taxa</span><select value={taxMethod} onChange={(event) => setTaxMethod(event.target.value as FinancePaymentMethod)}>
                     {FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{taxLabel(method)}</option>)}
                   </select></label>
+                  <p className="reception-hint reception-wide">Quando a taxa já foi paga diretamente à OYO, selecione pré-pago. Ela fica fora do total cobrado do hóspede.</p>
                 </>}
               </div>}
             </div>

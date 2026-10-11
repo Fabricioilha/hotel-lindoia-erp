@@ -25,14 +25,11 @@ export function Login({ onLogin }: LoginProps) {
       if (message === 'Conta autenticada sem perfil de acesso.') {
         setError('Conta sem perfil de acesso. Solicite à gerência a liberação do usuário.');
       } else if (code === 'auth/network-request-failed') {
-        setError(import.meta.env.DEV
-          ? 'Não foi possível conectar ao emulador local. Confira se npm run emulators está em execução.'
-          : 'Não foi possível conectar ao Firebase. Verifique sua conexão.');
+        setError('Não foi possível conectar ao Firebase. Verifique sua conexão.');
       } else if (
-        import.meta.env.DEV &&
         ['auth/invalid-credential', 'auth/invalid-login-credentials', 'auth/user-not-found', 'auth/wrong-password'].includes(code)
       ) {
-        setError('Esta conta não está cadastrada no emulador local. Crie uma conta em http://127.0.0.1:4000 e associe o perfil dela no banco local.');
+        setError('E-mail ou senha inválidos. Verifique os dados e tente novamente.');
       } else {
         setError('E-mail ou senha inválidos. Verifique os dados e tente novamente.');
       }

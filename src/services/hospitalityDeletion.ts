@@ -5,7 +5,7 @@ import type { HousekeepingData, HousekeepingRoom, Reservation, ReservationCollec
 import type { GuestStay, ReceptionRoom, RoomCharge } from '../types/reception';
 import type { CleaningTask } from '../types/cleaning';
 import { commitDeletion, removeChargeUpdates, removeFinanceEntries } from './deletionStore';
-import { stayFinanceEntries } from './operationalLedger';
+import { stayFinanceEntries, stayOyoFeeExpense } from './operationalLedger';
 
 // Removes only slots owned by these reservations, including historical reservations
 // whose dates may now be occupied by a different guest.
@@ -48,6 +48,8 @@ async function removeHospitality(target: { reservationId: string } | { room: Hou
     locks.push(`stay-${stay.id}`);
     updates[`erp_geral/recepcao/stays/${stay.id}`] = null;
     removeFinanceEntries(updates, Object.keys(stayFinanceEntries({ ...stay, voidedPayments: undefined })));
+    const oyoFee = stayOyoFeeExpense(stay);
+    if (oyoFee) removeFinanceEntries(updates, [oyoFee.id], 'expenses');
   });
   charges.forEach((charge) => {
     locks.push(`charge-${charge.id}`); removeChargeUpdates(updates, charge);

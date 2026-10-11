@@ -53,6 +53,22 @@ export function stayFinanceEntries(stay: GuestStay): Record<string, FinanceIncom
   return entries;
 }
 
+export function stayOyoFeeExpense(stay: GuestStay): FinanceExpense | undefined {
+  if (!Number.isFinite(stay.taxAmount) || stay.taxAmount <= 0 || stay.taxMethod === 'prepaid') return undefined;
+  const id = `recepcao-${stay.id}-oyo-fee`;
+  return {
+    id,
+    dueDate: stay.checkInDate,
+    category: 'OYO',
+    plannedAmount: cents(stay.taxAmount),
+    paidCash: 0,
+    paidBank: 0,
+    note: [`Taxa da OYO recebida do hóspede`, `Quarto ${stay.roomNumber}`, stay.guestName].filter(Boolean).join(' · '),
+    createdAt: stay.createdAt,
+    updatedAt: stay.createdAt,
+  };
+}
+
 export function roomChargeFinanceEntries(charge: RoomCharge): Record<string, FinanceIncome> {
   const category = charge.kind === 'cafe_avulso' ? 'Café' : charge.kind === 'cama_extra' ? 'Cama extra' : charge.kind === 'bebida' ? 'Consumo' : 'Adicional de hóspede';
   const description = charge.kind === 'bebida' ? `${charge.productName ?? 'Bebida'} × ${charge.quantity ?? 1}` : `${category} × ${charge.days ?? 1} dia(s) · ${charge.guestName}`;
@@ -90,7 +106,15 @@ export function withOperationalFinance(data: FinanceData, sources: OperationalFi
       incomes[entry.id] = { ...saved, category: entry.category };
     }
   };
-  Object.values(sources.stays).forEach((stay) => Object.values(stayFinanceEntries(stay)).forEach(addIncome));
+  const addExpense = (entry: FinanceExpense) => {
+    if (data.suppressed[entry.id]) return;
+    if (!expenses[entry.id]) expenses[entry.id] = entry;
+  };
+  Object.values(sources.stays).forEach((stay) => {
+    Object.values(stayFinanceEntries(stay)).forEach(addIncome);
+    const oyoFee = stayOyoFeeExpense(stay);
+    if (oyoFee) addExpense(oyoFee);
+  });
   Object.values(sources.roomCharges).forEach((charge) => Object.values(roomChargeFinanceEntries(charge)).forEach(addIncome));
   Object.values(sources.sales).forEach((sale) => { const entry = frigobarFinanceEntry(sale); if (entry) addIncome(entry); });
   Object.values(sources.reservationCollections ?? {}).forEach((collections) => Object.values(collections).forEach((collection) => {

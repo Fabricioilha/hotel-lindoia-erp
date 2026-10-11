@@ -53,9 +53,9 @@
 .dashboard-welcome > div > p:last-child { margin-top: 7px; color: var(--brand-muted); font-size: 0.75rem; }
 .dashboard-content-employee .dashboard-welcome > div > p:last-child { margin-top: 1px; font-size: 0.625rem; line-height: 1.25; }
 .dashboard-content-employee .notice { width: fit-content; max-width: 100%; gap: 6px; margin: 0 0 7px; padding: 4px 7px; border-radius: 3px; font-size: 0.625rem; line-height: 1.25; }
-.dashboard-toast { display: flex; width: fit-content; max-width: 100%; align-items: center; gap: 6px; margin: 0 0 7px; padding: 4px 8px; border: 1px solid #cde4d1; border-radius: 4px; color: #286849; background: #edf8ef; font-size: 0.625rem; line-height: 1.25; opacity: 1; transform: translateY(0); transition: opacity 180ms ease, transform 180ms ease; }
+.dashboard-toast { display: flex; width: fit-content; max-width: 100%; align-items: center; gap: 6px; margin: 0 0 7px; padding: 4px 8px; border: 1px solid #cde4d1; border-radius: 4px; color: #286849; background: #edf8ef; font-size: 0.625rem; line-height: 1.25; opacity: 1; transform: translateY(0); animation: dashboard-toast-fade 180ms ease 2.4s forwards; }
 .dashboard-toast > span { display: grid; width: 15px; height: 15px; flex: 0 0 15px; place-items: center; border-radius: 50%; color: #fff; background: #39845d; font-size: 0.5625rem; font-weight: 800; }
-.dashboard-toast.is-fading { opacity: 0; transform: translateY(-3px); }
+@keyframes dashboard-toast-fade { to { opacity: 0; transform: translateY(-3px); } }
 
 .dashboard-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-bottom: 38px; }
 .dashboard-metric { position: relative; min-width: 0; min-height: 126px; overflow: hidden; padding: 17px 18px 14px; border: 1px solid #cdd6e3; border-radius: 5px; background: #fff; }

@@ -190,7 +190,8 @@ export function stayPayments(stay: GuestStay): { id: string; method: FinancePaym
     add('cafe', stay.breakfastMethod ?? stay.dailyMethod, total - (split?.amount ?? 0), 'Café');
     if (split) add('cafe-2', split.method, split.amount, 'Café (2ª forma)');
   }
-  add('taxa', stay.taxMethod, stay.taxAmount, 'Taxa');
+  // A taxa pré-paga já foi paga diretamente à OYO, não é um valor a cobrar no caixa do hotel.
+  if (stay.taxMethod !== 'prepaid') add('taxa', stay.taxMethod, stay.taxAmount, 'Taxa');
   (stay.extras ?? []).forEach((extra) => add(`extra-${extra.id}`, extra.method ?? stay.dailyMethod, extraTotal(extra, stay.nights), extra.label));
   return list;
 }

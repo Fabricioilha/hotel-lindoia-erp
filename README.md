@@ -13,26 +13,7 @@ O módulo de estoque fica em `/estoque` e inclui:
 
 ### Persistência
 
-Em desenvolvimento, o app usa o projeto fictício `demo-hotel-lindoia-erp` e conecta Authentication e Realtime Database somente aos emuladores em `127.0.0.1`. Não há opção de apontar o modo `npm run dev` para os serviços reais. Inicie os emuladores em um terminal:
-
-```sh
-npm run emulators
-```
-
-Esse comando usa `npx` para baixar o Firebase CLI se ele ainda não estiver no cache do npm; não é necessário instalar o comando `firebase` globalmente.
-
-Para carregar uma cópia do banco, exporte a **raiz** do Realtime Database no Console Firebase e salve o JSON em `firebase-local-data/production-rtdb.json`. O arquivo deve conter `erp_geral`. Com os emuladores em execução, importe em outro terminal:
-
-```sh
-npm run emulator:import -- --confirm-local-overwrite
-npm run dev
-```
-
-Por padrão, o desenvolvimento usa os emuladores locais. Para conectar este navegador ao Firebase online, defina `VITE_USE_FIREBASE_EMULATORS=false` em `.env.local` e reinicie o servidor de desenvolvimento. As operações feitas nesse modo podem alterar os dados de produção.
-
-O importador escreve apenas em `127.0.0.1:9000`, valida que o serviço é o emulador `demo` esperado e substitui os dados do emulador local. O JSON original fica preservado. A pasta de cópias locais é ignorada pelo Git para não versionar dados pessoais. Esse JSON contém dados do Realtime Database; contas do Firebase Authentication são separadas e não fazem parte dessa exportação.
-
-Para entrar no app local, crie uma conta de teste no Emulator Suite UI em `http://127.0.0.1:4000` → **Authentication** → **Add user**. Anote o UID gerado e, na aba **Realtime Database**, crie `/roles/{UID}/role` com o valor string `admin` ou `viewer`. Use essa conta e uma senha de desenvolvimento no login do app. As credenciais de produção não são copiadas para o emulador.
+O app usa o Firebase Authentication e o Realtime Database do Hotel Lindoia também durante o desenvolvimento. Não há emulador nem cópia local dos dados; alterações feitas com `npm run dev` são gravadas no Firebase configurado no projeto.
 
 O login usa Firebase Authentication com e-mail e senha. O papel de cada usuário é lido em `roles/{uid}/role` no Realtime Database: `admin` para gerência ou `viewer` para funcionários. A escala permite leitura para ambos e gravação somente para admin; reservas, dados pessoais dos hóspedes, estoque completo e Financeiro são restritos a admin. A equipe usa o caixa da recepção e acessa apenas o diretório operacional de quartos e hospedagens ativas, sem leitura do cadastro completo de hóspedes ou do ledger financeiro.
 
@@ -62,6 +43,8 @@ O café tem forma de pagamento própria e permite pagamento combinado no cadastr
 - **Resultado de caixa:** entradas no hotel menos despesas pagas e transferências enviadas à OYO. Transferências entre caixa físico e banco não alteram esse resultado.
 - **Pré-Pagos (Retidos - OYO):** saldo inicial informado mais pré-pagos dos hóspedes, menos repasses recebidos pelo hotel. Pagamentos enviados à OYO ficam discriminados separadamente e não aumentam o controle de pré-pagos. Este subtotal não é o acerto líquido com a OYO; comissões não são calculadas.
 - **Entradas e resumo por origem:** somente as parcelas recebidas diretamente no hotel. Em pagamentos combinados, a parcela pré-paga aparece exclusivamente no histórico da OYO. O relatório mensal discrimina as duas parcelas.
+
+No cadastro de hóspedes da recepção, uma taxa marcada como pré-paga fica fora do total a cobrar no hotel e permanece no histórico de pré-pagos da OYO. Quando a taxa é paga na recepção, ela entra no total do hóspede e gera uma despesa OYO pendente no fluxo de caixa para discriminar o valor a repassar.
 
 Registre o repasse pelo botão **Registrar repasse da OYO**, escolhendo banco ou caixa físico como destino. O histórico de pré-pagos mantém o valor bruto dos pagamentos, enquanto o cartão exibe pré-pagos menos repasses, sem deduzir comissões. Um repasse já lançado como transferência não deve ser cadastrado novamente como entrada manual.
 

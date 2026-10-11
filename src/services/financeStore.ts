@@ -4,8 +4,6 @@ import { buildAuditEvents } from '../types/audit';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, type FinanceData } from '../types/finance';
 import { withOperationalFinance, type OperationalFinanceSources } from './operationalLedger';
 
-const STORAGE_KEY = 'hotel-lindoia:finance:v1';
-const LOCAL_UPDATE_EVENT = 'hotel-lindoia:finance-updated';
 const DEPRECATED_INCOME_CATEGORIES = ['Rotativo cartão', 'Consumo Cartão', 'Diária Cartão', 'Café da manhã', 'Café da manhã cartão', 'Outros'];
 
 export function emptyFinance(): FinanceData {
@@ -65,60 +63,40 @@ function normalizeFinance(value: unknown): FinanceData {
   };
 }
 
-function readLocalFinance(): FinanceData {
-  try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    return saved ? normalizeFinance(JSON.parse(saved)) : emptyFinance();
-  } catch {
-    return emptyFinance();
-  }
-}
-
-export const financeStorageMode = db ? 'Firebase' : 'neste navegador';
+export const financeStorageMode = 'Firebase';
 
 export function subscribeFinance(
   onChange: (data: FinanceData) => void,
   onError: (error: Error) => void,
   options: { includeOperations?: boolean } = {},
 ): () => void {
-  if (db) {
-    const financeKeys = ['incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'auditLog', 'suppressed', 'categoryAliases'] as const;
-    const operationalPaths = {
-      stays: 'erp_geral/recepcao/stays',
-      roomCharges: 'erp_geral/recepcao/roomCharges',
-      cashOuts: 'erp_geral/recepcao/cashOuts',
-      sales: 'erp_geral/frigobar/operations/sales',
-      reservationCollections: 'erp_geral/reservationCollections',
-    };
-    const paths = [...financeKeys.map((key) => [key, `erp_geral/financeiro/${key}`]), ...(options.includeOperations === false ? [] : Object.entries(operationalPaths))];
-    const loaded = new Set<string>();
-    const values: Record<string, unknown> = {};
-    const stops = paths.map(([key, location]) => {
-      const path = ref(db, location);
-      const listener = key === 'auditLog' ? query(path, orderByChild('occurredAt'), limitToLast(100)) : path;
-      return onValue(listener, (snapshot) => {
-        values[key] = snapshot.val() ?? {};
-        loaded.add(key);
-        if (loaded.size === paths.length) {
-          const data = normalizeFinance(values);
-          onChange(options.includeOperations === false ? data : withOperationalFinance(data, {
-            stays: values.stays, roomCharges: values.roomCharges, cashOuts: values.cashOuts,
-            sales: values.sales, reservationCollections: values.reservationCollections,
-          } as OperationalFinanceSources));
-        }
-      }, onError);
-    });
-    return () => stops.forEach((stop) => stop());
-  }
-
-  const refresh = () => onChange(readLocalFinance());
-  refresh();
-  window.addEventListener('storage', refresh);
-  window.addEventListener(LOCAL_UPDATE_EVENT, refresh);
-  return () => {
-    window.removeEventListener('storage', refresh);
-    window.removeEventListener(LOCAL_UPDATE_EVENT, refresh);
+  const financeKeys = ['incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'auditLog', 'suppressed', 'categoryAliases'] as const;
+  const operationalPaths = {
+    stays: 'erp_geral/recepcao/stays',
+    roomCharges: 'erp_geral/recepcao/roomCharges',
+    cashOuts: 'erp_geral/recepcao/cashOuts',
+    sales: 'erp_geral/frigobar/operations/sales',
+    reservationCollections: 'erp_geral/reservationCollections',
   };
+  const paths = [...financeKeys.map((key) => [key, `erp_geral/financeiro/${key}`]), ...(options.includeOperations === false ? [] : Object.entries(operationalPaths))];
+  const loaded = new Set<string>();
+  const values: Record<string, unknown> = {};
+  const stops = paths.map(([key, location]) => {
+    const path = ref(db, location);
+    const listener = key === 'auditLog' ? query(path, orderByChild('occurredAt'), limitToLast(100)) : path;
+    return onValue(listener, (snapshot) => {
+      values[key] = snapshot.val() ?? {};
+      loaded.add(key);
+      if (loaded.size === paths.length) {
+        const data = normalizeFinance(values);
+        onChange(options.includeOperations === false ? data : withOperationalFinance(data, {
+          stays: values.stays, roomCharges: values.roomCharges, cashOuts: values.cashOuts,
+          sales: values.sales, reservationCollections: values.reservationCollections,
+        } as OperationalFinanceSources));
+      }
+    }, onError);
+  });
+  return () => stops.forEach((stop) => stop());
 }
 
 export async function updateFinance(
@@ -126,41 +104,21 @@ export async function updateFinance(
 ): Promise<void> {
   const operationId = crypto.randomUUID();
   const occurredAt = new Date().toISOString();
-  if (db) {
-    const result = await runTransaction(ref(db, 'erp_geral/financeiro'), (value) => {
-      const current = normalizeFinance(value);
-      const next = update(current);
-      const auditEvents = buildAuditEvents(operationId, occurredAt, [
-        { entity: 'finance-income', before: current.incomes, after: next.incomes },
-        { entity: 'finance-expense', before: current.expenses, after: next.expenses },
-        { entity: 'finance-transfer', before: current.transfers, after: next.transfers },
-        { entity: 'payroll', before: current.payroll, after: next.payroll },
-        {
-          entity: 'finance-settings',
-          before: { openingBalances: current.openingBalances, incomeCategories: current.incomeCategories, expenseCategories: current.expenseCategories },
-          after: { openingBalances: next.openingBalances, incomeCategories: next.incomeCategories, expenseCategories: next.expenseCategories },
-        },
-      ]);
-      return { ...next, auditLog: { ...next.auditLog, ...auditEvents } };
-    });
-    if (!result.committed) throw new Error('A gravação financeira não foi confirmada.');
-    return;
-  }
-
-  const current = readLocalFinance();
-  const next = update(current);
-  const auditEvents = buildAuditEvents(operationId, occurredAt, [
-    { entity: 'finance-income', before: current.incomes, after: next.incomes },
-    { entity: 'finance-expense', before: current.expenses, after: next.expenses },
-    { entity: 'finance-transfer', before: current.transfers, after: next.transfers },
-    { entity: 'payroll', before: current.payroll, after: next.payroll },
-    {
-      entity: 'finance-settings',
-      before: { openingBalances: current.openingBalances, incomeCategories: current.incomeCategories, expenseCategories: current.expenseCategories },
-      after: { openingBalances: next.openingBalances, incomeCategories: next.incomeCategories, expenseCategories: next.expenseCategories },
-    },
-  ]);
-  const audited = { ...next, auditLog: { ...next.auditLog, ...auditEvents } };
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(audited));
-  window.dispatchEvent(new Event(LOCAL_UPDATE_EVENT));
+  const result = await runTransaction(ref(db, 'erp_geral/financeiro'), (value) => {
+    const current = normalizeFinance(value);
+    const next = update(current);
+    const auditEvents = buildAuditEvents(operationId, occurredAt, [
+      { entity: 'finance-income', before: current.incomes, after: next.incomes },
+      { entity: 'finance-expense', before: current.expenses, after: next.expenses },
+      { entity: 'finance-transfer', before: current.transfers, after: next.transfers },
+      { entity: 'payroll', before: current.payroll, after: next.payroll },
+      {
+        entity: 'finance-settings',
+        before: { openingBalances: current.openingBalances, incomeCategories: current.incomeCategories, expenseCategories: current.expenseCategories },
+        after: { openingBalances: next.openingBalances, incomeCategories: next.incomeCategories, expenseCategories: next.expenseCategories },
+      },
+    ]);
+    return { ...next, auditLog: { ...next.auditLog, ...auditEvents } };
+  });
+  if (!result.committed) throw new Error('A gravação financeira não foi confirmada.');
 }
