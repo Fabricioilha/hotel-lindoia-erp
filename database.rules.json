@@ -143,6 +143,9 @@
       },
       "recepcao": {
         ".read": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')",
+        "rates": {
+          ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"
+        },
         "attendants": {
           ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"
         },

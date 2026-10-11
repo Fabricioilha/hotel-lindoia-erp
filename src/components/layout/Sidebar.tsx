@@ -58,6 +58,7 @@ function groupsFor(isAdmin: boolean): NavGroup[] {
       ] },
       { id: 'gestao', title: 'GESTÃO', items: [
         { to: '/funcionarios', label: 'Funcionários', icon: 'users' },
+        { to: '/tarifas', label: 'Tarifas dos quartos', icon: 'dollar' },
         { to: '/estoque', label: 'Estoque', icon: 'box' },
         { to: '/financeiro/caixa', label: 'Fluxo de caixa', icon: 'wallet' },
         { to: '/financeiro/folha', label: 'Folha de pagamento', icon: 'users' },

@@ -1,5 +1,5 @@
 import { incomePaymentWallet, type FinanceData, type FinanceExpense, type FinanceIncome, type FinancePaymentMethod } from '../types/finance';
-import { extraTotal, type CashOut, type GuestStay, type RoomCharge, type StayExtra } from '../types/reception';
+import { extraTotal, stayDailyAmount, type CashOut, type GuestStay, type RoomCharge, type StayExtra } from '../types/reception';
 import type { FrigobarSale } from '../types/frigobar';
 import type { ReservationCollection } from '../types/housekeeping';
 
@@ -29,7 +29,7 @@ export function stayFinanceEntries(stay: GuestStay): Record<string, FinanceIncom
   const entries: Record<string, FinanceIncome> = {};
   const prefix = `recepcao-${stay.id}-`;
   const category = stay.kind === 'periodo' ? 'Rotativo' : 'Diária';
-  const dailyTotal = cents(Math.max(0, stay.dailyRate * stay.nights - (stay.creditApplied ?? 0)));
+  const dailyTotal = cents(Math.max(0, stayDailyAmount(stay) - (stay.creditApplied ?? 0)));
   const dailySplit = stay.dailySplit && stay.dailySplit.amount > 0 && stay.dailySplit.amount < dailyTotal ? stay.dailySplit : undefined;
   const note = [stay.kind === 'periodo' ? `Rotativo ${stay.hours ?? 4}h` : '', stay.creditApplied ? `Crédito do rotativo: R$ ${stay.creditApplied.toFixed(2)}` : '', `Quarto ${stay.roomNumber}`, stay.guestName, `Plantão ${stay.attendant}`, stay.note].filter(Boolean).join(' · ');
   const add = (suffix: string, entryCategory: string, description: string, amount: number, method: FinancePaymentMethod) => {

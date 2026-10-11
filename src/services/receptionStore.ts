@@ -2,10 +2,11 @@ import { endAt, get, increment, onValue, orderByChild, query, ref, remove, runTr
 import { db } from '../config/firebase';
 import { commitDeletion, removeChargeUpdates, removeFinanceEntries } from './deletionStore';
 import { stayFinanceEntries, stayOyoFeeExpense } from './operationalLedger';
-import { type CashOut, type FloatCheck, type GuestStay, type ReceptionData, type ReceptionRoom, type RoomCharge } from '../types/reception';
+import { emptyReceptionRateSettings, type CashOut, type FloatCheck, type GuestStay, type ReceptionData, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge } from '../types/reception';
 import { staffReference } from './staffStore';
 
 const PATH = 'erp_geral/recepcao';
+const RATE_PATH = `${PATH}/rates`;
 
 export function localDateKey(date = new Date()): string {
   const pad = (value: number) => String(value).padStart(2, '0');
@@ -34,6 +35,27 @@ export function subscribeReception(onChange: (data: ReceptionData) => void, onEr
     }, onError);
   });
   return () => stops.forEach((stop) => stop());
+}
+
+export function subscribeReceptionRates(onChange: (settings: ReceptionRateSettings) => void, onError: (error: Error) => void): () => void {
+  return onValue(ref(db, RATE_PATH), (snapshot) => {
+    const value = snapshot.val() as Partial<ReceptionRateSettings> | null;
+    onChange({ ...emptyReceptionRateSettings(), ...value,
+      roomRates: value?.roomRates ?? {}, addOnRates: value?.addOnRates ?? {}, holidays: value?.holidays ?? {},
+    });
+  }, onError);
+}
+
+export async function saveReceptionRates(settings: ReceptionRateSettings): Promise<void> {
+  const roomRates = Object.values(settings.roomRates).flatMap((rates) => Object.values(rates ?? {}));
+  const addOnRates = Object.values(settings.addOnRates);
+  if ([...roomRates, ...addOnRates].some((rate) => !Number.isFinite(rate) || rate! < 0)) {
+    throw new Error('Os valores das diárias e adicionais devem ser números iguais ou maiores que zero.');
+  }
+  if (Object.entries(settings.holidays).some(([date, label]) => !/^\d{4}-\d{2}-\d{2}$/.test(date) || !label.trim())) {
+    throw new Error('Confira as datas e os nomes dos feriados cadastrados.');
+  }
+  await set(ref(db, RATE_PATH), settings);
 }
 
 export interface ReceptionBoardData {

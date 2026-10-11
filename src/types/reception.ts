@@ -8,6 +8,27 @@ export interface Attendant {
 export type StayKind = 'hospede' | 'periodo';
 export type ExtraMode = 'fixo' | 'por_diaria';
 export type ExtraType = 'cama_extra' | 'checkin_antecipado' | 'checkout_tardio' | 'hospede_extra' | 'outros';
+export type WeekdayKey = 'sunday' | 'monday' | 'tuesday' | 'wednesday' | 'thursday' | 'friday' | 'saturday';
+
+export const WEEKDAYS: { key: WeekdayKey; label: string }[] = [
+  { key: 'monday', label: 'Segunda' },
+  { key: 'tuesday', label: 'Terça' },
+  { key: 'wednesday', label: 'Quarta' },
+  { key: 'thursday', label: 'Quinta' },
+  { key: 'friday', label: 'Sexta' },
+  { key: 'saturday', label: 'Sábado' },
+  { key: 'sunday', label: 'Domingo' },
+];
+
+export interface ReceptionRateSettings {
+  roomRates: Partial<Record<RoomType, Partial<Record<WeekdayKey | 'holiday', number>>>>;
+  addOnRates: Partial<Record<'breakfast' | ExtraType, number>>;
+  holidays: Record<string, string>;
+}
+
+export function emptyReceptionRateSettings(): ReceptionRateSettings {
+  return { roomRates: {}, addOnRates: {}, holidays: {} };
+}
 
 export const EXTRA_LABELS: Record<ExtraType, string> = {
   cama_extra: 'Cama extra',
@@ -26,7 +47,7 @@ export interface StayExtra {
   method?: FinancePaymentMethod;
 }
 
-export const SELECTABLE_EXTRAS: ExtraType[] = ['checkin_antecipado', 'checkout_tardio', 'outros'];
+export const SELECTABLE_EXTRAS: ExtraType[] = ['cama_extra', 'hospede_extra', 'checkin_antecipado', 'checkout_tardio', 'outros'];
 
 export interface GuestStay {
   employeeId?: string;
@@ -41,6 +62,8 @@ export interface GuestStay {
   hasAdditionalGuests?: boolean;
   guestCount?: number;
   dailyRate: number;
+  nightlyRates?: number[];
+  lodgingTotal?: number;
   creditApplied?: number;
   convertedFromStayId?: string;
   dailyMethod: FinancePaymentMethod;
@@ -147,6 +170,25 @@ export const ROOM_TYPE_LABELS: Record<RoomType, string> = {
   triplo: 'Triplo · 3 camas (configuração não informada)',
 };
 
+const WEEKDAY_BY_INDEX: WeekdayKey[] = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+
+export function weekdayKey(date: string): WeekdayKey | undefined {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!match) return undefined;
+  const day = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3])).getDay();
+  return WEEKDAY_BY_INDEX[day];
+}
+
+export function stayDailyAmount(stay?: Pick<GuestStay, 'dailyRate' | 'nights' | 'nightlyRates' | 'lodgingTotal'>): number {
+  if (!stay) return 0;
+  if (stay.lodgingTotal !== undefined) return Math.round(stay.lodgingTotal * 100) / 100;
+  const rates = stay.nightlyRates;
+  const amount = rates && rates.length === stay.nights
+    ? rates.reduce((total, rate) => total + rate, 0)
+    : stay.dailyRate * stay.nights;
+  return Math.round(amount * 100) / 100;
+}
+
 export const SELECTABLE_ROOM_TYPES: RoomType[] = ['casal', 'casal_twin', 'solteiro', 'triplo_casal_solteiro', 'triplo_solteiros'];
 
 // 'd' = cama de casal, 's' = cama de solteiro
@@ -179,7 +221,7 @@ export function stayPayments(stay: GuestStay): { id: string; method: FinancePaym
     const id = `recepcao-${stay.id}-${suffix}`;
     if (amount > 0 && !stay.voidedPayments?.[id]) list.push({ id, method, amount: Math.round(amount * 100) / 100, label });
   };
-  const dailyTotal = Math.max(0, stay.dailyRate * stay.nights - (stay.creditApplied ?? 0));
+  const dailyTotal = Math.max(0, stayDailyAmount(stay) - (stay.creditApplied ?? 0));
   const split = stay.dailySplit && stay.dailySplit.amount > 0 && stay.dailySplit.amount < dailyTotal ? stay.dailySplit : undefined;
   const dailyLabel = stay.kind === 'periodo' ? 'Rotativo' : 'Diária';
   add('diaria', stay.dailyMethod, dailyTotal - (split?.amount ?? 0), dailyLabel);
@@ -201,7 +243,7 @@ export function roomChargePayments(charge: RoomCharge): RoomChargePayment[] {
 }
 
 export function stayTotals(stay: GuestStay) {
-  const daily = Math.max(0, stay.dailyRate * stay.nights - (stay.creditApplied ?? 0));
+  const daily = Math.max(0, stayDailyAmount(stay) - (stay.creditApplied ?? 0));
   const breakfast = stay.hasBreakfast ? stay.breakfastRate * (stay.breakfastCount ?? 1) * stay.nights : 0;
   const extras = (stay.extras ?? []).reduce((total, extra) => total + extraTotal(extra, stay.nights), 0);
   return { daily, breakfast, extras, total: stayPayments(stay).reduce((sum, payment) => sum + payment.amount, 0) };

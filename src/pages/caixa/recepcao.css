@@ -37,7 +37,7 @@
 .reception-extras-head { display: grid; gap: 6px; font-size: 0.6875rem; }
 .reception-extras-head span { display: flex; flex-wrap: wrap; gap: 6px; }
 .reception-chip { border: 1px solid #b8c5d8; border-radius: 12px; padding: 4px 10px; color: #315f87; background: #fff; font-size: 0.625rem; font-weight: 700; cursor: pointer; }
-.reception-extra-row { display: grid; grid-template-columns: 1.2fr 1fr 1.2fr auto; align-items: center; gap: 8px; font-size: 0.6875rem; }
+.reception-extra-row { display: grid; grid-template-columns: 1.2fr 1fr .9fr 1.1fr auto; align-items: center; gap: 8px; font-size: 0.6875rem; }
 .reception-extra-row input, .reception-extra-row select { min-height: 34px; padding: 6px 8px; border: 1px solid #d8e0ea; border-radius: 3px; font: inherit; font-size: 0.6875rem; }
 @media (max-width: 600px) { .reception-extra-row { grid-template-columns: 1fr 1fr; } }
 .reception-vacant td { color: #8794a8; background: #fafbfd; }
@@ -75,6 +75,19 @@ a.reception-primary { display: inline-flex; align-items: center; text-decoration
 .reception-modal-footer { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid #d8e0ea; }
 .reception-modal-footer .reception-actions { margin-bottom: 0; }
 .reception-modal-footer button { min-height: 42px; }
+
+.reception-nightly-rates { display: grid; gap: 10px; padding: 12px; border: 1px solid #cdd6e3; border-radius: 6px; background: #f8fafc; }
+.reception-nightly-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; color: #203b59; font-size: .75rem; }
+.reception-nightly-head span { color: #6a7888; font-size: .625rem; }
+.reception-nightly-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 8px; }
+.reception-nightly-input { display: flex; align-items: center; border: 1px solid #d8e0ea; border-radius: 3px; background: #fff; }
+.reception-nightly-input > span { padding-left: 8px; color: #6a7888; }
+.reception-nightly-input input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 36px; padding: 6px 8px; border: 0; background: transparent; font: inherit; font-size: .75rem; }
+.reception-nightly-total { margin: 0; padding-top: 8px; border-top: 1px solid #d8e0ea; color: #203b59; font-size: .75rem; }
+.reception-estimate { display: grid; gap: 7px; padding: 12px; border: 1px solid #b8c5d8; border-radius: 6px; color: #263b59; background: #f1f6fc; font-size: .75rem; }
+.reception-estimate > strong { color: #142b4d; font-size: .8125rem; }
+.reception-estimate > div { display: flex; justify-content: space-between; gap: 12px; }
+.reception-estimate-total { padding-top: 8px; border-top: 1px solid #cdd6e3; }
 
 @media (max-width: 600px) {
   .reception-modal { padding: 14px; }

@@ -22,6 +22,7 @@ const SaidaProdutos = lazy(() => import('./pages/saidas/SaidaProdutos').then((mo
 const SaidaCaixa = lazy(() => import('./pages/caixa/SaidaCaixa').then((module) => ({ default: module.SaidaCaixa })));
 const ConferirCaixa = lazy(() => import('./pages/caixa/ConferirCaixa').then((module) => ({ default: module.ConferirCaixa })));
 const CaixaRecepcao = lazy(() => import('./pages/caixa/CaixaRecepcao').then((module) => ({ default: module.CaixaRecepcao })));
+const Tarifas = lazy(() => import('./pages/Tarifas').then((module) => ({ default: module.Tarifas })));
 
 function VendaRoute({ userRole }: { userRole: UserRole }) {
   const isAdmin = userRole === 'admin';
@@ -203,6 +204,7 @@ function App() {
         />
         <Route path="/financeiro" element={<Navigate to="/financeiro/caixa" replace />} />
         <Route path="/funcionarios" element={<ManagementRoute userRole={userRole}><Suspense fallback={<div role="status">Carregando funcionários...</div>}><Funcionarios /></Suspense></ManagementRoute>} />
+        <Route path="/tarifas" element={<ManagementRoute userRole={userRole}><Suspense fallback={<div role="status">Carregando tarifas...</div>}><Tarifas /></Suspense></ManagementRoute>} />
         <Route path="/financeiro/caixa" element={<ManagementRoute userRole={userRole}><Suspense fallback={<div role="status">Carregando fluxo financeiro...</div>}><FluxoDeCaixa /></Suspense></ManagementRoute>} />
         <Route path="/financeiro/folha" element={<ManagementRoute userRole={userRole}><Suspense fallback={<div role="status">Carregando folha...</div>}><FolhaDePagamento /></Suspense></ManagementRoute>} />
         </Route>

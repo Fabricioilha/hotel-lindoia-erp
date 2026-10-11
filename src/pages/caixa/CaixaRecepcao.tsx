@@ -8,11 +8,12 @@ import { DateInput } from '../../components/ui/DateInput';
 import { PAYMENT_METHOD_LABELS, type FinancePaymentMethod } from '../../types/finance';
 import {
   EXTRA_LABELS, FOLIO_PAYMENT_METHODS, ROOM_TYPE_LABELS, SELECTABLE_EXTRAS, extraTotal,
-  type ExtraType, type GuestStay, type ReceptionData, type ReceptionRoom, type StayExtra, type StayKind,
+  emptyReceptionRateSettings, weekdayKey,
+  type ExtraType, type GuestStay, type ReceptionData, type ReceptionRateSettings, type ReceptionRoom, type StayExtra, type StayKind,
 } from '../../types/reception';
 import { subscribeReservationDirectory, subscribeRoomDirectory } from '../../services/housekeepingStore';
 import type { HousekeepingRoom, ReservationDirectoryEntry } from '../../types/housekeeping';
-import { emptyReception, localDateKey, saveStay, subscribeReception } from '../../services/receptionStore';
+import { emptyReception, localDateKey, saveStay, subscribeReception, subscribeReceptionRates } from '../../services/receptionStore';
 import '../venda-geladeira.css';
 import './recepcao.css';
 
@@ -46,7 +47,13 @@ function parseAmount(value: string) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.round(parsed * 100) / 100 : 0;
 }
 
-interface ExtraDraft { id: string; type: ExtraType; label: string; amount: string; method: FinancePaymentMethod }
+function parseOptionalRate(value: string): number | undefined {
+  if (!value.trim()) return undefined;
+  const parsed = Number(value.replace(',', '.'));
+  return Number.isFinite(parsed) && parsed >= 0 ? Math.round(parsed * 100) / 100 : undefined;
+}
+
+interface ExtraDraft { id: string; type: ExtraType; label: string; amount: string; method: FinancePaymentMethod; mode: 'fixo' | 'por_diaria' }
 
 export interface ReceptionEntryContext {
   stays: Record<string, GuestStay>;
@@ -78,6 +85,7 @@ export function CaixaRecepcao(props: CaixaRecepcaoProps) {
 function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hospede', initialRoom = '', entryContext, onModalClose }: CaixaRecepcaoProps) {
   const isAdmin = userRole === 'admin';
   const [receptionData, setReceptionData] = useState<ReceptionData>(() => emptyReception());
+  const [rateSettings, setRateSettings] = useState<ReceptionRateSettings>(() => emptyReceptionRateSettings());
   const [subscribedRoomDirectory, setSubscribedRoomDirectory] = useState<Record<string, HousekeepingRoom>>({});
   const [subscribedReservationDirectory, setSubscribedReservationDirectory] = useState<Record<string, ReservationDirectoryEntry>>({});
   const [subscribedReservationDirectoryLoaded, setSubscribedReservationDirectoryLoaded] = useState(false);
@@ -103,6 +111,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   const [nights, setNights] = useState('1');
   const [hours, setHours] = useState('4');
   const [dailyRate, setDailyRate] = useState('');
+  const [manualLodgingTotal, setManualLodgingTotal] = useState<string>();
   const [dailyMethod, setDailyMethod] = useState<FinancePaymentMethod>('pix');
   const [splitPayment, setSplitPayment] = useState(false);
   const [splitMethod, setSplitMethod] = useState<FinancePaymentMethod>('cash');
@@ -129,6 +138,10 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
       setError(cause.message);
     });
   }, [entryContext]);
+
+  useEffect(() => subscribeReceptionRates(setRateSettings, (cause) => {
+    setError(`Não foi possível carregar as tarifas: ${cause.message}`);
+  }), []);
 
   useEffect(() => {
     if (entryContext) return;
@@ -164,11 +177,53 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
     return 'Tipo e camas não informados';
   };
 
+  const roomRateType = (number: string) => {
+    const configured = receptionRoomByNumber.get(number)?.type;
+    if (configured) return configured;
+    const category = roomByNumber.get(number)?.category;
+    return category === 'casal' ? 'casal' : category === 'solteiro' ? 'solteiro' : category === 'triplo' ? 'triplo' : undefined;
+  };
+
   const draftHours = Math.min(24, Math.max(1, Math.floor(Number(hours) || 4)));
   const draftNights = formKind === 'periodo' ? 1 : Math.min(60, Math.max(1, Math.floor(Number(nights) || 1)));
   const draftGuestCount = Number(guestCount);
   const draftBreakfastCount = Number(breakfastCount);
-  const dailyTotal = parseAmount(dailyRate) * draftNights;
+  const nightlyDates = formKind === 'hospede' && checkInDate
+    ? Array.from({ length: draftNights }, (_, index) => {
+      const date = new Date(`${checkInDate}T12:00:00`);
+      date.setDate(date.getDate() + index);
+      return localDateKey(date);
+    })
+    : [];
+  const selectedRoomRateType = roomRateType(roomNumber);
+  const nightlyPrices = nightlyDates.map((date) => {
+    const day = weekdayKey(date);
+    const holidayName = rateSettings.holidays[date];
+    const isWeekend = day === 'friday' || day === 'saturday' || day === 'sunday';
+    const configuredRate = selectedRoomRateType
+      ? holidayName ? rateSettings.roomRates[selectedRoomRateType]?.holiday : day ? rateSettings.roomRates[selectedRoomRateType]?.[day] : undefined
+      : undefined;
+    const groupLabel = holidayName ? `Feriado · ${holidayName}` : isWeekend ? 'Fim de semana' : 'Dias úteis';
+    return { date, value: configuredRate, groupLabel };
+  });
+  const nightlyRateValues = nightlyPrices.map(({ value }) => value);
+  const scheduledTotal = nightlyRateValues.every((value) => value !== undefined)
+    ? Math.round(nightlyRateValues.reduce<number>((total, rate) => total + (rate ?? 0), 0) * 100) / 100
+    : undefined;
+  const scheduledPartial = Math.round(nightlyRateValues.reduce<number>((total, rate) => total + (rate ?? 0), 0) * 100) / 100;
+  const suggestedTotalText = scheduledTotal === undefined ? '' : String(scheduledTotal).replace('.', ',');
+  const lodgingTotalText = manualLodgingTotal ?? suggestedTotalText;
+  const enteredLodgingTotal = parseOptionalRate(lodgingTotalText);
+  const nightlyGroups = nightlyPrices.reduce<{ label: string; rate: number; count: number }[]>((groups, night) => {
+    if (night.value === undefined) return groups;
+    const group = groups.find((item) => item.label === night.groupLabel && item.rate === night.value);
+    if (group) group.count += 1;
+    else groups.push({ label: night.groupLabel, rate: night.value, count: 1 });
+    return groups;
+  }, []);
+  const dailyTotal = formKind === 'hospede'
+    ? enteredLodgingTotal ?? scheduledPartial
+    : parseAmount(dailyRate) * draftNights;
   const breakfastTotal = parseAmount(breakfastRate) * draftBreakfastCount * draftNights;
   const breakfastSplit = breakfastSplitPayment ? parseAmount(breakfastSplitAmount) : 0;
   const draftSplit = splitPayment ? parseAmount(splitAmount) : 0;
@@ -226,7 +281,9 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   }, [formKind, saving, navigate, modalOnly, onModalClose]);
 
   function addExtra(type: ExtraType) {
-    setExtras((current) => [...current, { id: crypto.randomUUID(), type, label: type === 'outros' ? '' : EXTRA_LABELS[type], amount: '', method: 'pix' }]);
+    const mode = type === 'cama_extra' || type === 'hospede_extra' ? 'por_diaria' : 'fixo';
+    const suggested = rateSettings.addOnRates[type];
+    setExtras((current) => [...current, { id: crypto.randomUUID(), type, label: type === 'outros' ? '' : EXTRA_LABELS[type], amount: suggested === undefined ? '' : String(suggested).replace('.', ','), method: 'pix', mode }]);
   }
 
   function updateExtra(id: string, patch: Partial<ExtraDraft>) {
@@ -236,7 +293,9 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   async function submitStay(event: FormEvent) {
     event.preventDefault();
     if (!formKind) return;
-    const rate = parseAmount(dailyRate);
+    const rate = formKind === 'hospede'
+      ? draftNights ? Math.round((dailyTotal / draftNights) * 100) / 100 : 0
+      : parseAmount(dailyRate);
     const withBreakfast = formKind === 'hospede' && hasBreakfast;
     const breakfast = withBreakfast ? parseAmount(breakfastRate) : 0;
     const withTax = formKind === 'hospede' && hasTax;
@@ -245,7 +304,8 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
     if (!roomNumber.trim()) return setError('Informe o quarto.');
     if (formKind === 'hospede' && !guestName.trim()) return setError('Informe o nome do hóspede titular.');
     if (!Number.isInteger(draftGuestCount) || draftGuestCount < 1 || draftGuestCount > 10) return setError('Informe de 1 a 10 pessoas no quarto.');
-    if (!rate) return setError('Informe o valor da diária.');
+    if (formKind === 'hospede' && enteredLodgingTotal === undefined) return setError('Informe um total válido para as diárias. Se não houver tarifa para algum dia, digite o valor combinado com o hóspede.');
+    if (formKind === 'periodo' && !rate) return setError('Informe o valor do rotativo.');
     if (splitPayment && (!draftSplit || draftSplit >= dailyTotal)) return setError('O valor da segunda forma de pagamento deve ser maior que zero e menor que o valor da diária.');
     if (withBreakfast && (!Number.isInteger(draftBreakfastCount) || draftBreakfastCount < 1 || draftBreakfastCount > draftGuestCount)) return setError('A quantidade de cafés deve ficar entre 1 e o número de hóspedes.');
     if (withBreakfast && !breakfast) return setError('Informe o valor de cada café.');
@@ -262,6 +322,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
       guestCount: draftGuestCount,
       ...(formKind === 'periodo' ? { hours: draftHours } : {}),
       dailyRate: rate,
+      ...(formKind === 'hospede' ? { lodgingTotal: enteredLodgingTotal, ...(nightlyRateValues.every((value) => value !== undefined) ? { nightlyRates: nightlyRateValues as number[] } : {}) } : {}),
       dailyMethod,
       ...(splitPayment ? { dailySplit: { method: splitMethod, amount: draftSplit } } : {}),
       hasBreakfast: withBreakfast,
@@ -363,8 +424,8 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
           <div className="reception-modal-body">
             {error && <div className="sales-alert" role="alert">{error}</div>}
             <div className="reception-grid">
-              <label className="sales-field"><span>Data de entrada (digite ou use o calendário)</span><DateInput name="checkInDate" value={checkInDate} onValueChange={setCheckInDate} required /></label>
-              <label className="sales-field"><span>Quarto</span><select value={roomNumber} onChange={(event) => setRoomNumber(event.target.value)} required><option value="">Selecione um quarto cadastrado</option>{allRoomNumbers.map((number) => <option key={number} value={number}>{number} · {describeRoom(number)}</option>)}</select></label>
+              <label className="sales-field"><span>Data de entrada (digite ou use o calendário)</span><DateInput name="checkInDate" value={checkInDate} onValueChange={(value) => { setCheckInDate(value); setManualLodgingTotal(undefined); }} required /></label>
+              <label className="sales-field"><span>Quarto</span><select value={roomNumber} onChange={(event) => { setRoomNumber(event.target.value); setManualLodgingTotal(undefined); }} required><option value="">Selecione um quarto cadastrado</option>{allRoomNumbers.map((number) => <option key={number} value={number}>{number} · {describeRoom(number)}</option>)}</select></label>
               {formKind === 'hospede' && <label className="sales-field reception-wide"><span>Hóspede titular</span><input value={guestName} onChange={(event) => setGuestName(event.target.value)} maxLength={120} required /></label>}
               <label className="sales-field"><span>Quantidade de pessoas</span><input type="number" min="1" max="10" step="1" value={guestCount} onChange={(event) => {
                 const nextCount = event.target.value;
@@ -376,8 +437,15 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
               }} required /></label>
               <p className="reception-hint reception-wide">Incluindo o titular; não é necessário cadastrar os dados dos demais hóspedes.</p>
               {formKind === 'periodo' && <label className="sales-field"><span>Quantidade de horas</span><input type="number" min={1} max={24} value={hours} onChange={(event) => setHours(event.target.value)} /></label>}
-              {formKind === 'hospede' && <label className="sales-field"><span>Quantidade de diárias</span><input type="number" min={1} max={60} value={nights} onChange={(event) => setNights(event.target.value)} /></label>}
-              <label className="sales-field"><span>{formKind === 'hospede' ? 'Valor de 1 diária (R$)' : 'Valor do rotativo (R$)'}</span><input inputMode="decimal" value={dailyRate} onChange={(event) => setDailyRate(event.target.value)} required /></label>
+              {formKind === 'hospede' && <label className="sales-field"><span>Quantidade de diárias</span><input type="number" min={1} max={60} value={nights} onChange={(event) => { setNights(event.target.value); setManualLodgingTotal(undefined); }} /></label>}
+              {formKind === 'hospede' ? <section className="reception-nightly-rates reception-wide" aria-label="Tarifa sugerida das diárias">
+                <div className="reception-nightly-head"><strong>Total sugerido das diárias</strong><span>{selectedRoomRateType ? ROOM_TYPE_LABELS[selectedRoomRateType] : 'Tipo de quarto não identificado'}</span></div>
+                <p className="reception-hint reception-wide">Calculado pelas tarifas da gerência, considerando dias da semana, finais de semana e feriados cadastrados. Você pode ajustar o total ao valor combinado no balcão.</p>
+                <label className="sales-field reception-total-input"><span>Total das diárias (R$)</span><span className="reception-nightly-input"><span>R$</span><input inputMode="decimal" value={lodgingTotalText} placeholder="Informe o total combinado" onChange={(event) => setManualLodgingTotal(event.target.value)} required /></span></label>
+                {nightlyGroups.length > 0 && <p className="reception-nightly-total">Cálculo: {nightlyGroups.map(({ label, rate, count }) => `${label}: ${count} × ${money(rate)}`).join(' · ')}</p>}
+                {manualLodgingTotal !== undefined && <p className="reception-hint">Total ajustado manualmente; este será o valor registrado para as diárias.</p>}
+                {nightlyPrices.some(({ value }) => value === undefined) && <p className="reception-hint">Há diária(s) sem tarifa cadastrada. Informe o total acordado ou peça à gerência para completar os preços.</p>}
+              </section> : <label className="sales-field"><span>Valor do rotativo (R$)</span><input inputMode="decimal" value={dailyRate} onChange={(event) => setDailyRate(event.target.value)} required /></label>}
               <label className="sales-field"><span>{splitPayment ? '1ª forma de pagamento' : 'Forma de pagamento (FP)'}</span><select value={dailyMethod} onChange={(event) => setDailyMethod(event.target.value as FinancePaymentMethod)}>
                 {FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}
               </select></label>
@@ -395,7 +463,11 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
               {formKind === 'hospede' && <div className="reception-optional reception-wide">
                 <label className="reception-check"><input type="checkbox" checked={hasBreakfast} onChange={(event) => {
                   setHasBreakfast(event.target.checked);
-                  if (event.target.checked) setBreakfastCount(String(Number.isInteger(draftGuestCount) && draftGuestCount > 0 ? draftGuestCount : 1));
+                  if (event.target.checked) {
+                    setBreakfastCount(String(Number.isInteger(draftGuestCount) && draftGuestCount > 0 ? draftGuestCount : 1));
+                    const suggestedBreakfast = rateSettings.addOnRates.breakfast;
+                    if (suggestedBreakfast !== undefined) setBreakfastRate(String(suggestedBreakfast).replace('.', ','));
+                  }
                 }} /> Inclui café da manhã</label>
                 {hasBreakfast && <>
                   <label className="reception-small-field"><span>Quantidade de cafés por dia</span><input type="number" min="1" max={Number.isInteger(draftGuestCount) ? draftGuestCount : 1} step="1" value={breakfastCount} onChange={(event) => setBreakfastCount(event.target.value)} /></label>
@@ -435,6 +507,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
                     ? <input aria-label="Descrição do extra" placeholder="Descrição" value={extra.label} onChange={(event) => updateExtra(extra.id, { label: event.target.value })} maxLength={60} />
                     : <strong>{extra.label}</strong>}
                   <input aria-label={`Valor de ${extra.label || 'extra'}`} inputMode="decimal" placeholder="Valor (R$)" value={extra.amount} onChange={(event) => updateExtra(extra.id, { amount: event.target.value })} />
+                  <select aria-label={`Cobrança de ${extra.label || 'extra'}`} value={extra.mode} onChange={(event) => updateExtra(extra.id, { mode: event.target.value as 'fixo' | 'por_diaria' })}><option value="fixo">Valor único</option><option value="por_diaria">Por diária</option></select>
                   <select aria-label="Forma de pagamento do extra" value={extra.method} onChange={(event) => updateExtra(extra.id, { method: event.target.value as FinancePaymentMethod })}>
                     {FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}
                   </select>
@@ -442,6 +515,15 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
                 </div>
               ))}
             </div>}
+
+            {formKind === 'hospede' && <section className="reception-estimate" aria-live="polite">
+              <strong>Estimativa da estadia</strong>
+              <div><span>Diárias ({draftNights})</span><strong>{money(dailyTotal)}</strong></div>
+              {hasBreakfast && <div><span>Café da manhã ({draftBreakfastCount} por dia × {draftNights})</span><strong>{money(breakfastTotal)}</strong></div>}
+              {draftExtras.map((extra) => <div key={extra.id}><span>{extra.label || 'Adicional'}{extra.mode === 'por_diaria' ? ` (${draftNights} diária(s))` : ''}</span><strong>{money(extraTotal(extra, draftNights))}</strong></div>)}
+              {hasTax && <div><span>Taxa{taxMethod === 'prepaid' ? ' (pré-paga, fora do total)' : ''}</span><strong>{money(taxMethod === 'prepaid' ? 0 : parseAmount(taxAmount))}</strong></div>}
+              <div className="reception-estimate-total"><span>{enteredLodgingTotal === undefined && formKind === 'hospede' ? 'Estimativa parcial · informe o total das diárias' : 'Total estimado'}</span><strong>{money(draftTotal)}</strong></div>
+            </section>}
 
             <label className="reception-note"><span>Observações</span><textarea value={note} onChange={(event) => setNote(event.target.value)} maxLength={500} rows={3} placeholder="Escreva aqui qualquer informação importante sobre este registro" /></label>
           </div>
