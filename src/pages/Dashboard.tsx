@@ -2,19 +2,19 @@ import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from 're
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAttendant } from '../services/useAttendant';
 import type { UserRole } from '../types';
-import { emptyInventory, subscribeInventory } from '../services/inventoryStore';
-import { emptyHousekeeping, subscribeCurrentReservationDirectory, subscribeHousekeeping, subscribeReservationCollections, subscribeRoomDirectory, syncReservationCollections, syncReservationDirectory } from '../services/housekeepingStore';
+import { subscribeDashboardHousekeeping, subscribeCurrentReservationDirectory, subscribeReservationCollections, subscribeRoomDirectory, syncReservationCollections, type DashboardHousekeepingData } from '../services/housekeepingStore';
 import { guestStayOccupiesToday, hotelOccupancySummary, occupiedRoomNumbers, reservationOccupiesToday } from '../services/reservationAnalytics';
-import { emptyFrigobar, subscribeFrigobar, subscribeRoomAddOnInventory, syncFrigobarCatalog } from '../services/frigobarStore';
+import { subscribeRoomAddOnInventory } from '../services/frigobarStore';
 import { convertRotativoToDaily, emptyReception, localDateKey, saveRoomCharge, subscribeReceptionBoard } from '../services/receptionStore';
-import { emptyCleaning, subscribeActiveCleaningTasks, subscribeCleaning } from '../services/cleaningStore';
+import { emptyCleaning, subscribeActiveCleaningTasks, subscribeDashboardCleaningTasks } from '../services/cleaningStore';
+import { subscribeInventoryProducts } from '../services/inventoryStore';
 import { useInternalOutputSync } from '../services/internalOutputs';
 import type { CleaningData, CleaningTask } from '../types/cleaning';
 import { FOLIO_PAYMENT_METHODS, ROOM_TYPE_LABELS, stayDailyAmount, type GuestStay, type ReceptionRoom, type RoomCharge, type RoomChargeKind, type StayKind } from '../types/reception';
 import { PAYMENT_METHOD_LABELS, type FinancePaymentMethod } from '../types/finance';
-import type { InventoryData } from '../types/inventory';
-import type { HousekeepingData, HousekeepingRoom, ReservationDirectoryEntry } from '../types/housekeeping';
+import type { StockProduct } from '../types/inventory';
 import type { FrigobarData } from '../types/frigobar';
+import type { HousekeepingRoom, ReservationDirectoryEntry } from '../types/housekeeping';
 import type { ReceptionEntryContext } from './caixa/CaixaRecepcao';
 import { ActionCard } from '../components/ui/ActionCard';
 import { PanelModalProvider } from '../components/ui/PanelModalContext';
@@ -42,11 +42,11 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   const [temporaryNotice, setTemporaryNotice] = useState<{ id: string; message: string } | null>(null);
   const [activeTool, setActiveTool] = useState<DashboardTool | null>(null);
   const [quickReceptionKind, setQuickReceptionKind] = useState<StayKind | null>(null);
-  const [housekeeping, setHousekeeping] = useState<HousekeepingData>(emptyHousekeeping());
-  const [inventory, setInventory] = useState<InventoryData>(emptyInventory());
-  const [metricsLoaded, setMetricsLoaded] = useState(false);
-  const [metricsError, setMetricsError] = useState(false);
-  const [frigobar, setFrigobar] = useState<FrigobarData>(emptyFrigobar());
+  const [housekeeping, setHousekeeping] = useState<DashboardHousekeepingData>({ rooms: {}, reservations: {}, cleaningLogs: {} });
+  const [inventoryProducts, setInventoryProducts] = useState<Record<string, StockProduct>>({});
+  const [metricsLoadedKey, setMetricsLoadedKey] = useState('');
+  const [metricsErrorKey, setMetricsErrorKey] = useState('');
+  const [frigobarStock, setFrigobarStock] = useState<Record<string, number>>({});
   const [syncError, setSyncError] = useState('');
   const [boardStays, setBoardStays] = useState<Record<string, GuestStay>>({});
   const [roomCharges, setRoomCharges] = useState<Record<string, RoomCharge>>(emptyReception().roomCharges);
@@ -59,12 +59,14 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   const [clock, setClock] = useState(() => Date.now());
   const boardTodayKey = localDateKey(new Date(clock));
   const boardRequestKey = `${userRole}:${boardTodayKey}`;
+  const metricsLoaded = metricsLoadedKey === boardRequestKey;
+  const metricsError = metricsErrorKey === boardRequestKey;
   const boardRoomsLoaded = boardRoomsLoadedKey === boardRequestKey;
   const boardReservationsLoaded = boardReservationsLoadedKey === boardRequestKey;
   const boardReceptionLoaded = boardReceptionLoadedKey === boardRequestKey;
   const [activeCleaningTasks, setActiveCleaningTasks] = useState<Record<string, CleaningTask>>({});
-  const [boardCleaningLoadedRole, setBoardCleaningLoadedRole] = useState<UserRole | null>(null);
-  const boardCleaningLoaded = boardCleaningLoadedRole === userRole;
+  const [boardCleaningLoadedKey, setBoardCleaningLoadedKey] = useState('');
+  const boardCleaningLoaded = boardCleaningLoadedKey === (userRole === 'admin' ? boardRequestKey : String(userRole));
   const attendant = useAttendant();
   const salesActor = userRole === 'admin' ? 'Gerência' : attendant || 'Equipe';
   const receptionEntryContext = useMemo<ReceptionEntryContext>(() => ({
@@ -124,27 +126,15 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   useInternalOutputSync(userRole === 'admin', setSyncError);
 
   useEffect(() => {
-    if (userRole !== 'admin') return;
-    return subscribeCleaning((data) => {
-      setCleaning(data);
-      setBoardCleaningLoadedRole(userRole);
-    }, (cause) => {
-      setSyncError(cause.message);
-      setMetricsError(true);
-      setBoardCleaningLoadedRole(userRole);
-    });
-  }, [userRole]);
-
-  useEffect(() => {
     if (userRole === 'admin') {
       return;
     }
     return subscribeActiveCleaningTasks((tasks) => {
       setActiveCleaningTasks(tasks);
-      setBoardCleaningLoadedRole(userRole);
+      setBoardCleaningLoadedKey(String(userRole));
     }, (cause) => {
       setSyncError(cause.message);
-      setBoardCleaningLoadedRole(userRole);
+      setBoardCleaningLoadedKey(String(userRole));
     });
   }, [userRole]);
 
@@ -157,7 +147,7 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
       setBoardReceptionLoadedKey(requestKey);
     }, (cause) => {
       setSyncError(cause.message);
-      if (userRole === 'admin') setMetricsError(true);
+      if (userRole === 'admin') setMetricsErrorKey(requestKey);
       setBoardReceptionLoadedKey(requestKey);
     }, { includeRoomCharges: userRole !== 'admin' });
   }, [boardRequestKey, userRole]);
@@ -188,46 +178,56 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   useEffect(() => {
     if (userRole !== 'admin') return;
     let roomsLoaded = false;
-    let inventoryLoaded = userRole !== 'admin';
+    let inventoryLoaded = false;
+    let minibarStockLoaded = false;
     const markLoaded = () => {
-      if (roomsLoaded && inventoryLoaded) setMetricsLoaded(true);
+      if (roomsLoaded && inventoryLoaded && minibarStockLoaded) setMetricsLoadedKey(boardRequestKey);
     };
-    const unsubscribeRooms = subscribeHousekeeping((data) => {
+    const unsubscribeRooms = subscribeDashboardHousekeeping(boardTodayKey, (data) => {
       setHousekeeping(data);
       roomsLoaded = true;
       markLoaded();
     }, () => {
-      setMetricsError(true);
+      setMetricsErrorKey(boardRequestKey);
       roomsLoaded = true;
       markLoaded();
     });
-    const unsubscribeInventory = userRole === 'admin' ? subscribeInventory((data) => {
-      setInventory(data);
-      void syncFrigobarCatalog(data).catch((cause: unknown) => setSyncError(cause instanceof Error ? cause.message : 'Não foi possível atualizar o catálogo da geladeira.'));
+    const unsubscribeInventory = subscribeInventoryProducts((products) => {
+      setInventoryProducts(products);
       inventoryLoaded = true;
       markLoaded();
     }, () => {
-      setMetricsError(true);
+      setMetricsErrorKey(boardRequestKey);
       inventoryLoaded = true;
       markLoaded();
-    }) : () => {};
+    });
+    const unsubscribeMinibar = subscribeRoomAddOnInventory(({ stock }) => {
+      setFrigobarStock(stock);
+      minibarStockLoaded = true;
+      markLoaded();
+    }, () => {
+      setMetricsErrorKey(boardRequestKey);
+      minibarStockLoaded = true;
+      markLoaded();
+    });
     return () => {
       unsubscribeRooms();
       unsubscribeInventory();
+      unsubscribeMinibar();
     };
-  }, [userRole]);
-
-  useEffect(() => {
-    if (userRole !== 'admin' || !metricsLoaded) return;
-    void syncReservationDirectory(housekeeping.reservations).catch((cause: unknown) =>
-      setSyncError(cause instanceof Error ? cause.message : 'Não foi possível atualizar o diretório operacional de quartos.'),
-    );
-  }, [userRole, metricsLoaded, housekeeping.reservations]);
+  }, [userRole, boardRequestKey, boardTodayKey]);
 
   useEffect(() => {
     if (userRole !== 'admin') return;
-    return subscribeFrigobar(setFrigobar, (cause) => setSyncError(cause.message));
-  }, [userRole]);
+    return subscribeDashboardCleaningTasks(boardTodayKey, (data) => {
+      setCleaning(data);
+      setBoardCleaningLoadedKey(boardRequestKey);
+    }, (cause) => {
+      setSyncError(cause.message);
+      setMetricsErrorKey(boardRequestKey);
+      setBoardCleaningLoadedKey(boardRequestKey);
+    });
+  }, [userRole, boardRequestKey, boardTodayKey]);
 
   useEffect(() => {
     if (userRole !== 'admin') return;
@@ -239,9 +239,9 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   const metricDate = new Date(clock);
   const occupancy = hotelOccupancySummary(housekeeping, metricDate, { stays: boardStays, rooms: receptionRooms });
   const occupiedNumbers = occupiedRoomNumbers(housekeeping, boardStays, metricDate);
-  const lowStockCount = Object.values(inventory.products).filter((product) => {
+  const lowStockCount = Object.values(inventoryProducts).filter((product) => {
     const quantity = product.category === 'frigobar'
-      ? Number(frigobar.stock[product.id] ?? product.locationQuantities['Geladeira - Recepção'] ?? 0)
+      ? Number(frigobarStock[product.id] ?? product.locationQuantities['Geladeira - Recepção'] ?? 0)
       : Object.values(product.locationQuantities ?? {}).reduce((total, value) => total + Number(value || 0), 0);
     return product.active !== false && product.minimumQuantity > 0 && quantity <= product.minimumQuantity;
   }).length;
@@ -313,21 +313,6 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
           {attendant ? <strong>{attendant}</strong> : <small>Ninguém escalado neste horário</small>}
         </div>}
 
-        {userRole !== 'admin' && <RoomBoard
-          rooms={roomDirectory}
-          cleaningRoomNumbers={cleaningRoomNumbers}
-          receptionRooms={receptionRooms}
-          stays={boardStays}
-          roomCharges={roomCharges}
-          reservations={reservationDirectory}
-          loaded={boardReceptionLoaded && boardRoomsLoaded && boardReservationsLoaded && boardCleaningLoaded}
-          now={clock}
-          attendant={attendant}
-          userRole={userRole}
-          entryContext={receptionEntryContext}
-          onChargeSaved={showTemporaryNotice}
-        />}
-
         {userRole !== 'admin' && <section className="dashboard-modules dashboard-employee-modules" aria-label="O que você quer fazer?">
           <div className="dashboard-section-heading">
             <div><p className="dashboard-eyebrow">PLANTÃO</p><h2>O que você quer fazer?</h2></div>
@@ -344,6 +329,21 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
           </div>
         </section>}
 
+        {userRole !== 'admin' && <RoomBoard
+          rooms={roomDirectory}
+          cleaningRoomNumbers={cleaningRoomNumbers}
+          receptionRooms={receptionRooms}
+          stays={boardStays}
+          roomCharges={roomCharges}
+          reservations={reservationDirectory}
+          loaded={boardReceptionLoaded && boardRoomsLoaded && boardReservationsLoaded && boardCleaningLoaded}
+          now={clock}
+          attendant={attendant}
+          userRole={userRole}
+          entryContext={receptionEntryContext}
+          onChargeSaved={showTemporaryNotice}
+        />}
+
         {userRole === 'admin' && <section className="dashboard-modules">
           <div className="dashboard-section-heading">
             <div><p className="dashboard-eyebrow">ACESSO RÁPIDO</p><h2>Módulos do hotel</h2></div>
@@ -351,7 +351,7 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
           <div className="module-grid">
             <ModuleCard number="01" title="Lançar Venda" description="Venda bebidas, receba na hora ou registre por quarto." route="/vendas" />
             {userRole === 'admin' && <ModuleCard number="02" title="Controle de estoque" description="Limpeza, rouparia, manutenção e itens da recepção." route="/estoque" />}
-            {userRole === 'admin' && <ModuleCard number="03" title="Serviço de quarto" description="Status de limpeza, ocupação e manutenção reportada." route="/quartos" />}
+            {userRole === 'admin' && <ModuleCard number="03" title="Gerenciar quartos" description="Edite a categoria e a quantidade de camas; acompanhe limpeza e manutenção." route="/quartos" />}
             <ModuleCard number="04" title="Escala de funcionários" description="Calendário de turnos e equipe operacional." route="/escala" />
             {userRole === 'admin' && <ModuleCard number="05" title="Gestão financeira" description="Fluxo de caixa, folha e despesas do hotel." route="/financeiro/caixa" />}
             {userRole === 'admin' && <ModuleCard number="06" title="Recepção e reservas" description="Check-in, check-out e gestão de hóspedes." route="/reservas" />}
@@ -769,7 +769,7 @@ function RoomBoard({ rooms, cleaningRoomNumbers, receptionRooms, stays, roomChar
             const occupant = occupants.get(number);
             const isCleaning = room?.cleaningStatus === 'em_limpeza' || cleaningRoomNumbers.has(number);
             const inMaintenance = !occupant && room?.maintenanceStatus === 'em_manutencao';
-            const description = roomProfile
+            const typeDescription = roomProfile
               ? ROOM_TYPE_LABELS[roomProfile.type]
               : room?.category === 'casal'
                 ? ROOM_TYPE_LABELS.casal
@@ -778,6 +778,9 @@ function RoomBoard({ rooms, cleaningRoomNumbers, receptionRooms, stays, roomChar
                   : room?.category === 'triplo'
                     ? ROOM_TYPE_LABELS.triplo
                     : 'Tipo de quarto não informado';
+            const description = room?.bedCount
+              ? `${typeDescription.split(' · ')[0]} · ${room.bedCount} ${room.bedCount === 1 ? 'cama' : 'camas'}`
+              : typeDescription;
             const status = occupant ? 'occupied' : inMaintenance ? 'maintenance' : 'free';
             const statusLabel = status === 'occupied' ? 'Ocupado' : status === 'maintenance' ? 'Em manutenção' : 'Livre';
             const unavailable = Boolean(inMaintenance);

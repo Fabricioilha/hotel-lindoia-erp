@@ -1,29 +1,31 @@
 import { useEffect, useState, type FormEvent } from 'react';
-import { emptyReception, saveFloatCheck, subscribeReception } from '../../services/receptionStore';
+import { saveFloatCheck, subscribeFloatCheck } from '../../services/receptionStore';
 import { useDuty } from '../../services/useAttendant';
-import { FLOAT_AMOUNT, type ReceptionData } from '../../types/reception';
+import { FLOAT_AMOUNT } from '../../types/reception';
 
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 
 // Ao assumir o plantão, o plantonista confirma se o anterior deixou o troco no caixa.
 export function FloatCheckGate() {
   const { attendant, duty, previous, handoff } = useDuty();
-  const [data, setData] = useState<ReceptionData>(emptyReception());
-  const [loaded, setLoaded] = useState(false);
+  const id = duty && attendant ? `${duty.start.getTime()}-${attendant.replace(/[^A-Za-z0-9]/g, '_')}` : '';
+  const [checkState, setCheckState] = useState<{ id: string; status: 'checked' | 'not-checked' | 'unknown' } | null>(null);
   const [different, setDifferent] = useState(false);
   const [amount, setAmount] = useState('');
   const [justification, setJustification] = useState('');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => subscribeReception((next) => {
-    setData(next);
-    setLoaded(true);
-  }, () => undefined), []);
+  useEffect(() => {
+    if (!id) return;
+    return subscribeFloatCheck(id, (exists) => {
+      setCheckState({ id, status: exists ? 'checked' : 'not-checked' });
+    }, () => { setCheckState({ id, status: 'unknown' }); });
+  }, [id]);
 
-  if (!loaded || !duty || !attendant) return null;
-  const id = `${duty.start.getTime()}-${attendant.replace(/[^A-Za-z0-9]/g, '_')}`;
-  if (data.floatChecks[id]) return null;
+  const loaded = Boolean(id && checkState?.id === id);
+  const alreadyChecked = checkState?.id !== id || checkState.status !== 'not-checked';
+  if (!loaded || !duty || !attendant || alreadyChecked) return null;
   const expectedCash = handoff?.cashLeft ?? FLOAT_AMOUNT;
 
   async function save(counted: number, reason: string) {

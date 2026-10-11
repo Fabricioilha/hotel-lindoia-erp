@@ -1,4 +1,4 @@
-import { endAt, get, increment, onValue, orderByChild, query, ref, remove, runTransaction, set, startAt, update } from 'firebase/database';
+import { endAt, equalTo, get, increment, onValue, orderByChild, query, ref, remove, runTransaction, set, startAt, update } from 'firebase/database';
 import { db } from '../config/firebase';
 import { commitDeletion, removeChargeUpdates, removeFinanceEntries } from './deletionStore';
 import { stayFinanceEntries, stayOyoFeeExpense } from './operationalLedger';
@@ -13,21 +13,27 @@ export function localDateKey(date = new Date()): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
 }
 
+function fiveYearsAgoDateKey(): string {
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 5);
+  return localDateKey(cutoff);
+}
+
 export function emptyReception(): ReceptionData {
   return { attendants: {}, stays: {}, roomCharges: {}, rooms: {}, cashOuts: {}, floatChecks: {} };
 }
 
-export function subscribeReception(onChange: (data: ReceptionData) => void, onError: (error: Error) => void, options: { includeHistoricalCharges?: boolean } = {}): () => void {
+export function subscribeReception(onChange: (data: ReceptionData) => void, onError: (error: Error) => void): () => void {
   const keys: (keyof ReceptionData)[] = ['stays', 'roomCharges', 'rooms', 'cashOuts', 'floatChecks'];
-  const chargeStart = new Date();
-  chargeStart.setDate(chargeStart.getDate() - 365);
+  const cutoff = fiveYearsAgoDateKey();
   const loaded = new Set<keyof ReceptionData>();
   const current = { ...emptyReception() } as unknown as Record<string, unknown>;
   const stops = keys.map((key) => {
     const dataRef = ref(db, `${PATH}/${key}`);
-    const dataQuery = key === 'roomCharges' && !options.includeHistoricalCharges
-      ? query(dataRef, orderByChild('date'), startAt(localDateKey(chargeStart)), endAt(localDateKey()))
-      : dataRef;
+    const orderField = key === 'stays' ? 'checkInDate'
+      : key === 'roomCharges' || key === 'cashOuts' ? 'date'
+        : key === 'floatChecks' ? 'createdAt' : '';
+    const dataQuery = orderField ? query(dataRef, orderByChild(orderField), startAt(cutoff)) : dataRef;
     return onValue(dataQuery, (snapshot) => {
       current[key] = snapshot.val() ?? {};
       loaded.add(key);
@@ -35,6 +41,16 @@ export function subscribeReception(onChange: (data: ReceptionData) => void, onEr
     }, onError);
   });
   return () => stops.forEach((stop) => stop());
+}
+
+export function subscribeTodayCashOuts(onChange: (cashOuts: Record<string, CashOut>) => void, onError: (error: Error) => void): () => void {
+  const today = localDateKey();
+  const todayCashOuts = query(ref(db, `${PATH}/cashOuts`), orderByChild('date'), equalTo(today));
+  return onValue(todayCashOuts, (snapshot) => onChange(snapshot.val() ?? {}), onError);
+}
+
+export function subscribeFloatCheck(id: string, onChange: (exists: boolean) => void, onError: (error: Error) => void): () => void {
+  return onValue(ref(db, `${PATH}/floatChecks/${id}`), (snapshot) => onChange(snapshot.exists()), onError);
 }
 
 export function subscribeReceptionRates(onChange: (settings: ReceptionRateSettings) => void, onError: (error: Error) => void): () => void {
@@ -69,7 +85,7 @@ export function subscribeReceptionBoard(onChange: (data: ReceptionBoardData) => 
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
   const from = new Date(today);
-  from.setDate(from.getDate() - 365);
+  from.setDate(from.getDate() - 60);
   const loaded = new Set<keyof ReceptionBoardData>();
   let stays: Record<string, GuestStay> = {};
   let roomCharges: Record<string, RoomCharge> = {};

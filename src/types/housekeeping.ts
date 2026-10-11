@@ -62,6 +62,7 @@ export interface HousekeepingRoom {
   id: string;
   number: string;
   category?: RoomCategory;
+  bedCount?: number;
   cleaningStatus: RoomCleaningStatus;
   maintenanceStatus: RoomMaintenanceStatus;
   note: string;

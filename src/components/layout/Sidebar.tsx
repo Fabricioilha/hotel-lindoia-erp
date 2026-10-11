@@ -54,7 +54,7 @@ function groupsFor(isAdmin: boolean): NavGroup[] {
     groups.push(
       { id: 'hospedagem', title: 'HOSPEDAGEM', items: [
         { to: '/reservas', label: 'Reservas', icon: 'bed' },
-        { to: '/quartos', label: 'Serviço de quarto', icon: 'broom' },
+        { to: '/quartos', label: 'Gerenciar quartos', icon: 'broom' },
       ] },
       { id: 'gestao', title: 'GESTÃO', items: [
         { to: '/funcionarios', label: 'Funcionários', icon: 'users' },

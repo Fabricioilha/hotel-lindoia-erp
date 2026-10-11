@@ -63,7 +63,7 @@ export function reservationOccupiesToday(reservation: ReservationDirectoryEntry,
   return reservation.checkInDate <= today && today <= reservation.checkOutDate;
 }
 
-export function reservationGuestCount(reservation: Reservation): number {
+export function reservationGuestCount(reservation: Pick<Reservation, 'adults' | 'children'> | Pick<ReservationDirectoryEntry, 'adults' | 'children'>): number {
   return Math.max(0, Number(reservation.adults) || 0) + Math.max(0, Number(reservation.children) || 0);
 }
 
@@ -102,7 +102,11 @@ export interface ReceptionOccupancyData {
   rooms: Record<string, ReceptionRoom>;
 }
 
-export function occupiedRoomNumbers(data: HousekeepingData, stays: Record<string, GuestStay>, date = new Date()): Set<string> {
+export type ReservationOccupancyData = Pick<HousekeepingData, 'rooms'> & {
+  reservations: Record<string, ReservationDirectoryEntry | Reservation>;
+};
+
+export function occupiedRoomNumbers(data: ReservationOccupancyData, stays: Record<string, GuestStay>, date = new Date()): Set<string> {
   const today = localDateKey(date);
   return new Set([
     ...Object.values(data.reservations).filter((reservation) => reservationOccupiesToday(reservation, today, date.getTime())).map((reservation) => reservation.roomNumber.trim()),
@@ -110,7 +114,7 @@ export function occupiedRoomNumbers(data: HousekeepingData, stays: Record<string
   ]);
 }
 
-export function hotelOccupancySummary(data: HousekeepingData, date = new Date(), reception: ReceptionOccupancyData = { stays: {}, rooms: {} }): HotelOccupancySummary {
+export function hotelOccupancySummary(data: ReservationOccupancyData, date = new Date(), reception: ReceptionOccupancyData = { stays: {}, rooms: {} }): HotelOccupancySummary {
   const reservations = Object.values(data.reservations);
   const stays = Object.values(reception.stays);
   const allRoomNumbers = new Set([...Object.values(data.rooms), ...Object.values(reception.rooms)].map((room) => room.number.trim()));

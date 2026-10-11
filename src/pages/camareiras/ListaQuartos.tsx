@@ -15,8 +15,13 @@ import { findStaff, staffMembers } from '../../types/staff';
 import {
 	emptyHousekeeping,
 	housekeepingStorageMode,
+  completeRoomCleaning,
+  deleteRoomCleaningLog,
+  saveHousekeepingRoom,
+  saveRoomDayPlan,
 	subscribeHousekeeping,
-	updateHousekeeping,
+  updateHousekeepingSettings,
+  updateRoomCleaningStatus,
 } from '../../services/housekeepingStore';
 import { activeReservationForRoom } from '../../services/reservationAnalytics';
 import './quartos.css';
@@ -52,6 +57,14 @@ function todayKey() {
 
 function newId() {
 	return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function defaultBedCount(room?: HousekeepingRoom): number | '' {
+	const bedCount = room?.bedCount;
+	if (typeof bedCount === 'number' && Number.isInteger(bedCount) && bedCount > 0) return bedCount;
+	if (room?.category === 'triplo') return 3;
+	if (room?.category === 'solteiro' || room?.category === 'casal') return 1;
+	return '';
 }
 
 function dateDifference(from: string, to: string) {
@@ -116,14 +129,14 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 	const maintenanceRooms = rooms.filter((room) => room.maintenanceStatus !== 'normal').length;
 
 	async function changeData(
-		update: (current: HousekeepingData) => HousekeepingData,
+		action: () => Promise<void>,
 		successMessage = '',
 	) {
 		setSaving(true);
 		setError('');
 		setNotice('');
 		try {
-			await updateHousekeeping(update);
+			await action();
 			if (successMessage) setNotice(successMessage);
 		} catch (saveError) {
 			setError(saveError instanceof Error ? saveError.message : 'Não foi possível salvar a operação.');
@@ -143,51 +156,20 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 
   function removeCleaningLog(log: RoomCleaningLog) {
     if (!window.confirm(`Excluir o registro de limpeza do quarto ${log.roomNumber}?`)) return;
-    void changeData((current) => {
-      const cleaningLogs = { ...current.cleaningLogs }; delete cleaningLogs[log.id];
-      const remaining = Object.values(cleaningLogs).filter((item) => item.roomId === log.roomId);
-      const rooms = { ...current.rooms };
-      if (!remaining.length && rooms[log.roomId]?.cleaningStatus === 'limpo') rooms[log.roomId] = { ...rooms[log.roomId], cleaningStatus: 'sujo' };
-      return { ...current, rooms, cleaningLogs };
-    }, 'Registro excluído; indicadores de limpeza atualizados.');
+    void changeData(() => deleteRoomCleaningLog(log), 'Registro excluído; indicadores de limpeza atualizados.');
   }
 
 	function saveRoom(room: HousekeepingRoom) {
-		void changeData((current) => {
-			const duplicate = Object.values(current.rooms).some((existing) =>
-				existing.id !== room.id && existing.number.trim().toLocaleLowerCase('pt-BR') === room.number.trim().toLocaleLowerCase('pt-BR'),
-			);
-			if (duplicate) throw new Error(`O quarto ${room.number} já está cadastrado.`);
-			if (room.maintenanceStatus === 'em_manutencao' && activeReservationForRoom(current, room.id)) {
-				throw new Error('Faça o checkout do hóspede antes de bloquear o quarto para manutenção.');
-			}
-			return { ...current, rooms: { ...current.rooms, [room.id]: room } };
-		}, 'Quarto salvo.');
+		void changeData(() => saveHousekeepingRoom(room), 'Quarto salvo.');
 		setModal(null);
 	}
 
 	function setCleaningStatus(room: HousekeepingRoom, status: HousekeepingRoom['cleaningStatus']) {
-		void changeData((current) => {
-      if (!current.rooms[room.id]) throw new Error('Este quarto foi excluído. Atualize a tela.');
-      return ({
-			...current,
-			rooms: { ...current.rooms, [room.id]: { ...current.rooms[room.id], cleaningStatus: status } },
-		}); }, status === 'em_limpeza' ? `Limpeza do quarto ${room.number} iniciada.` : 'Status do quarto atualizado.');
+		void changeData(() => updateRoomCleaningStatus(room.id, status), status === 'em_limpeza' ? `Limpeza do quarto ${room.number} iniciada.` : 'Status do quarto atualizado.');
 	}
 
 	function updateDailyPlan(roomId: string, plan: Partial<RoomDayPlan>) {
-		void changeData((current) => {
-			if (!current.rooms[roomId]) throw new Error('Este quarto foi excluído. Atualize a tela.');
-			const dayPlans = current.dailyPlans[today] ?? {};
-			const previous = dayPlans[roomId] ?? { cleaningRequest: 'pendente' as DailyCleaningRequest };
-			return {
-				...current,
-				dailyPlans: {
-					...current.dailyPlans,
-					[today]: { ...dayPlans, [roomId]: { ...previous, ...plan } },
-				},
-			};
-		}, 'Informação diária atualizada.');
+		void changeData(() => saveRoomDayPlan(roomId, today, plan), 'Informação diária atualizada.');
 	}
 
 	function completeCleaning(room: HousekeepingRoom, form: { attendant: string; doorsAndWindows: boolean; note: string }) {
@@ -202,13 +184,7 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 			doorsAndWindows: form.doorsAndWindows,
 			note: form.note.trim(),
 		};
-		void changeData((current) => {
-      if (!current.rooms[room.id]) throw new Error('Este quarto foi excluído. Atualize a tela.');
-      return ({
-			...current,
-			rooms: { ...current.rooms, [room.id]: { ...current.rooms[room.id], cleaningStatus: 'limpo' } },
-			cleaningLogs: { ...current.cleaningLogs, [log.id]: log },
-		}); }, `Limpeza do quarto ${room.number} registrada.`);
+		void changeData(() => completeRoomCleaning(room.id, log), `Limpeza do quarto ${room.number} registrada.`);
 		setModal(null);
 	}
 
@@ -219,10 +195,7 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 			setError('Defina um intervalo entre 1 e 365 dias.');
 			return;
 		}
-		void changeData((current) => ({
-			...current,
-			settings: { ...current.settings, doorsAndWindowsIntervalDays: interval },
-		}), 'Prazo de portas e janelas atualizado.');
+		void changeData(() => updateHousekeepingSettings({ doorsAndWindowsIntervalDays: interval }), 'Prazo de portas e janelas atualizado.');
 	}
 
 	function lastDoorsAndWindowsClean(roomId: string) {
@@ -242,13 +215,13 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 
 			<main className="stock-main">
 				<header className="stock-topbar">
-					<div className="breadcrumb"><Link to="/">Painel</Link><span>/</span><strong>Serviço de quarto</strong></div>
+					<div className="breadcrumb"><Link to="/">Painel</Link><span>/</span><strong>{isAdmin ? 'Gerenciar quartos' : 'Serviço de quarto'}</strong></div>
 					<div className="topbar-actions"><span className="user-chip">{isAdmin ? 'Gerência' : 'Equipe'}</span><Link className="back-link" to="/">Voltar ao painel</Link></div>
 				</header>
 
 				<div className="stock-content housekeeping-content">
 					<section className="page-heading">
-						<div><p className="eyebrow">OPERAÇÃO DE CAMAREIRAS</p><h1>Serviço de quarto</h1><p className="page-description">Ocupação, limpeza e manutenção de cada quarto.</p></div>
+					<div><p className="eyebrow">{isAdmin ? 'CADASTRO E OPERAÇÃO' : 'OPERAÇÃO DE CAMAREIRAS'}</p><h1>{isAdmin ? 'Gerenciar quartos' : 'Serviço de quarto'}</h1><p className="page-description">{isAdmin ? 'Use “Editar quarto” em cada cartão para alterar categoria e quantidade de camas; acompanhe ocupação, limpeza e manutenção.' : 'Ocupação, limpeza e manutenção de cada quarto.'}</p></div>
 						{isAdmin && <div className="heading-actions"><Link className="button button-plain" to="/funcionarios">Funcionários</Link><button className="button button-primary" onClick={() => setModal({ type: 'room' })}>+ Adicionar quarto</button></div>}
 					</section>
 
@@ -275,7 +248,7 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 					</section>
 
 					<section className="housekeeping-workspace" aria-label="Quartos e produtividade diária">
-						<div className="room-list-heading"><div><p className="eyebrow">{new Date(`${today}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p><h2>Quartos</h2></div><span>{filteredRooms.length} de {rooms.length}</span></div>
+						<div className="room-list-heading"><div><p className="eyebrow">{new Date(`${today}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long' })}</p><h2>{isAdmin ? 'Quartos cadastrados' : 'Quartos'}</h2></div><span>{filteredRooms.length} de {rooms.length}</span></div>
 						{loading ? <div className="loading-state">Carregando quartos...</div> : rooms.length === 0 ? <div className="housekeeping-empty"><strong>Nenhum quarto cadastrado</strong><p>Cadastre os quartos do hotel para iniciar o acompanhamento diário.</p>{isAdmin && <button className="button button-primary" onClick={() => setModal({ type: 'room' })}>+ Adicionar primeiro quarto</button>}</div> : filteredRooms.length === 0 ? <div className="housekeeping-empty"><strong>Nenhum quarto encontrado</strong><p>Ajuste a busca ou o filtro.</p></div> : <div className="room-card-grid">{filteredRooms.map((room) => {
 							const plan = data.dailyPlans[today]?.[room.id] ?? { cleaningRequest: 'pendente' as DailyCleaningRequest };
 							const due = dueDays(room.id);
@@ -283,7 +256,7 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 							const unavailable = room.maintenanceStatus === 'em_manutencao';
 							const reservation = activeReservationForRoom(data, room.id);
 							return <article className={`room-card room-cleaning-${room.cleaningStatus}`} key={room.id}>
-								<header className="room-card-header"><div><span className="room-number-label">QUARTO</span><h3>{room.number}</h3>{room.category && <small className="room-number-label">{roomCategoryLabels[room.category]}</small>}</div>{isAdmin && <div><button className="room-edit-button" onClick={() => setModal({ type: 'room', room })}>Editar</button><button className="room-edit-button" disabled={saving} onClick={() => void removeRoom(room)}>Excluir</button></div>}</header>
+								<header className="room-card-header"><div><span className="room-number-label">QUARTO</span><h3>{room.number}</h3>{room.category && <small className="room-number-label">{roomCategoryLabels[room.category]}</small>}<small className={`room-bed-count${defaultBedCount(room) === '' ? ' is-missing' : ''}`}>{defaultBedCount(room) === '' ? 'Camas não informadas' : `${defaultBedCount(room)} ${defaultBedCount(room) === 1 ? 'cama' : 'camas'}`}</small></div>{isAdmin && <div><button className="room-edit-button" onClick={() => setModal({ type: 'room', room })}>Editar quarto</button><button className="room-edit-button" disabled={saving} onClick={() => void removeRoom(room)}>Excluir</button></div>}</header>
 								<div className="room-status-badges"><span className={`room-badge badge-cleaning-${room.cleaningStatus}`}>{cleaningLabels[room.cleaningStatus]}</span><span className={`room-badge badge-occupancy-${reservation ? 'ocupado' : 'livre'}`}>{reservation ? 'Ocupado' : 'Livre'}</span><span className={`room-badge badge-maintenance-${room.maintenanceStatus}`}>{maintenanceLabels[room.maintenanceStatus]}</span></div>
 								{reservation && <div className="room-stayover">
 									<div className="room-guest-name">Hóspede <strong>{reservation.guestName}</strong></div>
@@ -326,10 +299,14 @@ function RoomEditor({ room, onCancel, onSave }: { room?: HousekeepingRoom; onCan
 	function submit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		const values = new FormData(event.currentTarget);
+		const bedCount = Number(values.get('bedCount'));
+		const category = String(values.get('category') ?? '') as RoomCategory | '';
+		if (!Number.isInteger(bedCount) || bedCount < 1 || bedCount > 10) return;
 		onSave({
 			id: room?.id ?? newId(),
 			number: String(values.get('number') ?? '').trim(),
-			category: String(values.get('category')) as RoomCategory,
+			...(category ? { category } : {}),
+			bedCount,
 			cleaningStatus: String(values.get('cleaningStatus')) as HousekeepingRoom['cleaningStatus'],
 			maintenanceStatus: String(values.get('maintenanceStatus')) as RoomMaintenanceStatus,
 			note: String(values.get('note') ?? '').trim(),
@@ -341,7 +318,8 @@ function RoomEditor({ room, onCancel, onSave }: { room?: HousekeepingRoom; onCan
 			<form onSubmit={submit}>
 				<ModalHeading eyebrow={room ? 'ATUALIZAR QUARTO' : 'CADASTRO DE QUARTO'} title={room ? `Quarto ${room.number}` : 'Adicionar quarto'} onClose={onCancel} id="room-editor-title" />
 				<label className="schedule-field"><span>Número do quarto</span><input name="number" required maxLength={12} defaultValue={room?.number} placeholder="Ex.: 12" /></label>
-				<label className="schedule-field"><span>Categoria</span><select name="category" required defaultValue={room?.category ?? ''}><option value="" disabled>Selecione</option>{(Object.entries(roomCategoryLabels) as [RoomCategory, string][]).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+				<label className="schedule-field"><span>Categoria</span><select name="category" required={!room} defaultValue={room?.category ?? ''}><option value="" disabled={!room}>{room ? 'Não informada' : 'Selecione'}</option>{(Object.entries(roomCategoryLabels) as [RoomCategory, string][]).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+				<label className="schedule-field"><span>Quantidade de camas</span><input name="bedCount" type="number" required min="1" max="10" step="1" defaultValue={defaultBedCount(room)} placeholder="Ex.: 2" /></label>
 			<label className="schedule-field"><span>Limpeza</span><select name="cleaningStatus" defaultValue={room?.cleaningStatus ?? 'sujo'}><option value="sujo">Sujo</option><option value="limpo">Limpo</option><option value="em_limpeza">Em limpeza</option></select></label>
 				<label className="schedule-field"><span>Manutenção</span><select name="maintenanceStatus" defaultValue={room?.maintenanceStatus ?? 'normal'}><option value="normal">Sem manutenção</option><option value="manutencao_necessaria">Precisa manutenção, mas pode usar</option><option value="em_manutencao">Em manutenção, indisponível</option></select></label>
 				<label className="schedule-field"><span>Observação</span><textarea name="note" rows={3} maxLength={300} defaultValue={room?.note} placeholder="Manutenção pendente, preferência, observação da equipe" /></label>

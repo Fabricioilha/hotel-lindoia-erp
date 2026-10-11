@@ -117,7 +117,7 @@
 .duty-bar strong { color: #315f87; font-size: 0.8125rem; }
 .dashboard-content-employee .duty-bar strong { padding: 2px 7px; border-radius: 10px; background: #edf3fb; font-size: 0.625rem; }
 
-.dashboard-page .dashboard-employee-modules { margin-top: 22px; }
+.dashboard-page .dashboard-employee-modules { margin-top: 8px; }
 .dashboard-page .dashboard-employee-modules .dashboard-section-heading { margin-bottom: 7px; }
 .dashboard-page .dashboard-employee-modules .action-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; }
 .dashboard-page .dashboard-employee-modules .action-card { min-height: 62px; align-items: center; gap: 8px; padding: 8px 9px; border-radius: 7px; }

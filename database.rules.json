@@ -15,7 +15,8 @@
       },
       "estoque": {
         ".read": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
-        ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"
+        ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
+        "movements": { ".indexOn": ["createdAt"] }
       },
       "frigobar": {
         "catalog": {
@@ -32,6 +33,7 @@
             }
           },
           "sales": {
+            ".indexOn": ["createdAt"],
             ".write": false,
             "$saleId": {
               ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists()))",
@@ -87,7 +89,7 @@
         "reservationIndex": {
           ".read": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')",
           ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
-          ".indexOn": ["checkOutDate"],
+          ".indexOn": ["checkOutDate", "roomId"],
           "$reservationId": {
             ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
             ".validate": "newData.child('id').val() === $reservationId && newData.child('roomId').isString() && newData.child('roomNumber').isString() && (!newData.child('guestName').exists() || newData.child('guestName').isString()) && (!newData.child('breakfastIncluded').exists() || newData.child('breakfastIncluded').isBoolean())"
@@ -114,11 +116,21 @@
           "$eventId": {
             ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"
           }
+        },
+        "reservations": {
+          ".indexOn": ["checkInDate"]
+        },
+        "cleaningLogs": {
+          ".indexOn": ["date", "roomId"]
         }
       },
       "financeiro": {
         ".read": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
         ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
+        "incomes": { ".indexOn": ["date"] },
+        "expenses": { ".indexOn": ["dueDate"] },
+        "transfers": { ".indexOn": ["date"] },
+        "payroll": { ".indexOn": ["month", "dueDate"] },
         "auditLog": {
           ".indexOn": ["occurredAt"]
         }
@@ -156,6 +168,7 @@
           }
         },
         "floatChecks": {
+          ".indexOn": ["createdAt"],
           "$checkId": {
             ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists()))",
             ".validate": "newData.child('id').val() === $checkId && newData.child('attendant').isString() && newData.child('expected').isNumber() && newData.child('expected').val() >= 0 && newData.child('counted').isNumber() && newData.child('counted').val() >= 0 && (newData.child('counted').val() === newData.child('expected').val() || (newData.child('justification').isString() && newData.child('justification').val().length > 0))"
@@ -169,6 +182,7 @@
           }
         },
         "cashOuts": {
+          ".indexOn": ["date"],
           "$cashOutId": {
             ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists()))",
             ".validate": "newData.child('id').val() === $cashOutId && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && newData.child('attendant').isString() && newData.child('date').isString() && (newData.child('reason').val() === 'Mercado' || newData.child('reason').val() === 'Padaria' || newData.child('reason').val() === 'Farmácia' || newData.child('reason').val() === 'Material de limpeza' || newData.child('reason').val() === 'Manutenção' || newData.child('reason').val() === 'Outros') && newData.child('note').isString() && newData.child('note').val().length <= 300"
@@ -215,7 +229,7 @@
           ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"
         },
         "tasks": {
-          ".indexOn": ["status"],
+          ".indexOn": ["status", "completedAt"],
           "$taskId": {
             ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && ((!data.exists() && newData.exists() && newData.child('status').val() === 'em_limpeza') || (data.child('status').val() === 'em_limpeza' && (newData.child('status').val() === 'concluido' || newData.child('status').val() === 'cancelado') && data.child('id').val() === newData.child('id').val() && data.child('roomNumber').val() === newData.child('roomNumber').val() && data.child('camareira').val() === newData.child('camareira').val() && data.child('assignedBy').val() === newData.child('assignedBy').val() && data.child('assignedAt').val() === newData.child('assignedAt').val() && data.child('date').val() === newData.child('date').val()))))",
             ".validate": "newData.child('id').val() === $taskId && newData.child('roomNumber').isString() && newData.child('roomNumber').val().length > 0 && newData.child('camareira').isString() && newData.child('assignedBy').isString() && newData.child('assignedAt').isString() && newData.child('date').isString() && (newData.child('status').val() === 'em_limpeza' || ((newData.child('status').val() === 'concluido' || newData.child('status').val() === 'cancelado') && newData.child('completedAt').isString() && newData.child('completedBy').isString()))"

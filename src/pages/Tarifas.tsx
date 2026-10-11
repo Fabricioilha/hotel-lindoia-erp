@@ -120,7 +120,7 @@ export function Tarifas() {
       setAddOns(draft.addOns);
       setHolidays(draft.holidays);
       setDirty(false);
-      setNotice('Tarifas atualizadas. Os próximos cadastros usarão estes valores como sugestão.');
+      setNotice('Tarifas e valores dos adicionais atualizados.');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível salvar as tarifas.');
     } finally {
@@ -131,7 +131,7 @@ export function Tarifas() {
   return <main className="finance-page rates-page"><div className="finance-content">
     <BackToPanel />
     <h1>Tarifas dos quartos</h1>
-    <p>Defina o preço por tipo de quarto, dia da semana e feriado. A recepção recebe a sugestão do total das diárias e pode ajustar esse valor no cadastro do hóspede.</p>
+    <p>Cadastre valores de referência por tipo de quarto, dia da semana e feriado. No cadastro do hóspede, o valor total das diárias será informado manualmente.</p>
     {error && <p role="alert" className="rates-alert">{error}</p>}
     {notice && <p role="status" className="rates-notice">{notice}</p>}
     <form onSubmit={(event) => void save(event)}>

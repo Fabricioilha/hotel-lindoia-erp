@@ -1,4 +1,4 @@
-import { limitToLast, onValue, orderByChild, query, ref, runTransaction } from 'firebase/database';
+import { get, limitToLast, onValue, orderByChild, query, ref, startAt, update as updateDatabase } from 'firebase/database';
 import { db } from '../config/firebase';
 import { buildAuditEvents } from '../types/audit';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, type FinanceData } from '../types/finance';
@@ -18,6 +18,19 @@ export function emptyFinance(): FinanceData {
     auditLog: {},
     suppressed: {},
   };
+}
+
+function fiveYearsAgoDateKey(): string {
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 5);
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${cutoff.getFullYear()}-${pad(cutoff.getMonth() + 1)}-${pad(cutoff.getDate())}`;
+}
+
+function fiveYearsAgoTimestamp(): string {
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 5);
+  return cutoff.toISOString();
 }
 
 function normalizeCategories(value: unknown, defaults: string[]) {
@@ -83,7 +96,14 @@ export function subscribeFinance(
   const values: Record<string, unknown> = {};
   const stops = paths.map(([key, location]) => {
     const path = ref(db, location);
-    const listener = key === 'auditLog' ? query(path, orderByChild('occurredAt'), limitToLast(100)) : path;
+    const dateField = key === 'stays' ? 'checkInDate'
+      : key === 'roomCharges' || key === 'cashOuts' ? 'date'
+        : key === 'sales' ? 'createdAt' : '';
+    const listener = key === 'auditLog'
+      ? query(path, orderByChild('occurredAt'), limitToLast(100))
+      : dateField
+        ? query(path, orderByChild(dateField), startAt(dateField === 'createdAt' ? fiveYearsAgoTimestamp() : fiveYearsAgoDateKey()))
+        : path;
     return onValue(listener, (snapshot) => {
       values[key] = snapshot.val() ?? {};
       loaded.add(key);
@@ -104,21 +124,46 @@ export async function updateFinance(
 ): Promise<void> {
   const operationId = crypto.randomUUID();
   const occurredAt = new Date().toISOString();
-  const result = await runTransaction(ref(db, 'erp_geral/financeiro'), (value) => {
-    const current = normalizeFinance(value);
-    const next = update(current);
-    const auditEvents = buildAuditEvents(operationId, occurredAt, [
-      { entity: 'finance-income', before: current.incomes, after: next.incomes },
-      { entity: 'finance-expense', before: current.expenses, after: next.expenses },
-      { entity: 'finance-transfer', before: current.transfers, after: next.transfers },
-      { entity: 'payroll', before: current.payroll, after: next.payroll },
-      {
-        entity: 'finance-settings',
-        before: { openingBalances: current.openingBalances, incomeCategories: current.incomeCategories, expenseCategories: current.expenseCategories },
-        after: { openingBalances: next.openingBalances, incomeCategories: next.incomeCategories, expenseCategories: next.expenseCategories },
-      },
-    ]);
-    return { ...next, auditLog: { ...next.auditLog, ...auditEvents } };
+  const keys = ['incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'suppressed', 'deletions', 'categoryAliases'] as const;
+  const snapshots = await Promise.all(keys.map((key) => get(ref(db, `erp_geral/financeiro/${key}`))));
+  const raw = Object.fromEntries(keys.map((key, index) => [key, snapshots[index].val() ?? {}]));
+  const current = normalizeFinance(raw);
+  const next = update(current);
+  const updates: Record<string, unknown> = {};
+  const changedRecords = (path: string, before: Record<string, unknown> | undefined, after: Record<string, unknown> | undefined) => {
+    const ids = new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})]);
+    ids.forEach((id) => {
+      const previous = before?.[id];
+      const value = after?.[id];
+      if (JSON.stringify(previous) === JSON.stringify(value)) return;
+      updates[`erp_geral/financeiro/${path}/${id}`] = value ?? null;
+    });
+  };
+  changedRecords('incomes', current.incomes, next.incomes);
+  changedRecords('expenses', current.expenses, next.expenses);
+  changedRecords('transfers', current.transfers, next.transfers);
+  changedRecords('payroll', current.payroll, next.payroll);
+  changedRecords('suppressed', current.suppressed, next.suppressed);
+  changedRecords('deletions', current.deletions, next.deletions);
+  changedRecords('categoryAliases/income', current.categoryAliases?.income, next.categoryAliases?.income);
+  changedRecords('categoryAliases/expense', current.categoryAliases?.expense, next.categoryAliases?.expense);
+  if (JSON.stringify(current.openingBalances) !== JSON.stringify(next.openingBalances)) updates['erp_geral/financeiro/openingBalances'] = next.openingBalances;
+  if (JSON.stringify(current.incomeCategories) !== JSON.stringify(next.incomeCategories)) updates['erp_geral/financeiro/incomeCategories'] = next.incomeCategories;
+  if (JSON.stringify(current.expenseCategories) !== JSON.stringify(next.expenseCategories)) updates['erp_geral/financeiro/expenseCategories'] = next.expenseCategories;
+
+  const auditEvents = buildAuditEvents(operationId, occurredAt, [
+    { entity: 'finance-income', before: current.incomes, after: next.incomes },
+    { entity: 'finance-expense', before: current.expenses, after: next.expenses },
+    { entity: 'finance-transfer', before: current.transfers, after: next.transfers },
+    { entity: 'payroll', before: current.payroll, after: next.payroll },
+    {
+      entity: 'finance-settings',
+      before: { openingBalances: current.openingBalances, incomeCategories: current.incomeCategories, expenseCategories: current.expenseCategories },
+      after: { openingBalances: next.openingBalances, incomeCategories: next.incomeCategories, expenseCategories: next.expenseCategories },
+    },
+  ]);
+  Object.entries(auditEvents).forEach(([id, event]) => {
+    updates[`erp_geral/financeiro/auditLog/${id}`] = event;
   });
-  if (!result.committed) throw new Error('A gravação financeira não foi confirmada.');
+  if (Object.keys(updates).length > 0) await updateDatabase(ref(db), updates);
 }

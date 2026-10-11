@@ -1,4 +1,4 @@
-import { get, increment, onValue, ref, runTransaction, set, update } from 'firebase/database';
+import { get, increment, onValue, orderByChild, query, ref, runTransaction, set, startAt, update } from 'firebase/database';
 import { db } from '../config/firebase';
 import { commitDeletion, removeFinanceEntries } from './deletionStore';
 import type { InventoryData, MinibarPaymentMethod, MinibarSettlement, StockProduct } from '../types/inventory';
@@ -7,6 +7,12 @@ import type { FrigobarData, FrigobarProduct, FrigobarSale } from '../types/frigo
 const CATALOG_PATH = 'erp_geral/frigobar/catalog';
 const OPERATIONS_PATH = 'erp_geral/frigobar/operations';
 const RECEPTION_LOCATION = 'Geladeira - Recepção';
+
+function fiveYearsAgoTimestamp(): string {
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 5);
+  return cutoff.toISOString();
+}
 
 export function emptyFrigobar(): FrigobarData {
   return { products: {}, stock: {}, sales: {} };
@@ -54,7 +60,8 @@ export function subscribeFrigobar(onChange: (data: FrigobarData) => void, onErro
     stock = quantities as Record<string, number>;
     publish();
   }, onError);
-  const stopSales = onValue(ref(db, `${OPERATIONS_PATH}/sales`), (snapshot) => {
+  const salesQuery = query(ref(db, `${OPERATIONS_PATH}/sales`), orderByChild('createdAt'), startAt(fiveYearsAgoTimestamp()));
+  const stopSales = onValue(salesQuery, (snapshot) => {
     sales = snapshot.val() ?? {};
     publish();
   }, onError);

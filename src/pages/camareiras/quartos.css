@@ -255,6 +255,23 @@
   line-height: 1.15;
 }
 
+.room-card-header > div:last-child {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 5px;
+}
+
+.room-bed-count {
+  display: block;
+  margin-top: 4px;
+  color: #40556c;
+  font-size: 0.625rem;
+  font-weight: 700;
+}
+
+.room-bed-count.is-missing { color: #a16b18; }
+
 .room-edit-button {
   padding: 5px 8px;
   border: 1px solid var(--room-line);

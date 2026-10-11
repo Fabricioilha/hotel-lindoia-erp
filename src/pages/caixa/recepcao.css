@@ -54,43 +54,87 @@ a.reception-primary { display: inline-flex; align-items: center; text-decoration
 .reception-days input[type='date'] { min-height: 38px; padding: 0 10px; border: 1px solid #cdd6e3; border-radius: 3px; font: inherit; }
 
 /* Formulário */
-.reception-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.reception-close { display: grid; width: 38px; height: 38px; place-items: center; border: 1px solid #cdd6e3; border-radius: 50%; color: #476184; background: #fff; font-size: 1.5rem; line-height: 1; cursor: pointer; }
-.reception-close:hover { color: #fff; background: #c52e43; border-color: #c52e43; }
-.reception-optional { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px 20px; padding: 10px 12px; border: 1px dashed #cdd6e3; border-radius: 6px; }
-.reception-small-field { display: grid; gap: 4px; color: #556580; font-size: 0.625rem; font-weight: 700; }
-.reception-small-field input, .reception-small-field select { width: 150px; min-height: 36px; padding: 6px 8px; border: 1px solid #d8e0ea; border-radius: 3px; font: inherit; font-size: 0.75rem; }
-.reception-split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; border: 1px solid #b8c5d8; border-radius: 6px; background: #f1f6fc; }
+.reception-modal-head { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding-bottom: 14px; border-bottom: 1px solid #e2e8f0; }
+.reception-modal-head h2 { position: relative; margin: 0; padding-left: 13px; color: #142b4d; font-size: 1.375rem; font-weight: 800; letter-spacing: -.015em; line-height: 1.2; text-shadow: 0 1px 0 rgb(20 43 77 / 8%); }
+.reception-modal-head h2::before { position: absolute; top: 2px; bottom: 2px; left: 0; width: 3px; border-radius: 3px; background: var(--sales-red); content: ""; }
+.reception-close { display: grid; width: 40px; height: 40px; flex: 0 0 40px; place-items: center; border: 1px solid #d5deea; border-radius: 50%; color: #476184; background: #fff; font-size: 1.5rem; line-height: 1; cursor: pointer; transition: transform 180ms ease, color 180ms ease, background 180ms ease, border-color 180ms ease; }
+.reception-close:hover { transform: rotate(90deg); border-color: #c52e43; color: #fff; background: #c52e43; }
+.reception-optional { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px 20px; padding: 14px; border: 1px solid #dce4ef; border-radius: 9px; background: linear-gradient(135deg, #fff, #f8fafd); box-shadow: 0 3px 10px rgb(24 47 78 / 4%); }
+.reception-small-field { display: grid; gap: 6px; color: #3e526d; font-size: 0.75rem; font-weight: 750; }
+.reception-small-field input, .reception-small-field select { width: 165px; min-height: 42px; padding: 8px 10px; border: 1px solid #cbd6e3; border-radius: 6px; color: #243954; background: #fff; font: inherit; font-size: 0.8125rem; }
+.reception-split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; padding: 14px; border: 1px solid #d6e0ec; border-radius: 8px; background: #f5f8fc; }
 .reception-split .reception-hint { grid-column: 1 / -1; font-size: 0.75rem; }
-.reception-note { display: grid; gap: 6px; padding: 12px; border: 2px solid #e0b24a; border-radius: 8px; background: #fff8e3; }
-.reception-note span { color: #6b4a07; font-size: 0.8125rem; font-weight: 800; }
-.reception-note textarea { width: 100%; padding: 10px 12px; border: 1px solid #d9b95f; border-radius: 5px; background: #fff; font: inherit; font-size: 0.875rem; resize: vertical; }
-.reception-note textarea:focus { outline: 3px solid rgb(224 178 74 / 45%); }
+.reception-note { display: grid; gap: 8px; padding: 14px; border: 1px solid #e4c66f; border-radius: 9px; background: linear-gradient(135deg, #fffaf0, #fff7df); box-shadow: 0 3px 10px rgb(107 74 7 / 5%); }
+.reception-note span { color: #70500d; font-size: 0.875rem; font-weight: 800; }
+.reception-note textarea { width: 100%; min-height: 84px; padding: 10px 12px; border: 1px solid #dfc776; border-radius: 6px; color: #263b59; background: #fff; font: inherit; font-size: 0.875rem; line-height: 1.45; resize: vertical; }
+.reception-note textarea:focus { border-color: #bb9330; outline: 3px solid rgb(224 178 74 / 30%); }
 
 /* Cadastro de hóspede e rotativo em modal sobreposto à página. */
-.reception-overlay { position: fixed; z-index: 130; inset: 0; display: grid; place-items: center; overflow-y: auto; padding: clamp(12px, 3vw, 32px); background: rgb(15 31 52 / 48%); backdrop-filter: blur(6px) saturate(.82); -webkit-backdrop-filter: blur(6px) saturate(.82); }
-.reception-modal { display: flex; flex-direction: column; width: min(100%, 880px); min-height: 0; max-height: calc(100vh - clamp(24px, 6vw, 64px)); max-height: calc(100dvh - clamp(24px, 6vw, 64px)); overflow: hidden; padding: clamp(16px, 2.5vw, 32px); box-shadow: 0 20px 60px rgb(20 43 77 / 30%); }
-.reception-modal-head { flex-shrink: 0; }
-.reception-modal-body { display: grid; min-height: 0; gap: 12px; overflow-y: auto; overscroll-behavior: contain; }
-.reception-modal-footer { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid #d8e0ea; }
+.reception-overlay { position: fixed; z-index: 130; inset: 0; display: grid; place-items: center; overflow-y: auto; padding: clamp(16px, 3vw, 42px); background: rgb(15 31 52 / 52%); backdrop-filter: blur(7px) saturate(.82); -webkit-backdrop-filter: blur(7px) saturate(.82); animation: reception-overlay-enter 180ms ease-out both; }
+.reception-modal { display: flex; flex-direction: column; width: min(100%, 980px); min-height: 0; max-height: min(90vh, 900px); max-height: min(90dvh, 900px); overflow: hidden; padding: clamp(20px, 3vw, 34px); border: 1px solid #d4deeb; border-top: 4px solid var(--sales-red); border-radius: 14px; background: #fff; box-shadow: 0 28px 80px rgb(13 29 50 / 34%), 0 4px 14px rgb(13 29 50 / 12%); animation: reception-modal-enter 250ms cubic-bezier(.2,.75,.25,1) both; }
+.reception-modal-body { display: grid; min-height: 0; gap: 16px; overflow-y: auto; overscroll-behavior: contain; padding: 14px 3px 6px; scrollbar-color: #b9c6d7 transparent; scrollbar-width: thin; }
+.reception-modal .reception-grid { gap: 15px 18px; }
+.reception-modal .sales-field { gap: 6px; color: #3e526d; font-size: 0.8125rem; font-weight: 750; }
+.reception-modal .sales-field > span { color: #354b68; font-size: 0.8125rem; font-weight: 750; line-height: 1.35; }
+.reception-modal .sales-field input,
+.reception-modal .sales-field select { min-height: 44px; padding: 9px 11px; border-color: #cbd6e3; border-radius: 6px; color: #243954; font-size: 0.875rem; box-shadow: 0 1px 2px rgb(24 47 78 / 3%); transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease; }
+.reception-modal .sales-field input:focus,
+.reception-modal .sales-field select:focus { border-color: #5681b5; background: #fff; box-shadow: 0 0 0 3px rgb(86 129 181 / 16%); }
+.reception-modal .sales-field input::placeholder { color: #8998aa; }
+.reception-modal .reception-hint { color: #5c6d83; font-size: 0.75rem; font-weight: 550; line-height: 1.45; }
+.reception-modal .reception-check { gap: 9px; color: #314864; font-size: 0.8125rem; font-weight: 700; line-height: 1.35; }
+.reception-modal .reception-check input { width: 17px; height: 17px; accent-color: #315f87; }
+.reception-modal .reception-extras { gap: 11px; padding: 14px; border: 1px solid #dce4ef; border-radius: 9px; background: #fbfcfe; }
+.reception-modal .reception-extras-head { gap: 10px; color: #233b59; font-size: 0.875rem; }
+.reception-modal .reception-chip { min-height: 34px; padding: 5px 11px; border-color: #cbd7e5; border-radius: 18px; color: #31577f; background: #fff; font-size: 0.75rem; transition: background 140ms ease, border-color 140ms ease, transform 140ms ease; }
+.reception-modal .reception-chip:hover { transform: translateY(-1px); border-color: #8ea8c6; background: #f0f5fb; }
+.reception-modal .reception-extra-row { gap: 9px; font-size: 0.75rem; }
+.reception-modal .reception-extra-row input,
+.reception-modal .reception-extra-row select { min-height: 40px; padding: 8px 9px; border-radius: 5px; color: #243954; font-size: 0.75rem; }
+.reception-modal .reception-link-button { font-size: 0.75rem; }
+.reception-modal .reception-money-input { min-height: 44px; border-color: #cbd6e3; border-radius: 6px; box-shadow: 0 1px 2px rgb(24 47 78 / 3%); }
+.reception-modal .reception-money-input > span { padding-left: 11px; color: #566b85; font-size: 0.875rem; font-weight: 700; }
+.reception-modal .reception-money-input input { box-shadow: none; }
+.reception-modal-footer { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 16px; padding-top: 16px; border-top: 1px solid #dce4ee; }
+.reception-modal-footer .reception-total { color: #435873; font-size: 0.875rem; font-weight: 700; }
+.reception-modal-footer .reception-total strong { margin-left: 4px; color: #142b4d; font-size: 1.0625rem; font-weight: 800; }
 .reception-modal-footer .reception-actions { margin-bottom: 0; }
-.reception-modal-footer button { min-height: 42px; }
+.reception-modal-footer button { min-height: 44px; border-radius: 6px; font-size: 0.8125rem; transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease; }
+.reception-modal-footer .reception-primary { padding: 0 18px; background: #183c66; box-shadow: 0 3px 9px rgb(20 43 77 / 18%); }
+.reception-modal-footer .reception-primary:hover:not(:disabled) { transform: translateY(-1px); background: #244e7d; box-shadow: 0 6px 14px rgb(20 43 77 / 21%); }
+.reception-modal-footer .sales-outline-button { margin-top: 0; min-height: 44px; padding: 9px 14px; border-radius: 6px; background: #fff; cursor: pointer; }
+.reception-modal-footer .sales-outline-button:hover { border-color: #9fb2cb; background: #f6f9fc; }
+.reception-modal .sales-alert { margin-bottom: 0; border-radius: 7px; font-size: 0.8125rem; line-height: 1.45; }
 
-.reception-nightly-rates { display: grid; gap: 10px; padding: 12px; border: 1px solid #cdd6e3; border-radius: 6px; background: #f8fafc; }
-.reception-nightly-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 6px 12px; color: #203b59; font-size: .75rem; }
-.reception-nightly-head span { color: #6a7888; font-size: .625rem; }
-.reception-nightly-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(165px, 1fr)); gap: 8px; }
-.reception-nightly-input { display: flex; align-items: center; border: 1px solid #d8e0ea; border-radius: 3px; background: #fff; }
-.reception-nightly-input > span { padding-left: 8px; color: #6a7888; }
-.reception-nightly-input input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 36px; padding: 6px 8px; border: 0; background: transparent; font: inherit; font-size: .75rem; }
-.reception-nightly-total { margin: 0; padding-top: 8px; border-top: 1px solid #d8e0ea; color: #203b59; font-size: .75rem; }
-.reception-estimate { display: grid; gap: 7px; padding: 12px; border: 1px solid #b8c5d8; border-radius: 6px; color: #263b59; background: #f1f6fc; font-size: .75rem; }
-.reception-estimate > strong { color: #142b4d; font-size: .8125rem; }
-.reception-estimate > div { display: flex; justify-content: space-between; gap: 12px; }
-.reception-estimate-total { padding-top: 8px; border-top: 1px solid #cdd6e3; }
+@keyframes reception-overlay-enter { from { opacity: 0; } to { opacity: 1; } }
+@keyframes reception-modal-enter { from { opacity: 0; transform: translateY(12px) scale(.985); } to { opacity: 1; transform: translateY(0) scale(1); } }
+
+.reception-money-input { display: flex; align-items: center; border: 1px solid #d8e0ea; border-radius: 3px; background: #fff; }
+.reception-money-input > span { padding-left: 8px; color: #6a7888; }
+.reception-money-input input { box-sizing: border-box; width: 100%; min-width: 0; min-height: 36px; padding: 6px 8px; border: 0; background: transparent; font: inherit; font-size: .75rem; }
 
 @media (max-width: 600px) {
-  .reception-modal { padding: 14px; }
+  .reception-overlay { padding: 12px; }
+  .reception-modal { max-height: 92vh; max-height: 92dvh; padding: 17px; border-radius: 12px; }
+  .reception-modal-head { padding-bottom: 11px; }
+  .reception-modal-head h2 { font-size: 1.125rem; }
+  .reception-modal-body { gap: 14px; padding-top: 11px; }
+  .reception-modal .reception-grid { gap: 12px; }
+  .reception-modal .sales-field > span { font-size: 0.75rem; }
+  .reception-modal .sales-field input,
+  .reception-modal .sales-field select { min-height: 42px; font-size: 0.8125rem; }
+  .reception-modal .reception-optional,
+  .reception-modal .reception-extras { padding: 11px; }
+  .reception-modal .reception-extra-row { grid-template-columns: 1fr 1fr; }
   .reception-modal-footer { flex-direction: column; align-items: stretch; gap: 8px; }
+  .reception-modal-footer .reception-total { text-align: center; }
   .reception-modal-footer .reception-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reception-overlay,
+  .reception-modal,
+  .reception-close,
+  .reception-modal-footer button,
+  .reception-modal .reception-chip { animation: none; transition: none; }
 }

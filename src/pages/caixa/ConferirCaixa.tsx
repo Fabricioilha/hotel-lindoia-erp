@@ -52,7 +52,7 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
     void action().catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Não foi possível excluir o registro.'));
   }
 
-  useEffect(() => subscribeReception(setData, (cause) => setError(cause.message), { includeHistoricalCharges: isAdmin }), [isAdmin]);
+  useEffect(() => subscribeReception(setData, (cause) => setError(cause.message)), []);
   const [schedule, setSchedule] = useState<ScheduleStoreData>(emptySchedule());
   useEffect(() => subscribeSchedule(setSchedule, () => undefined), []);
   useEffect(() => subscribeFrigobar(setFrigobar, () => setFrigobar(emptyFrigobar())), []);

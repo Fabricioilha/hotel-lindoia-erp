@@ -3,7 +3,7 @@ import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import { db } from '../config/firebase';
 import { SALES_CATEGORY_ID, stockCategoriesOf, type InventoryData } from '../types/inventory';
 import type { OutputCatalogItem, OutputData, OutputRecord } from '../types/outputs';
-import { subscribeInventory, updateInventory } from './inventoryStore';
+import { subscribeInventoryCatalog, updateInventory, type InventoryCatalogData } from './inventoryStore';
 
 const PATH = 'erp_geral/saidas';
 let lastCatalogJson = '';
@@ -37,7 +37,7 @@ export function createOutput(record: OutputRecord): Promise<void> {
 }
 
 // Espelho dos produtos de uso interno, legível pela equipe (o estoque é restrito à gerência).
-async function syncOutputsCatalog(inventory: InventoryData): Promise<void> {
+async function syncOutputsCatalog(inventory: InventoryCatalogData): Promise<void> {
   const categoryNames = new Map(stockCategoriesOf(inventory).map((category) => [category.id, category.name]));
   const catalog: Record<string, OutputCatalogItem> = {};
   Object.values(inventory.products)
@@ -52,8 +52,14 @@ async function syncOutputsCatalog(inventory: InventoryData): Promise<void> {
         available: Object.values(product.locationQuantities ?? {}).reduce((total, value) => total + Number(value || 0), 0),
       };
     });
-  const json = JSON.stringify(catalog);
+  const json = JSON.stringify(Object.fromEntries(Object.entries(catalog).sort(([left], [right]) => left.localeCompare(right))));
   if (json === lastCatalogJson) return;
+  const existing = await get(ref(db, `${PATH}/catalog`));
+  const existingCatalog = (existing.val() ?? {}) as Record<string, OutputCatalogItem>;
+  if (JSON.stringify(Object.fromEntries(Object.entries(existingCatalog).sort(([left], [right]) => left.localeCompare(right)))) === json) {
+    lastCatalogJson = json;
+    return;
+  }
   await set(ref(db, `${PATH}/catalog`), catalog);
   lastCatalogJson = json;
 }
@@ -109,7 +115,7 @@ export function useInternalOutputSync(isAdmin: boolean, setError: Dispatch<SetSt
   useEffect(() => {
     if (!isAdmin) return;
     const fail = (cause: unknown) => setError(cause instanceof Error ? `Saída de produtos não conciliada: ${cause.message}` : 'Saída de produtos não conciliada.');
-    const stopInventory = subscribeInventory((inventory) => void syncOutputsCatalog(inventory).catch(fail), fail);
+    const stopInventory = subscribeInventoryCatalog((inventory) => void syncOutputsCatalog(inventory).catch(fail), fail);
     const stopRecords = onValue(ref(db, `${PATH}/records`), (snapshot) => {
       const records = (snapshot.val() ?? {}) as Record<string, OutputRecord>;
       Object.values(records).filter((record) => !record.applied && !applying.current.has(record.id)).forEach((record) => {

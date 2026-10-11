@@ -1,7 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { UserRole } from '../../types';
 import { CASH_OUT_REASONS, type CashOut } from '../../types/reception';
-import { emptyReception, localDateKey, saveCashOut, subscribeReception } from '../../services/receptionStore';
+import { localDateKey, saveCashOut, subscribeTodayCashOuts } from '../../services/receptionStore';
 import { BackToPanel } from '../../components/ui/BackToPanel';
 import { PanelHomeLink } from '../../components/ui/PanelModalContext';
 import { useAttendant } from '../../services/useAttendant';
@@ -13,7 +13,7 @@ const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour
 export function SaidaCaixa({ userRole }: { userRole: UserRole }) {
   const sessionAttendant = useAttendant();
   const attendant = userRole === 'admin' ? 'Gerência' : sessionAttendant;
-  const [cashOuts, setCashOuts] = useState<Record<string, CashOut>>(emptyReception().cashOuts);
+  const [cashOuts, setCashOuts] = useState<Record<string, CashOut>>({});
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
   const [note, setNote] = useState('');
@@ -21,7 +21,7 @@ export function SaidaCaixa({ userRole }: { userRole: UserRole }) {
   const [notice, setNotice] = useState('');
   const [saving, setSaving] = useState(false);
 
-  useEffect(() => subscribeReception((data) => setCashOuts(data.cashOuts), (cause) => setError(cause.message)), []);
+  useEffect(() => subscribeTodayCashOuts(setCashOuts, (cause) => setError(cause.message)), []);
 
   if (!attendant) {
     return <div className="cx-page"><div className="cx-panel"><h1>Saída de caixa</h1><p>Não há plantonista na escala neste horário. O plantonista é definido automaticamente pela escala; avise a gerência para ajustá-la.</p><PanelHomeLink className="cx-primary">Voltar ao Painel principal</PanelHomeLink></div></div>;

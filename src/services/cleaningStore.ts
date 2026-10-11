@@ -1,4 +1,4 @@
-import { equalTo, onValue, orderByChild, query, ref, remove, update } from 'firebase/database';
+import { endAt, equalTo, onValue, orderByChild, query, ref, remove, startAt, update } from 'firebase/database';
 import { db } from '../config/firebase';
 import { type CleaningData, type CleaningTask } from '../types/cleaning';
 import { localDateKey } from './receptionStore';
@@ -9,8 +9,50 @@ export function emptyCleaning(): CleaningData {
   return { camareiras: {}, camareirasConfigured: false, tasks: {} };
 }
 
+function fiveYearsAgoTimestamp(): string {
+  const cutoff = new Date();
+  cutoff.setFullYear(cutoff.getFullYear() - 5);
+  return cutoff.toISOString();
+}
+
+function taskDateBounds(date: string): [string, string] {
+  const start = new Date(`${date}T00:00:00`);
+  const end = new Date(start);
+  end.setDate(end.getDate() + 1);
+  return [start.toISOString(), end.toISOString()];
+}
+
 export function subscribeCleaning(onChange: (data: CleaningData) => void, onError: (error: Error) => void): () => void {
-  return onValue(ref(db, `${PATH}/tasks`), (snapshot) => onChange({ ...emptyCleaning(), tasks: snapshot.val() ?? {} }), onError);
+  let active: Record<string, CleaningTask> | undefined;
+  let recent: Record<string, CleaningTask> | undefined;
+  const publish = () => {
+    if (!active || !recent) return;
+    onChange({ ...emptyCleaning(), tasks: { ...recent, ...active } });
+  };
+  const activeQuery = query(ref(db, `${PATH}/tasks`), orderByChild('status'), equalTo('em_limpeza'));
+  const historyQuery = query(ref(db, `${PATH}/tasks`), orderByChild('completedAt'), startAt(fiveYearsAgoTimestamp()));
+  const stopActive = onValue(activeQuery, (snapshot) => { active = snapshot.val() ?? {}; publish(); }, onError);
+  const stopHistory = onValue(historyQuery, (snapshot) => { recent = snapshot.val() ?? {}; publish(); }, onError);
+  return () => { stopActive(); stopHistory(); };
+}
+
+export function subscribeDashboardCleaningTasks(
+  date: string,
+  onChange: (data: CleaningData) => void,
+  onError: (error: Error) => void,
+): () => void {
+  let active: Record<string, CleaningTask> | undefined;
+  let completedToday: Record<string, CleaningTask> | undefined;
+  const publish = () => {
+    if (!active || !completedToday) return;
+    onChange({ ...emptyCleaning(), tasks: { ...completedToday, ...active } });
+  };
+  const [start, end] = taskDateBounds(date);
+  const activeQuery = query(ref(db, `${PATH}/tasks`), orderByChild('status'), equalTo('em_limpeza'));
+  const completedTodayQuery = query(ref(db, `${PATH}/tasks`), orderByChild('completedAt'), startAt(start), endAt(end));
+  const stopActive = onValue(activeQuery, (snapshot) => { active = snapshot.val() ?? {}; publish(); }, onError);
+  const stopCompleted = onValue(completedTodayQuery, (snapshot) => { completedToday = snapshot.val() ?? {}; publish(); }, onError);
+  return () => { stopActive(); stopCompleted(); };
 }
 
 export function subscribeActiveCleaningTasks(
