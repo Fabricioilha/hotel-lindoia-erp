@@ -4,7 +4,7 @@ import { useAttendant } from '../services/useAttendant';
 import type { UserRole } from '../types';
 import { emptyInventory, subscribeInventory } from '../services/inventoryStore';
 import { emptyHousekeeping, subscribeCurrentReservationDirectory, subscribeHousekeeping, subscribeReservationCollections, subscribeRoomDirectory, syncReservationCollections, syncReservationDirectory } from '../services/housekeepingStore';
-import { hotelOccupancySummary } from '../services/reservationAnalytics';
+import { guestStayOccupiesToday, hotelOccupancySummary, occupiedRoomNumbers, reservationOccupiesToday } from '../services/reservationAnalytics';
 import { emptyFrigobar, subscribeFrigobar, subscribeRoomAddOnInventory, syncFrigobarCatalog } from '../services/frigobarStore';
 import { convertRotativoToDaily, emptyReception, localDateKey, saveRoomCharge, subscribeReceptionBoard } from '../services/receptionStore';
 import { emptyCleaning, subscribeActiveCleaningTasks, subscribeCleaning } from '../services/cleaningStore';
@@ -120,12 +120,17 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
 
   useEffect(() => {
     if (userRole !== 'admin') return;
-    return subscribeCleaning(setCleaning, (cause) => setSyncError(cause.message));
+    return subscribeCleaning((data) => {
+      setCleaning(data);
+      setBoardCleaningLoaded(true);
+    }, (cause) => {
+      setSyncError(cause.message);
+      setMetricsError(true);
+    });
   }, [userRole]);
 
   useEffect(() => {
     if (userRole === 'admin') {
-      setBoardCleaningLoaded(true);
       return;
     }
     setBoardCleaningLoaded(false);
@@ -139,7 +144,6 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   }, [userRole]);
 
   useEffect(() => {
-    if (userRole === 'admin') return;
     setBoardReceptionLoaded(false);
     return subscribeReceptionBoard((data) => {
       setBoardStays(data.stays);
@@ -148,8 +152,9 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
       setBoardReceptionLoaded(true);
     }, (cause) => {
       setSyncError(cause.message);
+      if (userRole === 'admin') setMetricsError(true);
       setBoardReceptionLoaded(true);
-    });
+    }, { includeRoomCharges: userRole !== 'admin' });
   }, [userRole, boardTodayKey]);
 
   useEffect(() => {
@@ -227,16 +232,9 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
     }, (cause) => setSyncError(cause.message));
   }, [userRole]);
 
-  const occupancy = hotelOccupancySummary(housekeeping);
-  const activeRoomIds = new Set(Object.values(housekeeping.reservations)
-    .filter((reservation) => reservation.status === 'hospedado')
-    .map((reservation) => reservation.roomId));
-  const readyRooms = Object.values(housekeeping.rooms).filter((room) =>
-    room.cleaningStatus === 'limpo'
-      && room.maintenanceStatus !== 'em_manutencao'
-      && !activeRoomIds.has(room.id),
-  ).length;
-  const roomsInCleaning = Object.values(housekeeping.rooms).filter((room) => room.cleaningStatus === 'em_limpeza').length;
+  const metricDate = new Date(clock);
+  const occupancy = hotelOccupancySummary(housekeeping, metricDate, { stays: boardStays, rooms: receptionRooms });
+  const occupiedNumbers = occupiedRoomNumbers(housekeeping, boardStays, metricDate);
   const lowStockCount = Object.values(inventory.products).filter((product) => {
     const quantity = product.category === 'frigobar'
       ? Number(frigobar.stock[product.id] ?? product.locationQuantities['Geladeira - Recepção'] ?? 0)
@@ -244,8 +242,11 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
     return product.active !== false && product.minimumQuantity > 0 && quantity <= product.minimumQuantity;
   }).length;
   const cleaningTasks = Object.values(cleaning.tasks);
-  const cleaningNow = cleaningTasks.filter((task) => task.status === 'em_limpeza').length;
-  const cleanedToday = cleaningTasks.filter((task) => task.status === 'concluido' && localDateKey(new Date(task.completedAt ?? task.assignedAt)) === localDateKey()).length;
+  const cleaningNow = new Set(cleaningTasks.filter((task) => task.status === 'em_limpeza').map((task) => task.roomNumber.trim())).size;
+  const cleanedToday = new Set([
+    ...cleaningTasks.filter((task) => task.status === 'concluido' && task.completedAt && localDateKey(new Date(task.completedAt)) === boardTodayKey).map((task) => task.roomNumber.trim()),
+    ...Object.values(housekeeping.cleaningLogs).filter((log) => log.date === boardTodayKey).map((log) => log.roomNumber.trim()),
+  ]).size;
   const boardRooms = userRole === 'admin' ? Object.values(housekeeping.rooms) : Object.values(roomDirectory);
   const currentCleaningTasks = userRole === 'admin'
     ? cleaningTasks.filter((task) => task.status === 'em_limpeza')
@@ -254,8 +255,16 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
     ...boardRooms.filter((room) => room.cleaningStatus === 'em_limpeza').map((room) => room.number),
     ...currentCleaningTasks.map((task) => task.roomNumber),
   ]);
-  const valueOrLoading = (value: string | number) => metricsLoaded && !metricsError ? String(value) : '—';
-  const detailOrLoading = (detail: string) => metricsError ? 'Dados indisponíveis' : metricsLoaded ? detail : 'Carregando dados';
+  const readyRooms = new Set(Object.values(housekeeping.rooms).filter((room) =>
+    room.cleaningStatus === 'limpo'
+      && room.maintenanceStatus !== 'em_manutencao'
+      && !occupiedNumbers.has(room.number.trim())
+      && !cleaningRoomNumbers.has(room.number),
+  ).map((room) => room.number.trim())).size;
+  const roomsInCleaning = cleaningRoomNumbers.size;
+  const allMetricsLoaded = metricsLoaded && boardReceptionLoaded && boardCleaningLoaded;
+  const valueOrLoading = (value: string | number) => allMetricsLoaded && !metricsError ? String(value) : '—';
+  const detailOrLoading = (detail: string) => metricsError ? 'Dados indisponíveis' : allMetricsLoaded ? detail : 'Carregando dados';
 
   return (
     <div className="dashboard-page">
@@ -284,10 +293,10 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
         {userRole === 'admin' && <section className="dashboard-metrics" aria-label="Indicadores operacionais">
           <MetricCard title="Ocupação atual" value={valueOrLoading(occupancy.occupancyRate === null ? '—' : `${occupancy.occupancyRate}%`)} detail={detailOrLoading(occupancy.usableRooms ? `${occupancy.occupiedRooms} de ${occupancy.usableRooms} quartos utilizáveis` : 'Cadastre os quartos')} tone="blue" />
           <MetricCard title="Prontos para hospedagem" value={valueOrLoading(readyRooms)} detail={detailOrLoading('Limpos, livres e sem bloqueio de manutenção')} tone="green" />
-          <MetricCard title="Limpezas designadas" value={String(cleaningNow)} detail="Camareiras com quarto em andamento" tone="gold" />
-          <MetricCard title="Quartos limpos hoje" value={String(cleanedToday)} detail="Limpezas concluídas pelas camareiras" tone="green" />
+          <MetricCard title="Limpezas designadas" value={valueOrLoading(cleaningNow)} detail={detailOrLoading('Quartos com limpeza designada em andamento')} tone="gold" />
+          <MetricCard title="Quartos limpos hoje" value={valueOrLoading(cleanedToday)} detail={detailOrLoading('Quartos com limpeza concluída hoje')} tone="green" />
           <MetricCard title="Em limpeza" value={valueOrLoading(roomsInCleaning)} detail={detailOrLoading('Quartos com tarefa em andamento')} tone="gold" />
-          <MetricCard title="Entradas hoje" value={valueOrLoading(occupancy.arrivalsToday.rooms)} detail={detailOrLoading('Quartos com chegada prevista')} tone="gold" />
+          <MetricCard title="Entradas hoje" value={valueOrLoading(occupancy.arrivalsToday.rooms)} detail={detailOrLoading('Quartos com chegada registrada ou prevista hoje')} tone="gold" />
           <MetricCard title="Entradas amanhã" value={valueOrLoading(occupancy.arrivalsTomorrow.rooms)} detail={detailOrLoading('Quartos com chegada prevista')} tone="blue" />
           <MetricCard title="Saídas hoje" value={valueOrLoading(occupancy.departuresToday.rooms)} detail={detailOrLoading('Quartos com checkout previsto')} tone="red" />
           <MetricCard title="Saídas amanhã" value={valueOrLoading(occupancy.departuresTomorrow.rooms)} detail={detailOrLoading('Quartos com checkout previsto')} tone="gold" />
@@ -392,28 +401,6 @@ function dateKeyAfterDays(dateKey: string, days: number) {
   if (Number.isNaN(date.getTime())) return '';
   date.setUTCDate(date.getUTCDate() + days);
   return date.toISOString().slice(0, 10);
-}
-
-function guestStayOccupiesToday(stay: GuestStay, today: string, now: number) {
-  if (stay.status !== 'hospedado') return false;
-  if (stay.kind === 'periodo') {
-    if (stay.checkInDate > today) return false;
-    const createdAt = Date.parse(stay.createdAt);
-    const start = Number.isFinite(createdAt) ? createdAt : Date.parse(`${stay.checkInDate}T12:00:00`);
-    return Number.isFinite(start) && now >= start && now < start + (stay.hours ?? 4) * 3_600_000;
-  }
-  const checkout = stay.checkOutDate ?? dateKeyAfterDays(stay.checkInDate, stay.nights);
-  return stay.checkInDate <= today && today <= checkout;
-}
-
-function reservationOccupiesToday(reservation: ReservationDirectoryEntry, today: string, now: number) {
-  if (reservation.status !== 'hospedado' || !reservation.checkInDate || !reservation.checkOutDate) return false;
-  if (reservation.channel === 'rotativo' && reservation.checkInTime && reservation.checkOutTime) {
-    const start = Date.parse(`${reservation.checkInDate}T${reservation.checkInTime}:00`);
-    const end = Date.parse(`${reservation.checkOutDate}T${reservation.checkOutTime}:00`);
-    return Number.isFinite(start) && Number.isFinite(end) && now >= start && now < end;
-  }
-  return reservation.checkInDate <= today && today <= reservation.checkOutDate;
 }
 
 function daysBetween(start: string, end: string) {

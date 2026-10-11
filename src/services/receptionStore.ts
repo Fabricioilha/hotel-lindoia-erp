@@ -42,14 +42,17 @@ export interface ReceptionBoardData {
   rooms: Record<string, ReceptionRoom>;
 }
 
-export function subscribeReceptionBoard(onChange: (data: ReceptionBoardData) => void, onError: (error: Error) => void): () => void {
+export function subscribeReceptionBoard(onChange: (data: ReceptionBoardData) => void, onError: (error: Error) => void, options: { includeRoomCharges?: boolean } = {}): () => void {
   const today = new Date();
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
   const from = new Date(today);
   from.setDate(from.getDate() - 365);
   const loaded = new Set<keyof ReceptionBoardData>();
   let stays: Record<string, GuestStay> = {};
   let roomCharges: Record<string, RoomCharge> = {};
   let rooms: Record<string, ReceptionRoom> = {};
+  if (options.includeRoomCharges === false) loaded.add('roomCharges');
   const emit = (key: keyof ReceptionBoardData) => {
     loaded.add(key);
     if (loaded.size === 3) onChange({ stays, roomCharges, rooms });
@@ -58,7 +61,7 @@ export function subscribeReceptionBoard(onChange: (data: ReceptionBoardData) => 
     ref(db, `${PATH}/stays`),
     orderByChild('checkInDate'),
     startAt(localDateKey(from)),
-    endAt(localDateKey()),
+    endAt(localDateKey(tomorrow)),
   );
   const stopStays = onValue(staysQuery, (snapshot) => {
     stays = snapshot.val() ?? {};
@@ -74,7 +77,7 @@ export function subscribeReceptionBoard(onChange: (data: ReceptionBoardData) => 
     startAt(localDateKey(from)),
     endAt(localDateKey(today)),
   );
-  const stopRoomCharges = onValue(roomChargesQuery, (snapshot) => {
+  const stopRoomCharges = options.includeRoomCharges === false ? () => {} : onValue(roomChargesQuery, (snapshot) => {
     roomCharges = snapshot.val() ?? {};
     emit('roomCharges');
   }, onError);
