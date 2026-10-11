@@ -1,0 +1,83 @@
+.reception-attendants { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 18px; }
+.reception-attendant { display: grid; gap: 6px; }
+.reception-attendant-pick { min-height: 72px; border: 1px solid #cdd6e3; border-radius: 5px; color: var(--sales-blue); background: #fff; font-size: 1rem; font-weight: 750; cursor: pointer; }
+.reception-attendant-pick:hover { border-color: var(--sales-red); }
+.reception-attendant-tools { display: flex; gap: 10px; }
+.reception-link-button { border: 0; padding: 0 0 0 8px; color: #476184; background: none; font-size: 0.625rem; font-weight: 700; cursor: pointer; text-decoration: underline; }
+.reception-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: start; gap: 14px; }
+.reception-panel { display: grid; gap: 12px; padding: 16px; border: 1px solid #cdd6e3; border-radius: 5px; background: #fff; }
+.reception-panel h2 { margin: 0; color: var(--sales-blue); font-size: 0.875rem; font-weight: 750; }
+.reception-add { max-width: 420px; grid-template-columns: 1fr auto; align-items: end; }
+.reception-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.reception-wide { grid-column: 1 / -1; }
+.reception-grid .sales-field { display: grid; gap: 4px; color: #556580; font-size: 0.625rem; font-weight: 700; }
+.reception-grid textarea { width: 100%; padding: 8px 10px; border: 1px solid #d8e0ea; border-radius: 3px; font: inherit; font-size: 0.6875rem; resize: vertical; }
+.reception-check { display: flex; align-items: center; gap: 8px; font-size: 0.6875rem; color: #263b59; }
+.reception-hint { margin: 0; color: #6a7888; font-size: 0.625rem; }
+.reception-primary { min-height: 38px; border: 0; border-radius: 3px; padding: 0 16px; color: #fff; background: var(--sales-blue, #142b4d); font-weight: 700; cursor: pointer; }
+.reception-primary:disabled { opacity: .6; cursor: default; }
+.reception-sheet-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.reception-entries { display: grid; gap: 8px; margin: 0; padding: 0; list-style: none; }
+.reception-entries li { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; padding: 10px; border: 1px solid #e1e7ef; border-radius: 4px; font-size: 0.6875rem; }
+.reception-entries strong,
+.reception-entries small { display: block; }
+.reception-entries small { margin-top: 3px; color: #6a7888; }
+.reception-total { margin: 0; font-size: 0.75rem; }
+@media (max-width: 900px) { .reception-layout { grid-template-columns: 1fr; } }
+.reception-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 14px; }
+.reception-sheet { margin-bottom: 14px; }
+.reception-table-wrap { overflow-x: auto; }
+.reception-table { width: 100%; border-collapse: collapse; font-size: 0.6875rem; }
+.reception-table th, .reception-table td { padding: 7px 8px; border: 1px solid #cdd6e3; text-align: left; vertical-align: top; }
+.reception-table th { color: #476184; background: #f1f4f9; font-size: 0.625rem; text-transform: uppercase; }
+.reception-table small { display: block; margin-top: 2px; color: #6a7888; }
+.reception-row-actions { white-space: nowrap; }
+.reception-closed summary { cursor: pointer; font-size: 0.75rem; font-weight: 700; }
+.reception-extras { display: grid; gap: 8px; }
+.reception-extras-head { display: grid; gap: 6px; font-size: 0.6875rem; }
+.reception-extras-head span { display: flex; flex-wrap: wrap; gap: 6px; }
+.reception-chip { border: 1px solid #b8c5d8; border-radius: 12px; padding: 4px 10px; color: #315f87; background: #fff; font-size: 0.625rem; font-weight: 700; cursor: pointer; }
+.reception-extra-row { display: grid; grid-template-columns: 1.2fr 1fr 1.2fr auto; align-items: center; gap: 8px; font-size: 0.6875rem; }
+.reception-extra-row input, .reception-extra-row select { min-height: 34px; padding: 6px 8px; border: 1px solid #d8e0ea; border-radius: 3px; font: inherit; font-size: 0.6875rem; }
+@media (max-width: 600px) { .reception-extra-row { grid-template-columns: 1fr 1fr; } }
+.reception-vacant td { color: #8794a8; background: #fafbfd; }
+.reception-today { display: grid; gap: 2px; margin-left: auto; padding: 10px 18px; border-radius: 6px; color: #fff; background: var(--sales-blue); text-align: center; }
+.reception-today small { font-size: 0.625rem; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; opacity: .8; }
+.reception-today strong { font-size: 1.125rem; text-transform: capitalize; }
+.reception-duty { padding: 10px 18px; border: 2px solid var(--sales-red); color: #425a7b; font-size: 0.875rem; }
+.reception-duty strong { font-size: 1.25rem; }
+.reception-room-form { display: grid; grid-template-columns: 1fr 1fr auto; align-items: end; gap: 10px; }
+.bed-icons { display: inline-flex; flex-direction: column; gap: 2px; color: #315f87; }
+.bed-icons-row { display: inline-flex; align-items: flex-end; gap: 4px; }
+.bed-icons-label { color: #6a7888; font-size: 0.625rem; font-weight: 700; }
+a.reception-primary { display: inline-flex; align-items: center; text-decoration: none; }
+.reception-days input[type='date'] { min-height: 38px; padding: 0 10px; border: 1px solid #cdd6e3; border-radius: 3px; font: inherit; }
+
+/* Formulário */
+.reception-modal-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.reception-close { display: grid; width: 38px; height: 38px; place-items: center; border: 1px solid #cdd6e3; border-radius: 50%; color: #476184; background: #fff; font-size: 1.5rem; line-height: 1; cursor: pointer; }
+.reception-close:hover { color: #fff; background: #c52e43; border-color: #c52e43; }
+.reception-optional { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px 20px; padding: 10px 12px; border: 1px dashed #cdd6e3; border-radius: 6px; }
+.reception-small-field { display: grid; gap: 4px; color: #556580; font-size: 0.625rem; font-weight: 700; }
+.reception-small-field input, .reception-small-field select { width: 150px; min-height: 36px; padding: 6px 8px; border: 1px solid #d8e0ea; border-radius: 3px; font: inherit; font-size: 0.75rem; }
+.reception-split { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 12px; border: 1px solid #b8c5d8; border-radius: 6px; background: #f1f6fc; }
+.reception-split .reception-hint { grid-column: 1 / -1; font-size: 0.75rem; }
+.reception-note { display: grid; gap: 6px; padding: 12px; border: 2px solid #e0b24a; border-radius: 8px; background: #fff8e3; }
+.reception-note span { color: #6b4a07; font-size: 0.8125rem; font-weight: 800; }
+.reception-note textarea { width: 100%; padding: 10px 12px; border: 1px solid #d9b95f; border-radius: 5px; background: #fff; font: inherit; font-size: 0.875rem; resize: vertical; }
+.reception-note textarea:focus { outline: 3px solid rgb(224 178 74 / 45%); }
+
+/* Cadastro de hóspede e rotativo em modal sobreposto à página. */
+.reception-overlay { position: fixed; z-index: 130; inset: 0; display: grid; place-items: center; overflow-y: auto; padding: clamp(12px, 3vw, 32px); background: rgb(15 31 52 / 48%); backdrop-filter: blur(6px) saturate(.82); -webkit-backdrop-filter: blur(6px) saturate(.82); }
+.reception-modal { display: flex; flex-direction: column; width: min(100%, 880px); min-height: 0; max-height: calc(100vh - clamp(24px, 6vw, 64px)); max-height: calc(100dvh - clamp(24px, 6vw, 64px)); overflow: hidden; padding: clamp(16px, 2.5vw, 32px); box-shadow: 0 20px 60px rgb(20 43 77 / 30%); }
+.reception-modal-head { flex-shrink: 0; }
+.reception-modal-body { display: grid; min-height: 0; gap: 12px; overflow-y: auto; overscroll-behavior: contain; }
+.reception-modal-footer { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid #d8e0ea; }
+.reception-modal-footer .reception-actions { margin-bottom: 0; }
+.reception-modal-footer button { min-height: 42px; }
+
+@media (max-width: 600px) {
+  .reception-modal { padding: 14px; }
+  .reception-modal-footer { flex-direction: column; align-items: stretch; gap: 8px; }
+  .reception-modal-footer .reception-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
+}

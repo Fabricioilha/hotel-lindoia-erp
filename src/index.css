@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+:root {
+  --text: #46566e;
+  --text-h: #172a46;
+  --bg: #fff;
+  --border: #cdd6e3;
+  --code-bg: #f2f5fa;
+  --accent: #c52e43;
+  --accent-bg: rgba(197, 46, 67, 0.1);
+  --accent-border: rgba(197, 46, 67, 0.45);
+  --social-bg: rgba(235, 240, 247, 0.7);
+  --shadow:
+    rgba(0, 0, 0, 0.1) 0 10px 15px -3px, rgba(0, 0, 0, 0.05) 0 4px 6px -2px;
+
+  --sans: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --heading: system-ui, 'Segoe UI', Roboto, sans-serif;
+  --mono: ui-monospace, Consolas, monospace;
+
+  font: 16px/145% var(--sans);
+  letter-spacing: 0;
+  color-scheme: light;
+  color: var(--text);
+  background: var(--bg);
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+}
+
+html { font-size: 16px; }
+
+#root {
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  text-align: left;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+h1,
+h2 {
+  font-family: var(--heading);
+  font-weight: 500;
+  color: var(--text-h);
+}
+
+h1 {
+  font-size: 56px;
+  letter-spacing: -1.68px;
+  margin: 32px 0;
+  @media (max-width: 1024px) {
+    font-size: 36px;
+    margin: 20px 0;
+  }
+}
+h2 {
+  font-size: 24px;
+  line-height: 118%;
+  letter-spacing: -0.24px;
+  margin: 0 0 8px;
+  @media (max-width: 1024px) {
+    font-size: 20px;
+  }
+}
+p {
+  margin: 0;
+}
+
+code,
+.counter {
+  font-family: var(--mono);
+  display: inline-flex;
+  border-radius: 4px;
+  color: var(--text-h);
+}
+
+code {
+  font-size: 15px;
+  line-height: 135%;
+  padding: 4px 8px;
+  background: var(--code-bg);
+}
+
+/* Evita estouro horizontal em telas menores */
+.sales-header, .dashboard-header, .sales-title-row, .dashboard-welcome { flex-wrap: wrap; }
+.sales-header-links, .dashboard-header-actions { flex-wrap: wrap; }
+
+/* Ajustes responsivos para o perfil operacional. */
+html[data-role='viewer'] .sales-content,
+html[data-role='viewer'] .dashboard-content,
+html[data-role='viewer'] .schedule-content,
+html[data-role='viewer'] [class$='-content'] { width: 100%; max-width: none; }
+html[data-role='viewer'] .modal-backdrop,
+html[data-role='viewer'] .finance-modal-backdrop { display: block; padding: 0; overflow-y: auto; }
+html[data-role='viewer'] .stock-modal,
+html[data-role='viewer'] .finance-modal {
+  width: 100%; max-width: none; min-height: 100vh; max-height: none; border-radius: 0; padding: clamp(18px, 4vw, 48px); overflow-y: visible;
+}
+html[data-role='viewer'] .reception-grid { grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); }
+html[data-role='viewer'] .reception-wide { grid-column: 1 / -1; }
