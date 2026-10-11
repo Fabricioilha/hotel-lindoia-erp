@@ -14,7 +14,7 @@ import { FOLIO_PAYMENT_METHODS, ROOM_TYPE_LABELS, stayDailyAmount, type GuestSta
 import { PAYMENT_METHOD_LABELS, type FinancePaymentMethod } from '../types/finance';
 import type { StockProduct } from '../types/inventory';
 import type { FrigobarData } from '../types/frigobar';
-import type { HousekeepingRoom, ReservationDirectoryEntry } from '../types/housekeeping';
+import { roomCategoryDescription, type HousekeepingRoom, type ReservationDirectoryEntry } from '../types/housekeeping';
 import type { ReceptionEntryContext } from './caixa/CaixaRecepcao';
 import { ActionCard } from '../components/ui/ActionCard';
 import { PanelModalProvider } from '../components/ui/PanelModalContext';
@@ -351,7 +351,7 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
           <div className="module-grid">
             <ModuleCard number="01" title="Lançar Venda" description="Venda bebidas, receba na hora ou registre por quarto." route="/vendas" />
             {userRole === 'admin' && <ModuleCard number="02" title="Controle de estoque" description="Limpeza, rouparia, manutenção e itens da recepção." route="/estoque" />}
-            {userRole === 'admin' && <ModuleCard number="03" title="Gerenciar quartos" description="Edite a categoria e a quantidade de camas; acompanhe limpeza e manutenção." route="/quartos" />}
+            {userRole === 'admin' && <ModuleCard number="03" title="Gerenciar quartos" description="Configure categorias e camas por quarto; acompanhe limpeza e manutenção." route="/quartos" />}
             <ModuleCard number="04" title="Escala de funcionários" description="Calendário de turnos e equipe operacional." route="/escala" />
             {userRole === 'admin' && <ModuleCard number="05" title="Gestão financeira" description="Fluxo de caixa, folha e despesas do hotel." route="/financeiro/caixa" />}
             {userRole === 'admin' && <ModuleCard number="06" title="Recepção e reservas" description="Check-in, check-out e gestão de hóspedes." route="/reservas" />}
@@ -769,7 +769,9 @@ function RoomBoard({ rooms, cleaningRoomNumbers, receptionRooms, stays, roomChar
             const occupant = occupants.get(number);
             const isCleaning = room?.cleaningStatus === 'em_limpeza' || cleaningRoomNumbers.has(number);
             const inMaintenance = !occupant && room?.maintenanceStatus === 'em_manutencao';
-            const typeDescription = roomProfile
+            const typeDescription = room?.categoryName || room?.bedComposition
+              ? roomCategoryDescription(room)
+              : roomProfile
               ? ROOM_TYPE_LABELS[roomProfile.type]
               : room?.category === 'casal'
                 ? ROOM_TYPE_LABELS.casal
@@ -778,7 +780,9 @@ function RoomBoard({ rooms, cleaningRoomNumbers, receptionRooms, stays, roomChar
                   : room?.category === 'triplo'
                     ? ROOM_TYPE_LABELS.triplo
                     : 'Tipo de quarto não informado';
-            const description = room?.bedCount
+            const description = room?.categoryName || room?.bedComposition
+              ? roomCategoryDescription(room)
+              : room?.bedCount
               ? `${typeDescription.split(' · ')[0]} · ${room.bedCount} ${room.bedCount === 1 ? 'cama' : 'camas'}`
               : typeDescription;
             const status = occupant ? 'occupied' : inMaintenance ? 'maintenance' : 'free';

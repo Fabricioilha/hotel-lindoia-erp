@@ -1,11 +1,42 @@
 export type RoomCleaningStatus = 'sujo' | 'limpo' | 'em_limpeza';
 export type RoomMaintenanceStatus = 'normal' | 'manutencao_necessaria' | 'em_manutencao';
-export type RoomCategory = 'solteiro' | 'casal' | 'triplo';
-export const roomCategoryLabels: Record<RoomCategory, string> = {
+export type RoomCategory = string;
+export const roomCategoryLabels: Record<string, string> = {
   solteiro: 'Solteiro · 1 cama de solteiro',
   casal: 'Casal · 1 cama de casal',
   triplo: 'Triplo · 3 camas (configuração não informada)',
 };
+
+export interface RoomCategoryRecord {
+  id: RoomCategory;
+  name: string;
+  bedCount: number;
+  bedComposition: string;
+}
+
+export const DEFAULT_ROOM_CATEGORIES: RoomCategoryRecord[] = [
+  { id: 'solteiro', name: 'Solteiro', bedCount: 1, bedComposition: '1 cama de solteiro' },
+  { id: 'casal', name: 'Casal', bedCount: 1, bedComposition: '1 cama de casal' },
+  { id: 'triplo', name: 'Triplo', bedCount: 3, bedComposition: '3 camas (configuração não informada)' },
+];
+
+export function roomCategoriesOf(data: Pick<HousekeepingData, 'categories' | 'categoriesConfigured'>): RoomCategoryRecord[] {
+  const categories = data.categoriesConfigured ? Object.values(data.categories ?? {}) : DEFAULT_ROOM_CATEGORIES;
+  return [...categories].sort((a, b) => a.name.localeCompare(b.name, 'pt-BR') || a.bedComposition.localeCompare(b.bedComposition, 'pt-BR'));
+}
+
+export function roomCategoryName(room: Pick<HousekeepingRoom, 'category' | 'categoryName'>): string {
+  return room.categoryName?.trim()
+    || (room.category ? roomCategoryLabels[room.category]?.split(' · ')[0] ?? room.category : '');
+}
+
+export function roomCategoryDescription(room: Pick<HousekeepingRoom, 'category' | 'categoryName' | 'bedComposition' | 'bedCount'>): string {
+  const name = roomCategoryName(room);
+  const composition = room.bedComposition?.trim()
+    || (room.bedCount ? `${room.bedCount} ${room.bedCount === 1 ? 'cama' : 'camas'}` : '')
+    || (room.category ? roomCategoryLabels[room.category]?.split(' · ').slice(1).join(' · ') : '');
+  return [name, composition].filter(Boolean).join(' · ') || 'Tipo e camas não informados';
+}
 export type DailyCleaningRequest = 'pendente' | 'solicitada' | 'dispensada';
 export type ReservationStatus = 'confirmada' | 'hospedado' | 'encerrada' | 'cancelada';
 export type ReservationChannel = 'oyo' | 'balcao' | 'rotativo';
@@ -62,6 +93,8 @@ export interface HousekeepingRoom {
   id: string;
   number: string;
   category?: RoomCategory;
+  categoryName?: string;
+  bedComposition?: string;
   bedCount?: number;
   cleaningStatus: RoomCleaningStatus;
   maintenanceStatus: RoomMaintenanceStatus;
@@ -135,6 +168,8 @@ export interface ReservationDirectoryEntry {
 export interface HousekeepingData {
   attendants?: Record<string, HousekeepingAttendant>;
   attendantsConfigured?: boolean;
+  categories?: Record<string, RoomCategoryRecord>;
+  categoriesConfigured?: boolean;
   rooms: Record<string, HousekeepingRoom>;
   dailyPlans: Record<string, Record<string, RoomDayPlan>>;
   cleaningLogs: Record<string, RoomCleaningLog>;

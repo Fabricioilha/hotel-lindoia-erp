@@ -2,7 +2,7 @@ import { equalTo, get, limitToLast, onValue, orderByChild, orderByKey, query, re
 import { db } from '../config/firebase';
 import { buildAuditEvents } from '../types/audit';
 import { recordOperationalIncome } from './operationalIncome';
-import type { HousekeepingData, HousekeepingRoom, Reservation, ReservationCollection, ReservationDirectoryEntry, ReservationExtra, ReservationStatus, RoomCleaningLog, RoomDayPlan } from '../types/housekeeping';
+import { DEFAULT_ROOM_CATEGORIES, type HousekeepingData, type HousekeepingRoom, type Reservation, type ReservationCollection, type ReservationDirectoryEntry, type ReservationExtra, type ReservationStatus, type RoomCategoryRecord, type RoomCleaningLog, type RoomDayPlan } from '../types/housekeeping';
 import { reservationOverlaps } from './reservationAnalytics';
 
 function currentLocalDateKey(): string {
@@ -27,6 +27,8 @@ export interface DashboardHousekeepingData {
 export function emptyHousekeeping(): HousekeepingData {
   return {
     rooms: {},
+    categories: Object.fromEntries(DEFAULT_ROOM_CATEGORIES.map((category) => [category.id, category])),
+    categoriesConfigured: false,
     dailyPlans: {},
     cleaningLogs: {},
     reservations: {},
@@ -39,6 +41,8 @@ function normalizeHousekeeping(value: unknown): HousekeepingData {
   const data = value && typeof value === 'object' ? value as Partial<HousekeepingData> : {};
   return {
     rooms: data.rooms ?? {},
+    categories: data.categories ?? Object.fromEntries(DEFAULT_ROOM_CATEGORIES.map((category) => [category.id, category])),
+    categoriesConfigured: Boolean(data.categoriesConfigured),
     dailyPlans: data.dailyPlans ?? {},
     cleaningLogs: data.cleaningLogs ?? {},
     reservations: data.reservations ?? {},
@@ -76,7 +80,7 @@ export function subscribeHousekeeping(
   onChange: (data: HousekeepingData) => void,
   onError: (error: Error) => void,
 ): () => void {
-  const keys = ['rooms', 'dailyPlans', 'cleaningLogs', 'reservations', 'attendants', 'attendantsConfigured', 'settings', 'auditLog'] as const;
+  const keys = ['rooms', 'categories', 'categoriesConfigured', 'dailyPlans', 'cleaningLogs', 'reservations', 'attendants', 'attendantsConfigured', 'settings', 'auditLog'] as const;
   const loaded = new Set<string>();
   const values: Record<string, unknown> = {};
   const stops = keys.map((key) => {
@@ -92,7 +96,7 @@ export function subscribeHousekeeping(
             ? query(path, orderByKey(), startAt(cutoff))
             : path;
     return onValue(listener, (snapshot) => {
-      values[key] = snapshot.val() ?? (key === 'attendantsConfigured' ? false : {});
+      values[key] = snapshot.val() ?? (key === 'attendantsConfigured' || key === 'categoriesConfigured' ? false : {});
       loaded.add(key);
       if (loaded.size === keys.length) onChange(normalizeHousekeeping(values));
     }, onError);
@@ -205,6 +209,80 @@ export async function saveHousekeepingRoom(room: HousekeepingRoom): Promise<void
   }
   await writeHousekeepingUpdates({ [`erp_geral/quartos/rooms/${room.id}`]: room }, [
     { entity: 'room', before: previous ? { [room.id]: previous } : {}, after: { [room.id]: room } },
+  ]);
+}
+
+export async function saveRoomCategory(category: RoomCategoryRecord, categories: RoomCategoryRecord[]): Promise<void> {
+  const name = category.name.trim();
+  const bedComposition = category.bedComposition.trim();
+  if (!name || name.length > 60) throw new Error('Informe um nome de categoria com até 60 caracteres.');
+  if (!bedComposition || bedComposition.length > 120) throw new Error('Informe a composição das camas com até 120 caracteres.');
+  if (!Number.isInteger(category.bedCount) || category.bedCount < 1 || category.bedCount > 10) {
+    throw new Error('A quantidade de camas deve estar entre 1 e 10.');
+  }
+
+  const nextCategory = { ...category, name, bedComposition };
+  const duplicate = categories.some((item) => item.id !== category.id
+    && item.name.trim().toLocaleLowerCase('pt-BR') === name.toLocaleLowerCase('pt-BR')
+    && item.bedComposition.trim().toLocaleLowerCase('pt-BR') === bedComposition.toLocaleLowerCase('pt-BR'));
+  if (duplicate) throw new Error('Já existe uma categoria com esse nome e essa composição de camas.');
+
+  const [roomsSnapshot, categoriesSnapshot, configuredSnapshot] = await Promise.all([
+    get(ref(db, 'erp_geral/quartos/rooms')),
+    get(ref(db, 'erp_geral/quartos/categories')),
+    get(ref(db, 'erp_geral/quartos/categoriesConfigured')),
+  ]);
+  const rooms = roomsSnapshot.val() as Record<string, HousekeepingRoom> | null ?? {};
+  const previousCategories = categoriesSnapshot.val() as Record<string, RoomCategoryRecord> | null ?? {};
+  const wasConfigured = Boolean(configuredSnapshot.val());
+  const previousCategory = previousCategories[category.id] ?? categories.find((item) => item.id === category.id);
+  const nextCategories = Object.fromEntries(categories.map((item) => [item.id, item]));
+  nextCategories[category.id] = nextCategory;
+  const roomBefore: Record<string, HousekeepingRoom> = {};
+  const roomAfter: Record<string, HousekeepingRoom> = {};
+  const updates: Record<string, unknown> = {
+    [`erp_geral/quartos/categoriesConfigured`]: true,
+  };
+
+  (wasConfigured ? [nextCategory] : Object.values(nextCategories)).forEach((item) => {
+    updates[`erp_geral/quartos/categories/${item.id}`] = item;
+  });
+  Object.values(rooms).forEach((room) => {
+    if (room.category !== category.id) return;
+    const nextRoom = { ...room, categoryName: name, bedComposition, bedCount: category.bedCount };
+    roomBefore[room.id] = room;
+    roomAfter[room.id] = nextRoom;
+    updates[`erp_geral/quartos/rooms/${room.id}`] = nextRoom;
+  });
+
+  await writeHousekeepingUpdates(updates, [
+    { entity: 'room-category', before: previousCategory ? { [category.id]: previousCategory } : {}, after: { [category.id]: nextCategory } },
+    { entity: 'room', before: roomBefore, after: roomAfter },
+  ]);
+}
+
+export async function deleteRoomCategory(categoryId: string, categories: RoomCategoryRecord[]): Promise<void> {
+  const [roomsSnapshot, configuredSnapshot] = await Promise.all([
+    get(ref(db, 'erp_geral/quartos/rooms')),
+    get(ref(db, 'erp_geral/quartos/categoriesConfigured')),
+  ]);
+  const rooms = roomsSnapshot.val() as Record<string, HousekeepingRoom> | null ?? {};
+  const wasConfigured = Boolean(configuredSnapshot.val());
+  const assignedRoom = Object.values(rooms).find((room) => room.category === categoryId);
+  if (assignedRoom) throw new Error(`A categoria ainda está vinculada ao quarto ${assignedRoom.number}.`);
+  const previous = categories.find((category) => category.id === categoryId);
+  if (!previous) return;
+
+  const nextCategories = categories.filter((category) => category.id !== categoryId);
+  const updates: Record<string, unknown> = {
+    [`erp_geral/quartos/categoriesConfigured`]: true,
+    [`erp_geral/quartos/categories/${categoryId}`]: null,
+  };
+  if (!wasConfigured) nextCategories.forEach((category) => {
+    updates[`erp_geral/quartos/categories/${category.id}`] = category;
+  });
+  await writeHousekeepingUpdates(updates, [
+    { entity: 'room-category', before: { [categoryId]: previous }, after: {} },
   ]);
 }
 

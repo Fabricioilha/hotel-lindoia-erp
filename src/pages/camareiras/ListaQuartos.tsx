@@ -2,7 +2,7 @@ import { deleteHotelRoom } from '../../services/hospitalityDeletion';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import type { UserRole } from '../../types';
-import { roomCategoryLabels, type DailyCleaningRequest, type HousekeepingAttendant, type RoomCategory } from '../../types/housekeeping';
+import { roomCategoriesOf, roomCategoryDescription, type DailyCleaningRequest, type HousekeepingAttendant, type RoomCategoryRecord } from '../../types/housekeeping';
 import type {
 	HousekeepingData,
 	HousekeepingRoom,
@@ -18,6 +18,8 @@ import {
   completeRoomCleaning,
   deleteRoomCleaningLog,
   saveHousekeepingRoom,
+  saveRoomCategory as persistRoomCategory,
+  deleteRoomCategory as persistDeleteRoomCategory,
   saveRoomDayPlan,
 	subscribeHousekeeping,
   updateHousekeepingSettings,
@@ -29,6 +31,7 @@ import './quartos.css';
 type ModalState =
 	| { type: 'room'; room?: HousekeepingRoom }
 	| { type: 'cleaning'; room: HousekeepingRoom }
+	| { type: 'categories' }
 	| { type: 'attendants' }
 	| null;
 
@@ -106,6 +109,7 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 	const rooms = useMemo(() => Object.values(data.rooms).sort((a, b) =>
 		a.number.localeCompare(b.number, 'pt-BR', { numeric: true }),
 	), [data.rooms]);
+	const categories = useMemo(() => roomCategoriesOf({ categories: data.categories, categoriesConfigured: data.categoriesConfigured }), [data.categories, data.categoriesConfigured]);
 	const filteredRooms = rooms.filter((room) => {
 		const currentGuest = activeReservationForRoom(data, room.id)?.guestName ?? '';
 		const matchesSearch = room.number.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR'))
@@ -131,18 +135,28 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 	async function changeData(
 		action: () => Promise<void>,
 		successMessage = '',
-	) {
+	): Promise<boolean> {
 		setSaving(true);
 		setError('');
 		setNotice('');
 		try {
 			await action();
 			if (successMessage) setNotice(successMessage);
+			return true;
 		} catch (saveError) {
 			setError(saveError instanceof Error ? saveError.message : 'Não foi possível salvar a operação.');
+			return false;
 		} finally {
 			setSaving(false);
 		}
+	}
+
+	async function saveCategory(category: RoomCategoryRecord) {
+		if (await changeData(() => persistRoomCategory(category, categories), 'Categoria de quarto salva.')) setModal(null);
+	}
+
+	async function removeCategory(categoryId: string) {
+		if (await changeData(() => persistDeleteRoomCategory(categoryId, categories), 'Categoria removida.')) setModal(null);
 	}
 
 
@@ -221,8 +235,8 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 
 				<div className="stock-content housekeeping-content">
 					<section className="page-heading">
-					<div><p className="eyebrow">{isAdmin ? 'CADASTRO E OPERAÇÃO' : 'OPERAÇÃO DE CAMAREIRAS'}</p><h1>{isAdmin ? 'Gerenciar quartos' : 'Serviço de quarto'}</h1><p className="page-description">{isAdmin ? 'Use “Editar quarto” em cada cartão para alterar categoria e quantidade de camas; acompanhe ocupação, limpeza e manutenção.' : 'Ocupação, limpeza e manutenção de cada quarto.'}</p></div>
-						{isAdmin && <div className="heading-actions"><Link className="button button-plain" to="/funcionarios">Funcionários</Link><button className="button button-primary" onClick={() => setModal({ type: 'room' })}>+ Adicionar quarto</button></div>}
+					<div><p className="eyebrow">{isAdmin ? 'CADASTRO E OPERAÇÃO' : 'OPERAÇÃO DE CAMAREIRAS'}</p><h1>{isAdmin ? 'Gerenciar quartos' : 'Serviço de quarto'}</h1><p className="page-description">{isAdmin ? 'Configure categorias e camas e acompanhe ocupação, limpeza e manutenção.' : 'Ocupação, limpeza e manutenção de cada quarto.'}</p></div>
+						{isAdmin && <div className="heading-actions"><Link className="button button-plain" to="/funcionarios">Funcionários</Link><button className="button button-plain" onClick={() => setModal({ type: 'categories' })}>Categorias de quartos</button><button className="button button-primary" onClick={() => setModal({ type: 'room' })}>+ Adicionar quarto</button></div>}
 					</section>
 
 					{error && <div className="notice notice-error" role="alert">{error}<button onClick={() => setError('')} aria-label="Fechar aviso">×</button></div>}
@@ -256,7 +270,7 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 							const unavailable = room.maintenanceStatus === 'em_manutencao';
 							const reservation = activeReservationForRoom(data, room.id);
 							return <article className={`room-card room-cleaning-${room.cleaningStatus}`} key={room.id}>
-								<header className="room-card-header"><div><span className="room-number-label">QUARTO</span><h3>{room.number}</h3>{room.category && <small className="room-number-label">{roomCategoryLabels[room.category]}</small>}<small className={`room-bed-count${defaultBedCount(room) === '' ? ' is-missing' : ''}`}>{defaultBedCount(room) === '' ? 'Camas não informadas' : `${defaultBedCount(room)} ${defaultBedCount(room) === 1 ? 'cama' : 'camas'}`}</small></div>{isAdmin && <div><button className="room-edit-button" onClick={() => setModal({ type: 'room', room })}>Editar quarto</button><button className="room-edit-button" disabled={saving} onClick={() => void removeRoom(room)}>Excluir</button></div>}</header>
+								<header className="room-card-header"><div><span className="room-number-label">QUARTO</span><h3>{room.number}</h3>{room.category && <small className="room-number-label">{roomCategoryDescription(room)}</small>}<small className={`room-bed-count${defaultBedCount(room) === '' ? ' is-missing' : ''}`}>{defaultBedCount(room) === '' ? 'Camas não informadas' : `${defaultBedCount(room)} ${defaultBedCount(room) === 1 ? 'cama' : 'camas'}`}</small></div>{isAdmin && <div><button className="room-edit-button" onClick={() => setModal({ type: 'room', room })}>Editar quarto</button><button className="room-edit-button" disabled={saving} onClick={() => void removeRoom(room)}>Excluir</button></div>}</header>
 								<div className="room-status-badges"><span className={`room-badge badge-cleaning-${room.cleaningStatus}`}>{cleaningLabels[room.cleaningStatus]}</span><span className={`room-badge badge-occupancy-${reservation ? 'ocupado' : 'livre'}`}>{reservation ? 'Ocupado' : 'Livre'}</span><span className={`room-badge badge-maintenance-${room.maintenanceStatus}`}>{maintenanceLabels[room.maintenanceStatus]}</span></div>
 								{reservation && <div className="room-stayover">
 									<div className="room-guest-name">Hóspede <strong>{reservation.guestName}</strong></div>
@@ -284,7 +298,9 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 				</div>
 			</main>
 
-			{isAdmin && modal?.type === 'room' && <RoomEditor key={modal.room?.id ?? 'new'} room={modal.room} onCancel={() => setModal(null)} onSave={saveRoom} />}
+			{isAdmin && modal?.type === 'room' && <RoomEditor key={modal.room?.id ?? 'new'} room={modal.room} categories={categories} onCancel={() => setModal(null)} onSave={saveRoom} />}
+
+			{isAdmin && modal?.type === 'categories' && <RoomCategoriesEditor categories={categories} rooms={rooms} saving={saving} error={error} onCancel={() => setModal(null)} onSave={saveCategory} onDelete={removeCategory} />}
 
 			{isAdmin && modal?.type === 'cleaning' && <CleaningEditor room={modal.room} attendants={attendants} due={dueDays(modal.room.id) === null || dueDays(modal.room.id) === 0} onCancel={() => setModal(null)} onSave={(form) => completeCleaning(modal.room, form)} />}
 		</div>
@@ -295,18 +311,22 @@ function Metric({ label, value, tone }: { label: string; value: number; tone: st
 	return <article className={`housekeeping-metric metric-${tone}`}><span className="metric-rule" /><p>{label}</p><strong>{value}</strong></article>;
 }
 
-function RoomEditor({ room, onCancel, onSave }: { room?: HousekeepingRoom; onCancel: () => void; onSave: (room: HousekeepingRoom) => void }) {
+
+function RoomEditor({ room, categories, onCancel, onSave }: { room?: HousekeepingRoom; categories: RoomCategoryRecord[]; onCancel: () => void; onSave: (room: HousekeepingRoom) => void }) {
+	const [categoryId, setCategoryId] = useState(room?.category ?? '');
+	const selectedCategory = categories.find((category) => category.id === categoryId);
+
 	function submit(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
 		const values = new FormData(event.currentTarget);
-		const bedCount = Number(values.get('bedCount'));
-		const category = String(values.get('category') ?? '') as RoomCategory | '';
-		if (!Number.isInteger(bedCount) || bedCount < 1 || bedCount > 10) return;
+		if (!selectedCategory) return;
 		onSave({
 			id: room?.id ?? newId(),
 			number: String(values.get('number') ?? '').trim(),
-			...(category ? { category } : {}),
-			bedCount,
+			category: selectedCategory.id,
+			categoryName: selectedCategory.name,
+			bedComposition: selectedCategory.bedComposition,
+			bedCount: selectedCategory.bedCount,
 			cleaningStatus: String(values.get('cleaningStatus')) as HousekeepingRoom['cleaningStatus'],
 			maintenanceStatus: String(values.get('maintenanceStatus')) as RoomMaintenanceStatus,
 			note: String(values.get('note') ?? '').trim(),
@@ -318,13 +338,65 @@ function RoomEditor({ room, onCancel, onSave }: { room?: HousekeepingRoom; onCan
 			<form onSubmit={submit}>
 				<ModalHeading eyebrow={room ? 'ATUALIZAR QUARTO' : 'CADASTRO DE QUARTO'} title={room ? `Quarto ${room.number}` : 'Adicionar quarto'} onClose={onCancel} id="room-editor-title" />
 				<label className="schedule-field"><span>Número do quarto</span><input name="number" required maxLength={12} defaultValue={room?.number} placeholder="Ex.: 12" /></label>
-				<label className="schedule-field"><span>Categoria</span><select name="category" required={!room} defaultValue={room?.category ?? ''}><option value="" disabled={!room}>{room ? 'Não informada' : 'Selecione'}</option>{(Object.entries(roomCategoryLabels) as [RoomCategory, string][]).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
-				<label className="schedule-field"><span>Quantidade de camas</span><input name="bedCount" type="number" required min="1" max="10" step="1" defaultValue={defaultBedCount(room)} placeholder="Ex.: 2" /></label>
+				<label className="schedule-field"><span>Categoria e configuração das camas</span><select name="category" required value={categoryId} onChange={(event) => setCategoryId(event.target.value)}><option value="" disabled>Selecione uma categoria</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name} · {category.bedComposition}</option>)}</select></label>
+				{selectedCategory && <div className="room-category-preview"><strong>{selectedCategory.name}</strong><span>{selectedCategory.bedComposition}</span><small>{selectedCategory.bedCount} {selectedCategory.bedCount === 1 ? 'cama' : 'camas'} cadastradas nesta configuração</small></div>}
 			<label className="schedule-field"><span>Limpeza</span><select name="cleaningStatus" defaultValue={room?.cleaningStatus ?? 'sujo'}><option value="sujo">Sujo</option><option value="limpo">Limpo</option><option value="em_limpeza">Em limpeza</option></select></label>
 				<label className="schedule-field"><span>Manutenção</span><select name="maintenanceStatus" defaultValue={room?.maintenanceStatus ?? 'normal'}><option value="normal">Sem manutenção</option><option value="manutencao_necessaria">Precisa manutenção, mas pode usar</option><option value="em_manutencao">Em manutenção, indisponível</option></select></label>
 				<label className="schedule-field"><span>Observação</span><textarea name="note" rows={3} maxLength={300} defaultValue={room?.note} placeholder="Manutenção pendente, preferência, observação da equipe" /></label>
 				<div className="schedule-modal-actions"><button className="button button-plain" type="button" onClick={onCancel}>Cancelar</button><button className="button button-primary" type="submit">Salvar quarto</button></div>
 			</form>
+		</section>
+	</div>;
+}
+
+function RoomCategoriesEditor({ categories, rooms, saving, error, onCancel, onSave, onDelete }: { categories: RoomCategoryRecord[]; rooms: HousekeepingRoom[]; saving: boolean; error: string; onCancel: () => void; onSave: (category: RoomCategoryRecord) => Promise<void>; onDelete: (id: string) => Promise<void> }) {
+	const [editingId, setEditingId] = useState<string | null>(null);
+	const [name, setName] = useState('');
+	const [bedComposition, setBedComposition] = useState('');
+	const [bedCount, setBedCount] = useState('1');
+	const editing = categories.find((category) => category.id === editingId);
+
+	function startEdit(category: RoomCategoryRecord) {
+		setEditingId(category.id);
+		setName(category.name);
+		setBedComposition(category.bedComposition);
+		setBedCount(String(category.bedCount));
+	}
+
+	function resetForm() {
+		setEditingId(null);
+		setName('');
+		setBedComposition('');
+		setBedCount('1');
+	}
+
+	async function submit(event: FormEvent<HTMLFormElement>) {
+		event.preventDefault();
+		const nextCategory: RoomCategoryRecord = {
+			id: editing?.id ?? `categoria-${newId()}`,
+			name: name.trim(),
+			bedComposition: bedComposition.trim(),
+			bedCount: Number(bedCount),
+		};
+		await onSave(nextCategory);
+	}
+
+	return <div className="modal-backdrop room-categories-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
+		<section className="stock-modal housekeeping-modal room-categories-modal" role="dialog" aria-modal="true" aria-labelledby="room-categories-title">
+			<header className="schedule-modal-header"><div><p className="schedule-eyebrow">CONFIGURAÇÃO DO HOTEL</p><h2 id="room-categories-title">Categorias de quartos</h2><p>Defina as combinações de camas e associe cada quarto a uma configuração.</p></div><button type="button" onClick={onCancel} aria-label="Fechar">×</button></header>
+			{error && <div className="room-category-error" role="alert">{error}</div>}
+			<form className="room-category-form" onSubmit={submit}>
+				<label className="schedule-field"><span>Nome da categoria</span><input required maxLength={60} value={name} onChange={(event) => setName(event.target.value)} placeholder="Ex.: Triplo" /></label>
+				<label className="schedule-field"><span>Composição das camas</span><input required maxLength={120} value={bedComposition} onChange={(event) => setBedComposition(event.target.value)} placeholder="Ex.: 1 cama de casal e 1 de solteiro" /></label>
+				<label className="schedule-field"><span>Quantidade de camas</span><input required type="number" min="1" max="10" value={bedCount} onChange={(event) => setBedCount(event.target.value)} /></label>
+				<div className="room-category-form-actions"><button className="button button-plain" type="button" onClick={resetForm}>{editing ? 'Cancelar edição' : 'Limpar'}</button><button className="button button-primary" type="submit" disabled={saving}>{saving ? 'Salvando...' : editing ? 'Salvar categoria' : 'Adicionar categoria'}</button></div>
+			</form>
+			<div className="room-category-list"><h3>Configurações cadastradas <span>{categories.length}</span></h3>
+				{categories.map((category) => {
+					const usedBy = rooms.filter((room) => room.category === category.id).length;
+					return <article className="room-category-item" key={category.id}><div><strong>{category.name}</strong><span>{category.bedComposition}</span><small>{category.bedCount} {category.bedCount === 1 ? 'cama' : 'camas'} · {usedBy} {usedBy === 1 ? 'quarto vinculado' : 'quartos vinculados'}</small></div><div><button className="room-edit-button" type="button" onClick={() => startEdit(category)}>Editar</button><button className="room-edit-button room-category-delete" type="button" disabled={saving || usedBy > 0} title={usedBy > 0 ? 'Desvincule esta categoria dos quartos antes de removê-la.' : undefined} onClick={() => void onDelete(category.id)}>Excluir</button></div></article>;
+				})}
+			</div>
 		</section>
 	</div>;
 }

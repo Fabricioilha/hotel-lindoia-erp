@@ -12,7 +12,7 @@ import {
   type ExtraType, type GuestStay, type ReceptionData, type ReceptionRateSettings, type ReceptionRoom, type StayExtra, type StayKind,
 } from '../../types/reception';
 import { subscribeReservationDirectory, subscribeRoomDirectory } from '../../services/housekeepingStore';
-import { roomCategoryLabels, type HousekeepingRoom, type ReservationDirectoryEntry } from '../../types/housekeeping';
+import { roomCategoryDescription, type HousekeepingRoom, type ReservationDirectoryEntry } from '../../types/housekeeping';
 import { emptyReception, localDateKey, saveStay, subscribeReception, subscribeReceptionRates } from '../../services/receptionStore';
 import '../venda-geladeira.css';
 import './recepcao.css';
@@ -170,17 +170,11 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   const describeRoom = (number: string) => {
     const receptionRoom = receptionRoomByNumber.get(number);
     const room = roomByNumber.get(number);
-    if (room?.bedCount) {
-      const categoryLabel = receptionRoom
-        ? ROOM_TYPE_LABELS[receptionRoom.type].split(' · ')[0]
-        : room.category ? roomCategoryLabels[room.category].split(' · ')[0] : 'Tipo não informado';
-      return `${categoryLabel} · ${room.bedCount} ${room.bedCount === 1 ? 'cama' : 'camas'}`;
-    }
+    if (room?.categoryName || room?.bedComposition) return roomCategoryDescription(room);
+    if (room?.bedCount && receptionRoom) return `${ROOM_TYPE_LABELS[receptionRoom.type].split(' · ')[0]} · ${room.bedCount} ${room.bedCount === 1 ? 'cama' : 'camas'}`;
     if (receptionRoom) return ROOM_TYPE_LABELS[receptionRoom.type];
-    const category = room?.category;
-    if (category === 'casal') return ROOM_TYPE_LABELS.casal;
-    if (category === 'solteiro') return ROOM_TYPE_LABELS.solteiro;
-    if (category === 'triplo') return ROOM_TYPE_LABELS.triplo;
+    if (room?.category) return roomCategoryDescription(room);
+    if (room?.bedCount) return `${room.bedCount} ${room.bedCount === 1 ? 'cama' : 'camas'}`;
     return 'Tipo e camas não informados';
   };
 
