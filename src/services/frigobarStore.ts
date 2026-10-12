@@ -1,4 +1,4 @@
-import { get, increment, onValue, orderByChild, query, ref, runTransaction, set, startAt, update } from 'firebase/database';
+import { endAt, get, increment, onValue, orderByChild, query, ref, runTransaction, set, startAt, update } from 'firebase/database';
 import { db } from '../config/firebase';
 import { commitDeletion, removeFinanceEntries } from './deletionStore';
 import type { InventoryData, MinibarPaymentMethod, MinibarSettlement, StockProduct } from '../types/inventory';
@@ -12,6 +12,16 @@ function fiveYearsAgoTimestamp(): string {
   const cutoff = new Date();
   cutoff.setFullYear(cutoff.getFullYear() - 5);
   return cutoff.toISOString();
+}
+
+function localDateBoundary(dateValue: string, endOfDay = false): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateValue);
+  if (!match) return '';
+  const [, year, month, day] = match;
+  const date = new Date(Number(year), Number(month) - 1, Number(day));
+  if (date.getFullYear() !== Number(year) || date.getMonth() !== Number(month) - 1 || date.getDate() !== Number(day)) return '';
+  if (endOfDay) date.setHours(23, 59, 59, 999);
+  return date.toISOString();
 }
 
 export function emptyFrigobar(): FrigobarData {
@@ -42,7 +52,7 @@ export function subscribeRoomAddOnInventory(
   };
 }
 
-export function subscribeFrigobar(onChange: (data: FrigobarData) => void, onError: (error: Error) => void): () => void {
+export function subscribeFrigobar(onChange: (data: FrigobarData) => void, onError: (error: Error) => void, startDate?: string, endDate?: string): () => void {
   let catalog: Record<string, FrigobarProduct> | undefined;
   let stock: Record<string, number> | undefined;
   let sales: Record<string, FrigobarSale> | undefined;
@@ -60,7 +70,11 @@ export function subscribeFrigobar(onChange: (data: FrigobarData) => void, onErro
     stock = quantities as Record<string, number>;
     publish();
   }, onError);
-  const salesQuery = query(ref(db, `${OPERATIONS_PATH}/sales`), orderByChild('createdAt'), startAt(fiveYearsAgoTimestamp()));
+  const startTimestamp = startDate ? localDateBoundary(startDate) : '';
+  const endTimestamp = endDate ? localDateBoundary(endDate, true) : '';
+  const salesQuery = startTimestamp && endTimestamp && startDate !== undefined && endDate !== undefined && startDate <= endDate
+    ? query(ref(db, `${OPERATIONS_PATH}/sales`), orderByChild('createdAt'), startAt(startTimestamp), endAt(endTimestamp))
+    : query(ref(db, `${OPERATIONS_PATH}/sales`), orderByChild('createdAt'), startAt(fiveYearsAgoTimestamp()));
   const stopSales = onValue(salesQuery, (snapshot) => {
     sales = snapshot.val() ?? {};
     publish();

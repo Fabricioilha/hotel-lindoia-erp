@@ -25,6 +25,9 @@ export async function deleteStockMovement(id: string): Promise<void> {
   const snapshot = await get(ref(db, `erp_geral/estoque/movements/${id}`));
   if (!snapshot.exists()) return;
   const movement = snapshot.val() as StockMovement;
+  const allMovements = movement.type === 'entrada'
+    ? await get(ref(db, 'erp_geral/estoque/movements'))
+    : undefined;
   if (id.startsWith('saida-')) {
     const records = await get(ref(db, 'erp_geral/saidas/records'));
     const source = (Object.values(records.val() ?? {}) as OutputRecord[]).find((item) => id === `saida-${item.id}-${movement.productId}`);
@@ -40,6 +43,19 @@ export async function deleteStockMovement(id: string): Promise<void> {
     Object.entries(deltas).forEach(([location, quantity]) => {
       if (quantity) updates[`erp_geral/estoque/products/${movement.productId}/locationQuantities/${location}`] = increment(quantity);
     });
+    if (movement.type === 'entrada' && allMovements) {
+      const remainingEntries = (Object.values(allMovements.val() ?? {}) as StockMovement[])
+        .filter((item) => item.productId === movement.productId && item.type === 'entrada' && item.id !== movement.id)
+        .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+      const hasLaterEntry = remainingEntries.some((item) => item.createdAt > movement.createdAt);
+      const currentUnitCost = Number(product.child('cost').val());
+      if (!hasLaterEntry && currentUnitCost === movement.unitPrice) {
+        const restoredCost = movement.previousUnitCost ?? remainingEntries.at(-1)?.unitPrice;
+        if (typeof restoredCost === 'number' && Number.isFinite(restoredCost)) {
+          updates[`erp_geral/estoque/products/${movement.productId}/cost`] = restoredCost;
+        }
+      }
+    }
     updates[`erp_geral/estoque/products/${movement.productId}/updatedAt`] = new Date().toISOString();
   }
   if (movement.type === 'entrada') removeFinanceEntries(updates, [`stock-entry-${id}`], 'expenses');

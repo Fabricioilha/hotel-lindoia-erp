@@ -332,6 +332,41 @@
   margin-top: 13px;
 }
 
+.minibar-period-filter {
+  display: flex;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 12px;
+  margin: 0 0 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--stock-line);
+  border-radius: 5px;
+  background: #fbfcfa;
+}
+
+.minibar-period-filter > strong {
+  margin: 0 auto 9px 0;
+  color: var(--stock-muted);
+  font-size: 0.6875rem;
+}
+
+.minibar-period-filter label {
+  display: grid;
+  flex: 0 1 190px;
+  min-width: 0;
+  gap: 4px;
+}
+
+.minibar-period-filter label > span {
+  color: #526159;
+  font-size: 0.625rem;
+  font-weight: 700;
+}
+
+.minibar-period-filter .text-button {
+  margin: 0 2px 9px;
+}
+
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
@@ -1128,8 +1163,22 @@
     flex-direction: column;
   }
 
+  .minibar-period-filter {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .minibar-period-filter > strong {
+    flex-basis: 100%;
+    margin: 0;
+  }
+
   .filter-field {
     flex-basis: auto;
+  }
+
+  .minibar-period-filter label {
+    flex: 1 1 150px;
   }
 }
 

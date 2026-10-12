@@ -272,7 +272,7 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
     const quantity = product.category === 'frigobar'
       ? Number(frigobarStock[product.id] ?? product.locationQuantities['Geladeira - Recepção'] ?? 0)
       : Object.values(product.locationQuantities ?? {}).reduce((total, value) => total + Number(value || 0), 0);
-    return product.active !== false && product.minimumQuantity > 0 && quantity <= product.minimumQuantity;
+    return product.active !== false && (quantity <= 0 || (product.minimumQuantity > 0 && quantity <= product.minimumQuantity));
   }).length;
   const cleaningTasks = Object.values(cleaning.tasks);
   const cleaningNow = new Set(cleaningTasks.filter((task) => task.status === 'em_limpeza').map((task) => task.roomNumber.trim())).size;
@@ -334,7 +334,7 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
           <MetricCard title="Entradas amanhã" value={valueOrLoading(occupancy.arrivalsTomorrow.rooms)} detail={detailOrLoading('Quartos com chegada prevista')} tone="blue" />
           <MetricCard title="Saídas hoje" value={valueOrLoading(occupancy.departuresToday.rooms)} detail={detailOrLoading('Quartos com checkout previsto')} tone="red" />
           <MetricCard title="Saídas amanhã" value={valueOrLoading(occupancy.departuresTomorrow.rooms)} detail={detailOrLoading('Quartos com checkout previsto')} tone="gold" />
-          {userRole === 'admin' && <MetricCard title="Alertas de estoque" value={valueOrLoading(lowStockCount)} detail={detailOrLoading('Produtos no mínimo ou abaixo')} tone="neutral" />}
+          {userRole === 'admin' && <MetricCard title="Alertas de estoque" value={valueOrLoading(lowStockCount)} detail={detailOrLoading('Produtos ativos abaixo do mínimo ou sem saldo')} tone="neutral" />}
         </section>}
 
         {userRole !== 'admin' && <div className="duty-bar" aria-label="Plantonista">

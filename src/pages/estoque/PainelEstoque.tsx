@@ -35,6 +35,16 @@ type Modal = 'produto' | 'movimento' | 'fornecedor' | 'patrimonio' | 'checkout' 
 const emptyData: InventoryData = { products: {}, suppliers: {}, movements: {}, assets: {} };
 const newId = () => crypto.randomUUID();
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const RECEPTION_LOCATION = 'Geladeira - Recepção';
+const localDateValue = (date: Date) => `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+const dateValueForTimestamp = (value: string) => {
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? localDateValue(date) : '';
+};
+const currentMonthStart = () => {
+  const today = new Date();
+  return localDateValue(new Date(today.getFullYear(), today.getMonth(), 1));
+};
 const dateTime = (value: string) => new Date(value).toLocaleString('pt-BR', { dateStyle: 'short', timeStyle: 'short' });
 const CategoriesContext = createContext<StockCategoryRecord[]>([]);
 const nameOfCategory = (categories: StockCategoryRecord[], id: StockCategory) => categories.find((item) => item.id === id)?.name ?? 'Sem categoria';
@@ -111,7 +121,7 @@ function StockStatus({ product }: { product: StockProduct }) {
 export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { actor?: string; canViewFinancials?: boolean }) {
   const [data, setData] = useState<InventoryData>(emptyData);
   const [frigobar, setFrigobar] = useState<FrigobarData>(emptyFrigobar());
-    const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true);
   const [storageError, setStorageError] = useState('');
   const [view, setView] = useState<View>('resumo');
   const [categoryFilter, setCategoryFilter] = useState<StockCategory | 'todas'>('todas');
@@ -124,6 +134,8 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
   const [editingId, setEditingId] = useState('');
   const [movementProductId, setMovementProductId] = useState('');
   const [movementType, setMovementType] = useState<MovementType>('entrada');
+  const [minibarStartDate, setMinibarStartDate] = useState(currentMonthStart);
+  const [minibarEndDate, setMinibarEndDate] = useState(() => localDateValue(new Date()));
   const [saving, setSaving] = useState(false);
   const [notice, setNotice] = useState('');
   const categories = useMemo(() => stockCategoriesOf(data), [data]);
@@ -154,7 +166,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
     });
   }, []);
 
-  useEffect(() => subscribeFrigobar(setFrigobar, (error) => setStorageError(error.message)), []);
+  useEffect(() => subscribeFrigobar(setFrigobar, (error) => setStorageError(error.message), minibarStartDate, minibarEndDate), [minibarStartDate, minibarEndDate]);
 
   useEffect(() => {
     if (loading) return;
@@ -167,17 +179,33 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
   const movements = useMemo(() => Object.values(data.movements).sort((a, b) => b.createdAt.localeCompare(a.createdAt)), [data.movements]);
   const suppliers = useMemo(() => Object.values(data.suppliers).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')), [data.suppliers]);
   const assets = useMemo(() => Object.values(data.assets).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR')), [data.assets]);
-  const lowStock = products.filter((product) => product.active !== false && product.minimumQuantity > 0 && quantityOf(product) <= product.minimumQuantity);
-  const outOfStock = products.filter((product) => quantityOf(product) <= 0);
-  const inventoryValue = products.reduce((total, product) => total + quantityOf(product) * product.cost, 0);
-  const minibarSales = movements
+  const lowStock = products.filter((product) => {
+    const quantity = quantityOf(product);
+    return product.active !== false && (quantity <= 0 || (product.minimumQuantity > 0 && quantity <= product.minimumQuantity));
+  });
+  const outOfStock = lowStock.filter((product) => quantityOf(product) <= 0);
+  const inventoryValue = products.reduce((total, product) => {
+    const unitCost = Number(product.cost);
+    return total + quantityOf(product) * (Number.isFinite(unitCost) ? unitCost : 0);
+  }, 0);
+  const hasValidMinibarPeriod = Boolean(minibarStartDate && minibarEndDate && minibarStartDate <= minibarEndDate);
+  const minibarMovementInPeriod = (movement: StockMovement) => {
+    const date = dateValueForTimestamp(movement.createdAt);
+    return hasValidMinibarPeriod && date >= minibarStartDate && date <= minibarEndDate;
+  };
+  const minibarSaleInPeriod = (sale: FrigobarData['sales'][string]) => {
+    const date = dateValueForTimestamp(sale.createdAt);
+    return hasValidMinibarPeriod && date >= minibarStartDate && date <= minibarEndDate;
+  };
+  const recentMinibarMovements = movements.filter(minibarMovementInPeriod);
+  const minibarSales = recentMinibarMovements
     .filter((movement) => movement.type === 'consumo_frigobar' && (movement.settlement === 'pago_na_recepcao' || movement.settlement === 'pago_no_checkout'))
     .reduce((total, movement) => total + movement.quantity * movement.unitPrice, 0)
-    + Object.values(frigobar.sales).filter((sale) => sale.settlement !== 'cobrar_no_checkout').reduce((total, sale) => total + sale.amount, 0);
-  const minibarPending = movements
+    + Object.values(frigobar.sales).filter((sale) => minibarSaleInPeriod(sale) && sale.settlement !== 'cobrar_no_checkout').reduce((total, sale) => total + sale.amount, 0);
+  const minibarPending = recentMinibarMovements
     .filter((movement) => movement.type === 'consumo_frigobar' && movement.settlement === 'cobrar_no_checkout')
     .reduce((total, movement) => total + movement.quantity * movement.unitPrice, 0)
-    + Object.values(frigobar.sales).filter((sale) => sale.settlement === 'cobrar_no_checkout').reduce((total, sale) => total + sale.amount, 0);
+    + Object.values(frigobar.sales).filter((sale) => minibarSaleInPeriod(sale) && sale.settlement === 'cobrar_no_checkout').reduce((total, sale) => total + sale.amount, 0);
   const selectedProduct = products.find((product) => product.id === movementProductId);
   const filteredProducts = products.filter((product) => {
     const matchesCategory = categoryFilter === 'todas' || product.category === categoryFilter;
@@ -185,7 +213,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
     const quantity = quantityOf(product);
     const matchesStock = stockFilter === 'todos'
       || (stockFilter === 'baixo' && product.minimumQuantity > 0 && quantity <= product.minimumQuantity && quantity > 0)
-      || (stockFilter === 'zerado' && quantity <= 0);
+      || (stockFilter === 'zerado' && product.active !== false && quantity <= 0);
     return matchesCategory && matchesSearch && matchesStock;
   });
 
@@ -432,7 +460,12 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
       const product = current.products[movementProductId];
       if (!product) throw new Error('Este produto não está mais disponível.');
       const locations = { ...product.locationQuantities };
-      const available = Number(locations[fromLocation] ?? 0);
+      const storedQuantity = Number(locations[fromLocation] ?? 0);
+      const usesSeparateReceptionStock = product.category === SALES_CATEGORY_ID && fromLocation === RECEPTION_LOCATION;
+      // Vendas da geladeira reduzem o saldo operacional sem alterar a quantidade-base do catálogo.
+      const available = usesSeparateReceptionStock
+        ? Number(frigobar.stock[product.id] ?? storedQuantity)
+        : storedQuantity;
       let recordedQuantity = quantity;
       let finalFromLocation = fromLocation;
       let finalToLocation = toLocation;
@@ -442,17 +475,18 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
         finalFromLocation = '';
       } else if (movementType === 'transferencia') {
         if (available < quantity) throw new Error(`Saldo insuficiente em ${fromLocation}. Disponível: ${available} ${product.unit}.`);
-        locations[fromLocation] = available - quantity;
+        locations[fromLocation] = usesSeparateReceptionStock ? storedQuantity - quantity : available - quantity;
         locations[toLocation] = Number(locations[toLocation] ?? 0) + quantity;
       } else if (movementType === 'ajuste') {
         const delta = quantity - available;
         recordedQuantity = Math.abs(delta);
-        locations[fromLocation] = quantity;
+        // Converte a contagem física em uma diferença sobre a quantidade-base sincronizada.
+        locations[fromLocation] = usesSeparateReceptionStock ? storedQuantity + delta : quantity;
         finalToLocation = delta > 0 ? fromLocation : '';
         finalFromLocation = delta < 0 ? fromLocation : '';
       } else {
         if (available < quantity) throw new Error(`Saldo insuficiente em ${fromLocation}. Disponível: ${available} ${product.unit}.`);
-        locations[fromLocation] = available - quantity;
+        locations[fromLocation] = usesSeparateReceptionStock ? storedQuantity - quantity : available - quantity;
         finalToLocation = '';
       }
 
@@ -470,6 +504,9 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
         note: movementType === 'ajuste' ? `${note}${note ? ' · ' : ''}Contagem informada: ${quantity} ${product.unit}.` : note,
         actor,
         unitPrice,
+        ...(movementType === 'entrada' && canViewFinancials
+          ? { previousUnitCost: Number.isFinite(Number(product.cost)) ? Number(product.cost) : 0 }
+          : {}),
         reference,
         createdAt: timestamp,
       };
@@ -602,6 +639,21 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
                   inventoryValue={inventoryValue}
                   minibarSales={minibarSales}
                   minibarPending={minibarPending}
+                  minibarPeriodValid={hasValidMinibarPeriod}
+                  minibarStartDate={minibarStartDate}
+                  minibarEndDate={minibarEndDate}
+                  onMinibarStartDateChange={(value) => {
+                    setMinibarStartDate(value);
+                    if (value && minibarEndDate && value > minibarEndDate) setMinibarEndDate(value);
+                  }}
+                  onMinibarEndDateChange={(value) => {
+                    setMinibarEndDate(value);
+                    if (value && minibarStartDate && value < minibarStartDate) setMinibarStartDate(value);
+                  }}
+                  onCurrentMonth={() => {
+                    setMinibarStartDate(currentMonthStart());
+                    setMinibarEndDate(localDateValue(new Date()));
+                  }}
                   onOpenProducts={() => { setCategoryFilter('todas'); setStockFilter('todos'); setView('produtos'); }}
                   onOpenOutOfStock={() => { setCategoryFilter('todas'); setStockFilter('zerado'); setView('produtos'); }}
                   onOpenMovements={() => setView('movimentacoes')}
@@ -675,7 +727,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
 }
 
 function Overview({
-  products, movements, lowStock, outOfStock, canViewFinancials, inventoryValue, minibarSales, minibarPending, onOpenProducts, onOpenOutOfStock, onOpenMovements, onEdit,
+  products, movements, lowStock, outOfStock, canViewFinancials, inventoryValue, minibarSales, minibarPending, minibarPeriodValid, minibarStartDate, minibarEndDate, onMinibarStartDateChange, onMinibarEndDateChange, onCurrentMonth, onOpenProducts, onOpenOutOfStock, onOpenMovements, onEdit,
 }: {
   products: StockProduct[];
   movements: StockMovement[];
@@ -685,6 +737,12 @@ function Overview({
   inventoryValue: number;
   minibarSales: number;
   minibarPending: number;
+  minibarPeriodValid: boolean;
+  minibarStartDate: string;
+  minibarEndDate: string;
+  onMinibarStartDateChange: (value: string) => void;
+  onMinibarEndDateChange: (value: string) => void;
+  onCurrentMonth: () => void;
   onOpenProducts: () => void;
   onOpenOutOfStock: () => void;
   onOpenMovements: () => void;
@@ -701,11 +759,17 @@ function Overview({
 
   return (
     <>
+      {canViewFinancials && <div className="minibar-period-filter" role="group" aria-label="Período das vendas da geladeira">
+        <strong>Período da geladeira</strong>
+        <label><span>De</span><DateInput name="minibarStartDate" value={minibarStartDate} onValueChange={onMinibarStartDateChange} max={minibarEndDate || undefined} /></label>
+        <label><span>Até</span><DateInput name="minibarEndDate" value={minibarEndDate} onValueChange={onMinibarEndDateChange} min={minibarStartDate || undefined} max={localDateValue(new Date())} /></label>
+        <button type="button" className="text-button" onClick={onCurrentMonth}>Mês atual</button>
+      </div>}
       <section className="metric-grid">
         <Metric label="Produtos cadastrados" value={String(products.length)} detail="Itens de consumo" tone="green" />
-        <Metric label="Abaixo do mínimo" value={String(lowStock.length)} detail={`${outOfStock.length} sem saldo`} tone={lowStock.length ? 'coral' : 'green'} />
-        {canViewFinancials && <Metric label="Valor em estoque" value={money(inventoryValue)} detail="Custo estimado atual" tone="blue" />}
-        {canViewFinancials && <Metric label="Geladeira recebida" value={money(minibarSales)} detail={`${money(minibarPending)} a cobrar no checkout`} tone="gold" />}
+        <Metric label="Abaixo do mínimo ou sem saldo" value={String(lowStock.length)} detail={`${outOfStock.length} sem saldo entre produtos ativos`} tone={lowStock.length ? 'coral' : 'green'} />
+        {canViewFinancials && <Metric label="Valor em estoque" value={money(inventoryValue)} detail="Estimativa: saldo atual × custo unitário cadastrado" tone="blue" />}
+        {canViewFinancials && <Metric label="Geladeira recebida" value={money(minibarSales)} detail={minibarPeriodValid ? `${money(minibarPending)} a cobrar no checkout · período selecionado` : 'Informe um período válido para pesquisar'} tone="gold" />}
       </section>
 
       <div className="overview-grid">
@@ -721,7 +785,7 @@ function Overview({
         </section>
 
         <section className="panel alert-panel">
-          <div className="panel-heading"><div><h2>Atenção ao estoque</h2><p>Itens no mínimo ou abaixo dele</p></div><span className="alert-number">{lowStock.length}</span></div>
+          <div className="panel-heading"><div><h2>Atenção ao estoque</h2><p>Produtos ativos abaixo do mínimo ou sem saldo</p></div><span className="alert-number">{lowStock.length}</span></div>
           {lowStock.length === 0 ? <div className="empty-compact">Nenhum item precisa de reposição.</div> : (
             <div className="alert-list">
               {lowStock.slice(0, 5).map((product) => (
@@ -733,7 +797,7 @@ function Overview({
               ))}
             </div>
           )}
-          {outOfStock.length > 0 && <button className="button button-soft button-full" onClick={onOpenOutOfStock}>Ver itens sem saldo</button>}
+          {outOfStock.length > 0 && <button className="button button-soft button-full" onClick={onOpenOutOfStock}>Ver itens ativos sem saldo</button>}
         </section>
       </div>
 
@@ -902,8 +966,10 @@ function MovementForm({
   const productLocations = product ? Object.keys(product.locationQuantities) : [];
   const locations = Array.from(new Set([...STOCK_LOCATIONS, ...productLocations]));
   const source = movementType === 'consumo_frigobar'
-    ? 'Geladeira - Recepção'
-    : productLocations.find((location) => (product?.locationQuantities[location] ?? 0) > 0) ?? productLocations[0] ?? STOCK_LOCATIONS[0];
+    ? RECEPTION_LOCATION
+    : movementType === 'ajuste' && product?.category === SALES_CATEGORY_ID
+      ? RECEPTION_LOCATION
+      : productLocations.find((location) => (product?.locationQuantities[location] ?? 0) > 0) ?? productLocations[0] ?? STOCK_LOCATIONS[0];
   const isInbound = movementType === 'entrada';
   const isTransfer = movementType === 'transferencia';
   const isCount = movementType === 'ajuste';

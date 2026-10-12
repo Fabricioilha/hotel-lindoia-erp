@@ -57,6 +57,7 @@ export interface StockMovement {
   note: string;
   actor: string;
   unitPrice: number;
+  previousUnitCost?: number;
   settlement?: MinibarSettlement;
   paymentMethod?: MinibarPaymentMethod | '';
   roomNumber?: string;
