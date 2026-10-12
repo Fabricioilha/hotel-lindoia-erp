@@ -1,7 +1,8 @@
-import { get, limitToLast, onValue, orderByChild, query, ref, startAt, update as updateDatabase } from 'firebase/database';
+import { endAt, get, limitToLast, onValue, orderByChild, query, ref, startAt, update as updateDatabase } from 'firebase/database';
 import { db } from '../config/firebase';
 import { buildAuditEvents } from '../types/audit';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, type FinanceData } from '../types/finance';
+import type { ReservationCollection } from '../types/housekeeping';
 import { withOperationalFinance, type OperationalFinanceSources } from './operationalLedger';
 
 const DEPRECATED_INCOME_CATEGORIES = ['Rotativo cartão', 'Consumo Cartão', 'Diária Cartão', 'Café da manhã', 'Café da manhã cartão', 'Outros'];
@@ -81,26 +82,50 @@ export const financeStorageMode = 'Firebase';
 export function subscribeFinance(
   onChange: (data: FinanceData) => void,
   onError: (error: Error) => void,
-  options: { includeOperations?: boolean } = {},
+  options: { includeOperations?: boolean; transactionRange?: { from: string; to: string } } = {},
 ): () => void {
-  const financeKeys = ['incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'auditLog', 'suppressed', 'categoryAliases'] as const;
+  const financeKeys = options.transactionRange
+    ? ['incomes', 'expenses', 'payroll', 'incomeCategories', 'expenseCategories', 'suppressed', 'categoryAliases'] as const
+    : ['incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'auditLog', 'suppressed', 'categoryAliases'] as const;
   const operationalPaths = {
     stays: 'erp_geral/recepcao/stays',
     roomCharges: 'erp_geral/recepcao/roomCharges',
     cashOuts: 'erp_geral/recepcao/cashOuts',
     sales: 'erp_geral/frigobar/operations/sales',
-    reservationCollections: 'erp_geral/reservationCollections',
+    reservationCollections: 'erp_geral/reservationCollectionsByDate',
   };
-  const paths = [...financeKeys.map((key) => [key, `erp_geral/financeiro/${key}`]), ...(options.includeOperations === false ? [] : Object.entries(operationalPaths))];
+  const operationEntries = Object.entries(operationalPaths).flatMap(([key, location]) =>
+    options.transactionRange && key === 'sales'
+      ? [['salesCreatedAt', location], ['salesSettledAt', location]]
+      : [[key, location]],
+  );
+  const paths = [...financeKeys.map((key) => [key, `erp_geral/financeiro/${key}`]), ...(options.includeOperations === false ? [] : operationEntries)];
   const loaded = new Set<string>();
   const values: Record<string, unknown> = {};
   const stops = paths.map(([key, location]) => {
     const path = ref(db, location);
+    const transactionDateField = key === 'incomes' ? 'date'
+      : key === 'expenses' || key === 'payroll' ? 'dueDate'
+        : key === 'transfers' ? 'date' : '';
     const dateField = key === 'stays' ? 'checkInDate'
       : key === 'roomCharges' || key === 'cashOuts' ? 'date'
-        : key === 'sales' ? 'createdAt' : '';
+        : key === 'reservationCollections' ? 'date'
+        : key === 'sales' || key === 'salesCreatedAt' ? 'createdAt'
+          : key === 'salesSettledAt' ? 'settledAt' : '';
+    const rangeField = transactionDateField || dateField;
+    const isTimestampField = key === 'sales' || key === 'salesCreatedAt' || key === 'salesSettledAt';
+    const rangeStart = options.transactionRange
+      ? isTimestampField ? new Date(`${options.transactionRange.from}T00:00:00`).toISOString() : options.transactionRange.from
+      : '';
+    const rangeEnd = options.transactionRange
+      ? isTimestampField ? new Date(`${options.transactionRange.to}T23:59:59.999`).toISOString() : options.transactionRange.to
+      : '';
     const listener = key === 'auditLog'
       ? query(path, orderByChild('occurredAt'), limitToLast(100))
+      : options.transactionRange && rangeField
+        ? query(path, orderByChild(rangeField), startAt(rangeStart), endAt(rangeEnd))
+        : transactionDateField
+          ? query(path, orderByChild(transactionDateField), startAt(fiveYearsAgoDateKey()))
       : dateField
         ? query(path, orderByChild(dateField), startAt(dateField === 'createdAt' ? fiveYearsAgoTimestamp() : fiveYearsAgoDateKey()))
         : path;
@@ -109,9 +134,18 @@ export function subscribeFinance(
       loaded.add(key);
       if (loaded.size === paths.length) {
         const data = normalizeFinance(values);
+        const sales = options.transactionRange
+          ? { ...((values.salesCreatedAt ?? {}) as Record<string, unknown>), ...((values.salesSettledAt ?? {}) as Record<string, unknown>) }
+          : values.sales;
+        const reservationCollections = Object.values((values.reservationCollections ?? {}) as Record<string, ReservationCollection>)
+          .reduce<Record<string, Record<string, ReservationCollection>>>((all, collection) => {
+            const reservationId = collection.reservationId;
+            (all[reservationId] ??= {})[collection.id] = collection;
+            return all;
+          }, {});
         onChange(options.includeOperations === false ? data : withOperationalFinance(data, {
           stays: values.stays, roomCharges: values.roomCharges, cashOuts: values.cashOuts,
-          sales: values.sales, reservationCollections: values.reservationCollections,
+          sales, reservationCollections,
         } as OperationalFinanceSources));
       }
     }, onError);

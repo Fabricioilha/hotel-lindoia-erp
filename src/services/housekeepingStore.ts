@@ -558,10 +558,16 @@ export async function recordReservationCollection(collection: ReservationCollect
   const existing = await get(collectionRef);
   if (existing.exists()) {
     const previous = existing.val() as ReservationCollection;
-    if (previous.amount === collection.amount && previous.reservationId === collection.reservationId) return;
+    if (previous.amount === collection.amount && previous.reservationId === collection.reservationId) {
+      await set(ref(db, `erp_geral/reservationCollectionsByDate/${collection.id}`), previous);
+      return;
+    }
     throw new Error('Este recebimento já foi registrado com outros dados.');
   }
-  await set(collectionRef, collection);
+  await update(ref(db), {
+    [`erp_geral/reservationCollections/${collection.reservationId}/${collection.id}`]: collection,
+    [`erp_geral/reservationCollectionsByDate/${collection.id}`]: collection,
+  });
 }
 
 export function subscribeReservationExtras(
@@ -648,6 +654,7 @@ export async function syncReservationCollections(): Promise<void> {
     });
     const updates: Record<string, unknown> = {
       [`erp_geral/reservationCollections/${collection.reservationId}/${collection.id}`]: null,
+      [`erp_geral/reservationCollectionsByDate/${collection.id}`]: null,
       [`erp_geral/quartos/reservations/${collection.reservationId}/balanceDue`]: Math.max(
         0,
         Number(reservation.balanceDue ?? reservationFinancialTotal(reservation)) - collection.amount,

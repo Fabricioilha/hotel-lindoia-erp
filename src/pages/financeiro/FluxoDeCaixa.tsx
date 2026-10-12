@@ -27,6 +27,7 @@ import './financeiro.css';
 
 type Tab = 'resumo' | 'entradas' | 'prepagos' | 'saidas' | 'transferencias' | 'categorias';
 type Modal = 'entrada' | 'entrada-prepaga' | 'saida' | 'transferencia' | 'repasse' | 'saldo' | null;
+type TransactionRange = { from: string; to: string };
 // Categorias usadas por lançamentos automáticos (hospedagem, venda, estoque, OYO).
 const LOCKED_CATEGORIES = { income: INCOME_CATEGORIES, expense: ['Estoque', 'OYO', ...CASH_OUT_REASONS] };
 type Activity = { id: string; date: string; title: string; detail: string; amount: number; paid: number; type: 'entrada' | 'saida' | 'folha'; wallet: string };
@@ -36,11 +37,16 @@ const localMonth = () => {
 	const now = new Date();
 	return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
 };
+const localDateKey = () => {
+	const now = new Date();
+	return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+};
 const monthDueDate = (month: string) => {
 	const day = Math.min(new Date().getDate(), new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate());
 	return `${month}-${String(day).padStart(2, '0')}`;
 };
 const dateLabel = (value: string) => new Date(`${value}T12:00:00`).toLocaleDateString('pt-BR');
+const dateWithinRange = (date: string, range: TransactionRange) => date >= range.from && date <= range.to;
 const id = () => crypto.randomUUID();
 const newIncomeItem = (description: string, paymentMethod: FinancePaymentMethod = 'cash'): FinanceIncomeItem => ({ id: id(), description, amount: 0, paymentMethod });
 
@@ -65,20 +71,33 @@ function exportCsv(filename: string, rows: (string | number)[][]) {
 export function FluxoDeCaixa() {
 	const [data, setData] = useState<FinanceData>(emptyFinance());
 	const [month, setMonth] = useState(localMonth);
-	const [tab, setTab] = useState<Tab>('resumo');
+	const [tab, setTab] = useState<Tab>('entradas');
+	const [rangeFromDraft, setRangeFromDraft] = useState(localDateKey);
+	const [rangeToDraft, setRangeToDraft] = useState(localDateKey);
+	const [transactionRange, setTransactionRange] = useState<TransactionRange>(() => ({ from: localDateKey(), to: localDateKey() }));
 	const [modal, setModal] = useState<Modal>(null);
 	const [editingId, setEditingId] = useState('');
-	const [loading, setLoading] = useState(true);
+	const [loadedFinanceScope, setLoadedFinanceScope] = useState('');
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState('');
 	const [notice, setNotice] = useState('');
+	const isMovementTab = tab === 'entradas' || tab === 'saidas';
+	const rangeToLoad = isMovementTab ? transactionRange : undefined;
+	const financeScope = rangeToLoad ? `period:${rangeToLoad.from}:${rangeToLoad.to}` : 'full';
+	const loading = loadedFinanceScope !== financeScope;
 
-	useEffect(() => subscribeFinance((next) => { setData(next); setLoading(false); setError(''); }, (cause) => { setError(cause.message); setLoading(false); }), []);
+	useEffect(() => {
+		let active = true;
+		const stop = subscribeFinance((next) => { if (!active) return; setData(next); setLoadedFinanceScope(financeScope); setError(''); }, (cause) => { if (!active) return; setError(cause.message); setLoadedFinanceScope(financeScope); }, {
+			...(rangeToLoad ? { transactionRange: rangeToLoad } : {}),
+		});
+		return () => { active = false; stop(); };
+	}, [financeScope, rangeToLoad]);
 
-	const registeredIncomes = useMemo(() => Object.values(data.incomes).filter((item) => item.date.startsWith(month)).sort((a, b) => b.date.localeCompare(a.date)), [data.incomes, month]);
+	const registeredIncomes = useMemo(() => Object.values(data.incomes).filter((item) => isMovementTab ? dateWithinRange(item.date, transactionRange) : item.date.startsWith(month)).sort((a, b) => b.date.localeCompare(a.date)), [data.incomes, isMovementTab, month, transactionRange]);
 	const incomes = registeredIncomes.flatMap((entry) => { const hotel = hotelIncomeView(entry); return hotel ? [hotel] : []; });
-	const expenses = useMemo(() => Object.values(data.expenses).filter((item) => item.dueDate.startsWith(month)).sort((a, b) => a.dueDate.localeCompare(b.dueDate)), [data.expenses, month]);
-	const payroll = useMemo(() => Object.values(data.payroll).filter((item) => item.month === month), [data.payroll, month]);
+	const expenses = useMemo(() => Object.values(data.expenses).filter((item) => isMovementTab ? dateWithinRange(item.dueDate, transactionRange) : item.dueDate.startsWith(month)).sort((a, b) => a.dueDate.localeCompare(b.dueDate)), [data.expenses, isMovementTab, month, transactionRange]);
+	const payroll = useMemo(() => Object.values(data.payroll).filter((item) => isMovementTab ? dateWithinRange(item.dueDate, transactionRange) : item.month === month), [data.payroll, isMovementTab, month, transactionRange]);
 	const transfers = useMemo(() => Object.values(data.transfers).filter((item) => item.date.startsWith(month)).sort((a, b) => b.date.localeCompare(a.date)), [data.transfers, month]);
 	const receipts = monthlyReceipts(data, month);
 	const totalIncome = receipts.direct;
@@ -90,6 +109,27 @@ export function FluxoDeCaixa() {
 	const prepaidEntries = useMemo(() => prepaidEntriesAt(data.incomes, month), [data.incomes, month]);
 	const prepaidTotal = prepaidEntriesTotal(prepaidEntries);
 	const prepaidMonthTotal = prepaidEntriesTotal(prepaidEntries.filter((entry) => entry.income.date.startsWith(month)));
+	const visibleIncomeTotal = incomes.reduce((total, item) => total + item.amount, 0);
+
+	function applyTransactionRange(event: FormEvent<HTMLFormElement>) {
+		event.preventDefault();
+		if (!rangeFromDraft || !rangeToDraft || rangeFromDraft > rangeToDraft) {
+			setError('Informe um período válido: a data inicial deve ser anterior ou igual à final.');
+			return;
+		}
+		setError('');
+		if (transactionRange.from === rangeFromDraft && transactionRange.to === rangeToDraft) return;
+		setTransactionRange({ from: rangeFromDraft, to: rangeToDraft });
+	}
+
+	function exportTransactionPeriod() {
+		const fileRange = `${transactionRange.from}-${transactionRange.to}`;
+		if (tab === 'entradas') {
+			exportCsv(`entradas-${fileRange}.csv`, [['Data', 'Origem', 'Itens', 'Pagamentos', 'Valor total', 'Observação'], ...incomes.map((item) => [item.date, item.category, incomeItems(item).map((line) => `${line.description}: ${money(line.amount)}`).join(' | '), incomePaymentSummary(item), item.amount, item.note])]);
+			return;
+		}
+		exportCsv(`despesas-${fileRange}.csv`, [['Vencimento', 'Categoria', 'Previsto', 'Pago em caixa', 'Pago em banco', 'Pendente', 'Observação'], ...expenses.map((item) => [item.dueDate, item.category, item.plannedAmount, item.paidCash, item.paidBank, Math.max(0, item.plannedAmount - item.paidCash - item.paidBank), item.note]), ...payroll.map((item) => [item.dueDate, `Folha · ${item.employee}`, payrollNet(item), item.paidCash, item.paidBank, Math.max(0, payrollNet(item) - item.paidCash - item.paidBank), item.note])]);
+	}
 
 	function exportMonthlyReport() {
 		const incomeRows = registeredIncomes.map((item) => {
@@ -307,8 +347,13 @@ export function FluxoDeCaixa() {
 
 			<main className="finance-content">
 				<div className="finance-page-heading">
-					<div><p className="finance-eyebrow">FINANCEIRO <span>/</span> CONTROLE</p><h1>Fluxo de caixa</h1><p>Entradas, despesas e saldos por carteira.</p></div>
-					<div className="finance-heading-actions"><label className="finance-month"><span>Competência</span><input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label><button className="finance-button finance-button-soft" onClick={exportMonthlyReport}>Exportar competência</button><button className="finance-button finance-button-soft" onClick={() => openModal('saldo')}>Saldos iniciais</button><button className="finance-button finance-button-dark" onClick={() => openModal('entrada')}>+ Entrada</button><button className="finance-button finance-button-primary" onClick={() => openModal('saida')}>+ Despesa</button></div>
+					<div><p className="finance-eyebrow">FINANCEIRO <span>/</span> CONTROLE</p><h1>Fluxo de caixa</h1><p>Movimentações começam pelo dia de hoje; selecione um período para consultar outros registros.</p></div>
+					<div className="finance-heading-actions">
+						{!isMovementTab && <label className="finance-month"><span>Competência</span><input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label>}
+						<button className="finance-button finance-button-soft" onClick={isMovementTab ? exportTransactionPeriod : exportMonthlyReport} disabled={loading}>{isMovementTab ? 'Exportar período' : 'Exportar competência'}</button>
+						{!isMovementTab && <button className="finance-button finance-button-soft" onClick={() => openModal('saldo')}>Saldos iniciais</button>}
+						{!isMovementTab && <><button className="finance-button finance-button-dark" onClick={() => openModal('entrada')}>+ Entrada</button><button className="finance-button finance-button-primary" onClick={() => openModal('saida')}>+ Despesa</button></>}
+					</div>
 				</div>
 
 				{error && <div className="finance-alert" role="alert">{error}<button onClick={() => setError('')} aria-label="Fechar aviso">×</button></div>}
@@ -316,18 +361,25 @@ export function FluxoDeCaixa() {
 				{financeStorageMode === 'Firebase' && <p className="finance-storage-notice">Dados compartilhados pelo Firebase</p>}
 
 				{loading ? <div className="finance-empty">Carregando lançamentos...</div> : <>
-					<section className="finance-metrics" aria-label="Resumo financeiro do mês">
+					{!isMovementTab && <section className="finance-metrics" aria-label="Resumo financeiro do mês">
 						<Metric label="Entradas no hotel" value={money(receipts.received)} detail={`${money(receipts.direct)} diretos · ${money(receipts.repasses)} de repasses OYO`} tone="green" />
 						<Metric label="Saídas pagas" value={money(paidExpenses)} detail={`${money(pendingExpenses)} pendentes de pagamento`} tone="coral" />
 						<Metric label="Resultado de caixa" value={money(cashResult)} detail="Recebimentos e repasses menos saídas do hotel" tone="blue" />
 						<Metric label="Caixa físico" value={money(balances.cash)} detail="Saldo acumulado até o mês" tone="gold" />
 						<Metric label="Banco" value={money(balances.bank)} detail="Saldo acumulado até o mês" tone="navy" />
 						<Metric label={WALLET_LABELS.oyo} value={money(balances.oyo)} detail="Pré-pagos menos repasses; comissões não calculadas" tone="gray" />
-					</section>
+					</section>}
 
 					<div className="finance-tabs" role="tablist" aria-label="Visões do fluxo de caixa">
 						{([['resumo', 'Resumo'], ['entradas', 'Entradas'], ['prepagos', WALLET_LABELS.oyo], ['saidas', 'Despesas'], ['transferencias', 'Transferências'], ['categorias', 'Categorias']] as [Tab, string][]).map(([idTab, label]) => <button key={idTab} role="tab" aria-selected={tab === idTab} className={tab === idTab ? 'selected' : ''} onClick={() => setTab(idTab)}>{label}</button>)}
 					</div>
+
+					{isMovementTab && <form className="finance-range-form" onSubmit={applyTransactionRange}>
+						<label className="finance-month"><span>De</span><input type="date" value={rangeFromDraft} onChange={(event) => setRangeFromDraft(event.target.value)} required /></label>
+						<label className="finance-month"><span>Até</span><input type="date" value={rangeToDraft} onChange={(event) => setRangeToDraft(event.target.value)} required /></label>
+						<button className="finance-button finance-button-dark" type="submit">Exibir período</button>
+						<span className="finance-range-caption">Exibindo {transactionRange.from === transactionRange.to ? dateLabel(transactionRange.from) : `${dateLabel(transactionRange.from)} a ${dateLabel(transactionRange.to)}`}</span>
+					</form>}
 
 					{tab === 'prepagos' && <section className="finance-panel">
 						<div className="finance-panel-heading">
@@ -353,9 +405,9 @@ export function FluxoDeCaixa() {
 						<AuditTable onDelete={(eventId) => { if (window.confirm('Excluir este registro de auditoria?')) void commit((current) => { const auditLog = { ...current.auditLog }; delete auditLog[eventId]; return { ...current, auditLog }; }, 'Registro de auditoria excluído.'); }} events={Object.values(data.auditLog).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0, 20)} />
 					</>}
 
-					  {tab === 'entradas' && <section className="finance-panel"><div className="finance-panel-heading"><div><h2>Entradas da competência</h2><p>{incomes.length} registros · recebidos no hotel {money(totalIncome)}. Pré-pagos estão no controle da OYO.</p></div><div className="finance-heading-actions"><button className="finance-button finance-button-soft" onClick={() => exportCsv(`entradas-${month}.csv`, [['Data', 'Origem', 'Itens', 'Pagamentos', 'Valor total', 'Observação'], ...incomes.map((item) => [item.date, item.category, incomeItems(item).map((line) => `${line.description}: ${money(line.amount)}`).join(' | '), incomePaymentSummary(item), item.amount, item.note])])}>Exportar CSV</button><button className="finance-button finance-button-dark" onClick={() => openModal('entrada')}>+ Entrada</button></div></div><ActivityTable activities={incomes.map((item) => ({ id: item.id, date: item.date, title: item.category, detail: `${item.note}${item.note ? ' · ' : ''}${incomeItems(item).map((line) => line.description).join(', ')}`, amount: item.amount, paid: item.amount, type: 'entrada', wallet: incomePaymentSummary(item) }))} onEdit={(activity) => openModal('entrada', activity.id)} onDelete={(activity) => void removeRecord('entrada', activity.id)} title="" /></section>}
+					  {tab === 'entradas' && <section className="finance-panel"><div className="finance-panel-heading"><div><h2>Entradas {isMovementTab ? 'do período' : 'da competência'}</h2><p>{incomes.length} registros · recebidos no hotel {money(isMovementTab ? visibleIncomeTotal : totalIncome)}. Pré-pagos estão no controle da OYO.</p></div><div className="finance-heading-actions"><button className="finance-button finance-button-dark" onClick={() => openModal('entrada')}>+ Entrada</button></div></div><ActivityTable activities={incomes.map((item) => ({ id: item.id, date: item.date, title: item.category, detail: `${item.note}${item.note ? ' · ' : ''}${incomeItems(item).map((line) => line.description).join(', ')}`, amount: item.amount, paid: item.amount, type: 'entrada', wallet: incomePaymentSummary(item) }))} onEdit={(activity) => openModal('entrada', activity.id)} onDelete={(activity) => void removeRecord('entrada', activity.id)} title="" /></section>}
 
-					{tab === 'saidas' && <section className="finance-panel"><div className="finance-panel-heading"><div><h2>Despesas da competência</h2><p>{expenses.length + payroll.length} registros · {money(paidExpenses)} pagos · {money(pendingExpenses)} pendentes</p></div><div className="finance-heading-actions"><button className="finance-button finance-button-soft" onClick={() => exportCsv(`despesas-${month}.csv`, [['Vencimento', 'Categoria', 'Previsto', 'Pago em caixa', 'Pago em banco', 'Pendente', 'Observação'], ...expenses.map((item) => [item.dueDate, item.category, item.plannedAmount, item.paidCash, item.paidBank, Math.max(0, item.plannedAmount - item.paidCash - item.paidBank), item.note]), ...payroll.map((item) => [item.dueDate, `Folha · ${item.employee}`, payrollNet(item), item.paidCash, item.paidBank, Math.max(0, payrollNet(item) - item.paidCash - item.paidBank), item.note])])}>Exportar CSV</button><button className="finance-button finance-button-primary" onClick={() => openModal('saida')}>+ Despesa</button></div></div><ActivityTable activities={[...activities.filter((item) => item.type !== 'entrada')]} onEdit={(activity) => activity.type === 'saida' && openModal('saida', activity.id)} onDelete={(activity) => activity.type === 'saida' && void removeRecord('saida', activity.id)} title="" /></section>}
+					{tab === 'saidas' && <section className="finance-panel"><div className="finance-panel-heading"><div><h2>Despesas {isMovementTab ? 'do período' : 'da competência'}</h2><p>{expenses.length + payroll.length} registros · {money(paidExpenses)} pagos · {money(pendingExpenses)} pendentes</p></div><div className="finance-heading-actions"><button className="finance-button finance-button-primary" onClick={() => openModal('saida')}>+ Despesa</button></div></div><ActivityTable activities={[...activities.filter((item) => item.type !== 'entrada')]} onEdit={(activity) => activity.type === 'saida' && openModal('saida', activity.id)} onDelete={(activity) => activity.type === 'saida' && void removeRecord('saida', activity.id)} title="" /></section>}
 
 					  {tab === 'transferencias' && <section className="finance-panel"><div className="finance-panel-heading"><div><h2>Transferências da competência</h2><p>{transfers.length} registros · transferências internas e repasses da OYO</p></div><div className="finance-heading-actions"><button className="finance-button finance-button-soft" onClick={() => exportCsv(`transferencias-${month}.csv`, [['Data', 'Origem', 'Destino', 'Valor', 'Observação'], ...transfers.map((item) => [item.date, WALLET_LABELS[item.from], WALLET_LABELS[item.to], item.amount, item.note])])}>Exportar CSV</button><button className="finance-button finance-button-dark" onClick={() => openModal('transferencia')}>+ Transferência</button></div></div>{transfers.length === 0 ? <div className="finance-empty">Nenhuma transferência neste mês.</div> : <div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Data</th><th>Origem</th><th>Destino</th><th>Observação</th><th className="numeric">Valor</th><th><span className="sr-only">Ações</span></th></tr></thead><tbody>{transfers.map((item) => <tr key={item.id}><td>{dateLabel(item.date)}</td><td>{WALLET_LABELS[item.from]}</td><td>{WALLET_LABELS[item.to]}</td><td>{item.note || '—'}</td><td className="numeric">{money(item.amount)}</td><td><div className="finance-row-actions"><button onClick={() => openModal('transferencia', item.id)}>Editar</button><button className="danger" onClick={() => void removeRecord('transferencia', item.id)}>Excluir</button></div></td></tr>)}</tbody></table></div>}</section>}
 

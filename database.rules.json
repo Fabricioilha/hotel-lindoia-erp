@@ -33,7 +33,7 @@
             }
           },
           "sales": {
-            ".indexOn": ["createdAt"],
+            ".indexOn": ["createdAt", "settledAt"],
             ".write": false,
             "$saleId": {
               ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists()))",
@@ -142,6 +142,14 @@
             ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
             ".validate": "newData.child('reservationId').val() === $reservationId && newData.child('id').val() === $collectionId && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && newData.child('date').isString() && newData.child('paymentMethod').isString() && newData.child('actor').isString()"
           }
+        }
+      },
+      "reservationCollectionsByDate": {
+        ".read": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
+        ".indexOn": ["date"],
+        "$collectionId": {
+          ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
+          ".validate": "newData.child('id').val() === $collectionId && newData.child('reservationId').isString() && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && newData.child('date').isString() && newData.child('paymentMethod').isString() && newData.child('actor').isString()"
         }
       },
       "reservationExtras": {

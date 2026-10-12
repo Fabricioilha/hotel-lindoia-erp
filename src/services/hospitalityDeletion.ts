@@ -38,6 +38,7 @@ async function removeHospitality(target: { reservationId: string } | { room: Hou
     updates[`erp_geral/quartos/reservationIndex/${reservation.id}`] = null;
     Object.keys(collections[reservation.id] ?? {}).forEach((id) => {
       updates[`erp_geral/reservationCollections/${reservation.id}/${id}`] = null;
+      updates[`erp_geral/reservationCollectionsByDate/${id}`] = null;
       removeFinanceEntries(updates, [`reservation-${reservation.id}-checkout-${id}`]);
     });
     Object.keys(extras[reservation.id] ?? {}).forEach((id) => { updates[`erp_geral/reservationExtras/${reservation.id}/${id}`] = null; });
