@@ -10,7 +10,7 @@ import { emptyCleaning, subscribeActiveCleaningTasks, subscribeDashboardCleaning
 import { subscribeInventoryProducts } from '../services/inventoryStore';
 import { useInternalOutputSync } from '../services/internalOutputs';
 import type { CleaningData, CleaningTask } from '../types/cleaning';
-import { FOLIO_PAYMENT_METHODS, ROOM_TYPE_LABELS, stayDailyAmount, type GuestStay, type ReceptionRoom, type RoomCharge, type RoomChargeKind, type StayKind } from '../types/reception';
+import { FOLIO_PAYMENT_METHODS, ROOM_TYPE_LABELS, stayBreakfastDays, stayDailyAmount, type GuestStay, type ReceptionRoom, type RoomCharge, type RoomChargeKind, type StayKind } from '../types/reception';
 import { PAYMENT_METHOD_LABELS, type FinancePaymentMethod } from '../types/finance';
 import type { StockProduct } from '../types/inventory';
 import type { FrigobarData } from '../types/frigobar';
@@ -501,7 +501,9 @@ function RoomBoard({ rooms, cleaningRoomNumbers, receptionRooms, stays, roomChar
       sourceId: stay.id,
       name: (stay.guestName ?? '').trim() || 'Titular não informado',
       peopleCount: Math.max(1, Math.floor(stay.guestCount ?? (stay.hasAdditionalGuests ? 2 : 1))),
-      includedBreakfastCount: stay.kind === 'hospede' && stay.hasBreakfast ? Math.max(1, Math.floor(stay.breakfastCount ?? 1)) : 0,
+      includedBreakfastCount: stay.kind === 'hospede' && stay.hasBreakfast && today < dateKeyAfterDays(stay.checkInDate, stayBreakfastDays(stay))
+        ? Math.max(1, Math.floor(stay.breakfastCount ?? 1))
+        : 0,
       breakfastAllowed: stay.kind !== 'periodo',
       rotativo: stay.kind === 'periodo',
       startDate: stay.checkInDate,

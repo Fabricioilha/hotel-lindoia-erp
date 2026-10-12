@@ -118,6 +118,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   const [splitAmount, setSplitAmount] = useState('');
   const [hasBreakfast, setHasBreakfast] = useState(false);
   const [breakfastCount, setBreakfastCount] = useState('1');
+  const [breakfastDays, setBreakfastDays] = useState('1');
   const [breakfastRate, setBreakfastRate] = useState('');
   const [breakfastMethod, setBreakfastMethod] = useState<FinancePaymentMethod>('pix');
   const [breakfastSplitPayment, setBreakfastSplitPayment] = useState(false);
@@ -126,6 +127,9 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   const [hasTax, setHasTax] = useState(false);
   const [taxAmount, setTaxAmount] = useState('');
   const [taxMethod, setTaxMethod] = useState<FinancePaymentMethod>('cash');
+  const [taxSplitPayment, setTaxSplitPayment] = useState(false);
+  const [taxSplitMethod, setTaxSplitMethod] = useState<FinancePaymentMethod>('prepaid');
+  const [taxSplitAmount, setTaxSplitAmount] = useState('');
   const [extras, setExtras] = useState<ExtraDraft[]>([]);
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
@@ -182,17 +186,29 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   const draftNights = formKind === 'periodo' ? 1 : Math.min(60, Math.max(1, Math.floor(Number(nights) || 1)));
   const draftGuestCount = Number(guestCount);
   const draftBreakfastCount = Number(breakfastCount);
+  const draftBreakfastDays = Number(breakfastDays);
   const enteredLodgingTotal = parseOptionalRate(lodgingTotalText);
   const dailyTotal = formKind === 'hospede'
     ? enteredLodgingTotal ?? 0
     : parseAmount(dailyRate) * draftNights;
-  const breakfastTotal = parseAmount(breakfastRate) * draftBreakfastCount * draftNights;
+  const breakfastTotal = parseAmount(breakfastRate) * draftBreakfastCount * draftBreakfastDays;
   const breakfastSplit = breakfastSplitPayment ? parseAmount(breakfastSplitAmount) : 0;
+  const tax = parseAmount(taxAmount);
+  const taxSplit = taxSplitPayment ? parseAmount(taxSplitAmount) : 0;
+  const appliedTaxSplit = taxSplitPayment && taxSplit > 0 && taxSplit < tax ? taxSplit : 0;
+  const taxHotelAmount = hasTax
+    ? (taxMethod !== 'prepaid' ? tax - (taxSplitMethod === 'prepaid' ? appliedTaxSplit : 0) : 0)
+      + (taxSplitMethod !== 'prepaid' ? appliedTaxSplit : 0)
+    : 0;
+  const taxPrepaidAmount = hasTax
+    ? (taxMethod === 'prepaid' ? tax - (taxSplitMethod === 'prepaid' ? appliedTaxSplit : 0) : 0)
+      + (taxSplitMethod === 'prepaid' ? appliedTaxSplit : 0)
+    : 0;
   const draftSplit = splitPayment ? parseAmount(splitAmount) : 0;
   const draftExtras = extras.map((extra) => ({ ...extra, amount: parseAmount(extra.amount) }));
   const draftTotal = dailyTotal
-    + (formKind === 'hospede' && hasBreakfast ? parseAmount(breakfastRate) * draftBreakfastCount * draftNights : 0)
-    + (formKind === 'hospede' && hasTax && taxMethod !== 'prepaid' ? parseAmount(taxAmount) : 0)
+    + (formKind === 'hospede' && hasBreakfast ? breakfastTotal : 0)
+    + (formKind === 'hospede' ? taxHotelAmount : 0)
     + draftExtras.reduce((total, extra) => total + extraTotal(extra, draftNights), 0);
 
   async function run(action: () => Promise<void>, success = '') {
@@ -270,9 +286,11 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
     if (formKind === 'periodo' && !rate) return setError('Informe o valor do rotativo.');
     if (splitPayment && (!draftSplit || draftSplit >= dailyTotal)) return setError('O valor da segunda forma de pagamento deve ser maior que zero e menor que o valor da diária.');
     if (withBreakfast && (!Number.isInteger(draftBreakfastCount) || draftBreakfastCount < 1 || draftBreakfastCount > draftGuestCount)) return setError('A quantidade de cafés deve ficar entre 1 e o número de hóspedes.');
+    if (withBreakfast && (!Number.isInteger(draftBreakfastDays) || draftBreakfastDays < 1 || draftBreakfastDays > draftNights)) return setError('A quantidade de dias com café deve ficar entre 1 e o número de diárias.');
     if (withBreakfast && !breakfast) return setError('Informe o valor de cada café.');
     if (withBreakfast && breakfastSplitPayment && (!breakfastSplit || breakfastSplit >= breakfastTotal || breakfastSplitMethod === breakfastMethod)) return setError('Escolha duas formas diferentes para o café e informe um valor positivo menor que o total do café na segunda forma.');
     if (withTax && !tax) return setError('Informe o valor da taxa ou desmarque "Cobrar taxa".');
+    if (withTax && taxSplitPayment && (!taxSplit || taxSplit >= tax || taxSplitMethod === taxMethod)) return setError('Escolha duas formas diferentes para a taxa e informe um valor positivo menor que o total na segunda forma.');
     if (formKind === 'hospede' && draftExtras.some((extra) => !extra.amount || !extra.label.trim())) return setError('Preencha o nome e o valor de todos os extras.');
     const stay: GuestStay = {
       id: crypto.randomUUID(),
@@ -289,10 +307,12 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
       ...(splitPayment ? { dailySplit: { method: splitMethod, amount: draftSplit } } : {}),
       hasBreakfast: withBreakfast,
       breakfastCount: withBreakfast ? draftBreakfastCount : 0,
+      ...(withBreakfast ? { breakfastDays: draftBreakfastDays } : {}),
       breakfastRate: breakfast,
       ...(withBreakfast ? { breakfastMethod, ...(breakfastSplitPayment ? { breakfastSplit: { method: breakfastSplitMethod, amount: breakfastSplit } } : {}) } : {}),
       taxAmount: tax,
       taxMethod,
+      ...(withTax && taxSplitPayment ? { taxSplit: { method: taxSplitMethod, amount: taxSplit } } : {}),
       extras: formKind === 'periodo' ? [] : draftExtras.map<StayExtra>((extra) => ({ ...extra, label: extra.label.trim() })),
       note: note.trim(),
       attendant,
@@ -399,7 +419,11 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
               }} required /></label>
               <p className="reception-hint reception-wide">Incluindo o titular; não é necessário cadastrar os dados dos demais hóspedes.</p>
               {formKind === 'periodo' && <label className="sales-field"><span>Quantidade de horas</span><input type="number" min={1} max={24} value={hours} onChange={(event) => setHours(event.target.value)} /></label>}
-              {formKind === 'hospede' && <label className="sales-field reception-wide"><span>Quantidade de diárias</span><input type="number" min={1} max={60} value={nights} onChange={(event) => setNights(event.target.value)} /></label>}
+              {formKind === 'hospede' && <label className="sales-field reception-wide"><span>Quantidade de diárias</span><input type="number" min={1} max={60} value={nights} onChange={(event) => {
+                const nextNights = event.target.value;
+                setNights(nextNights);
+                if (Number.isInteger(Number(nextNights)) && Number(nextNights) > 0) setBreakfastDays((current) => String(Math.min(Number(current) || 1, Number(nextNights))));
+              }} /></label>}
               {formKind === 'hospede' ? <label className="sales-field reception-wide"><span>Valor total das diárias (R$)</span><span className="reception-money-input"><span>R$</span><input inputMode="decimal" value={lodgingTotalText} placeholder="Informe o valor combinado" onChange={(event) => setLodgingTotalText(event.target.value)} required /></span></label> : <label className="sales-field"><span>Valor do rotativo (R$)</span><input inputMode="decimal" value={dailyRate} onChange={(event) => setDailyRate(event.target.value)} required /></label>}
               <label className="sales-field"><span>{splitPayment ? '1ª forma de pagamento' : 'Forma de pagamento (FP)'}</span><select value={dailyMethod} onChange={(event) => setDailyMethod(event.target.value as FinancePaymentMethod)}>
                 {FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}
@@ -420,12 +444,14 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
                   setHasBreakfast(event.target.checked);
                   if (event.target.checked) {
                     setBreakfastCount(String(Number.isInteger(draftGuestCount) && draftGuestCount > 0 ? draftGuestCount : 1));
+                    setBreakfastDays(String(draftNights));
                     const suggestedBreakfast = rateSettings.addOnRates.breakfast;
                     if (suggestedBreakfast !== undefined) setBreakfastRate(String(suggestedBreakfast).replace('.', ','));
                   }
                 }} /> Inclui café da manhã</label>
                 {hasBreakfast && <>
                   <label className="reception-small-field"><span>Quantidade de cafés por dia</span><input type="number" min="1" max={Number.isInteger(draftGuestCount) ? draftGuestCount : 1} step="1" value={breakfastCount} onChange={(event) => setBreakfastCount(event.target.value)} /></label>
+                  <label className="reception-small-field"><span>Quantidade de dias com café</span><input type="number" min="1" max={draftNights} step="1" value={breakfastDays} onChange={(event) => setBreakfastDays(event.target.value)} /></label>
                   <label className="reception-small-field"><span>Valor de cada café por dia (R$)</span><input inputMode="decimal" value={breakfastRate} onChange={(event) => setBreakfastRate(event.target.value)} /></label>
                   <label className="sales-field"><span>Pagamento do café</span><select value={breakfastMethod} onChange={(event) => {
                     const method = event.target.value as FinancePaymentMethod;
@@ -437,17 +463,26 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
                     <label className="sales-field"><span>2ª forma do café</span><select value={breakfastSplitMethod} onChange={(event) => setBreakfastSplitMethod(event.target.value as FinancePaymentMethod)}>{FOLIO_PAYMENT_METHODS.filter((method) => method !== breakfastMethod).map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}</select></label>
                     <label className="sales-field"><span>Valor na 2ª forma do café (R$)</span><input inputMode="decimal" value={breakfastSplitAmount} onChange={(event) => setBreakfastSplitAmount(event.target.value)} required /></label>
                   </div>}
-                  <p className="reception-hint">Total do café: {money(breakfastTotal)}. Informe como o café foi pago, mesmo quando a diária for pré-paga.</p>
+                  <p className="reception-hint">Total do café: {money(breakfastTotal)} ({draftBreakfastCount || 0} café(s) por dia × {draftBreakfastDays || 0} dia(s)). O café é cobrado apenas pelos dias informados, independentemente do pagamento das diárias.</p>
                 </>}
               </div>}
               {formKind === 'hospede' && <div className="reception-optional reception-wide">
                 <label className="reception-check"><input type="checkbox" checked={hasTax} onChange={(event) => setHasTax(event.target.checked)} /> Cobrar taxa</label>
                 {hasTax && <>
                   <label className="reception-small-field"><span>Taxa (R$)</span><input inputMode="decimal" value={taxAmount} onChange={(event) => setTaxAmount(event.target.value)} /></label>
-                  <label className="reception-small-field"><span>Pagamento da taxa</span><select value={taxMethod} onChange={(event) => setTaxMethod(event.target.value as FinancePaymentMethod)}>
+                  <label className="reception-small-field"><span>{taxSplitPayment ? '1ª forma da taxa' : 'Pagamento da taxa'}</span><select value={taxMethod} onChange={(event) => {
+                    const method = event.target.value as FinancePaymentMethod;
+                    setTaxMethod(method);
+                    if (taxSplitMethod === method) setTaxSplitMethod(FOLIO_PAYMENT_METHODS.find((option) => option !== method) ?? method);
+                  }}>
                     {FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{taxLabel(method)}</option>)}
                   </select></label>
-                  <p className="reception-hint reception-wide">Quando a taxa já foi paga diretamente à OYO, selecione pré-pago. Ela fica fora do total cobrado do hóspede.</p>
+                  <label className="reception-check reception-wide"><input type="checkbox" checked={taxSplitPayment} onChange={(event) => setTaxSplitPayment(event.target.checked)} /> Combinar pagamento da taxa</label>
+                  {taxSplitPayment && <div className="reception-split reception-wide">
+                    <label className="sales-field"><span>2ª forma da taxa</span><select value={taxSplitMethod} onChange={(event) => setTaxSplitMethod(event.target.value as FinancePaymentMethod)}>{FOLIO_PAYMENT_METHODS.filter((method) => method !== taxMethod).map((method) => <option key={method} value={method}>{taxLabel(method)}</option>)}</select></label>
+                    <label className="sales-field"><span>Valor na 2ª forma (R$)</span><input inputMode="decimal" value={taxSplitAmount} onChange={(event) => setTaxSplitAmount(event.target.value)} required /></label>
+                  </div>}
+                  <p className="reception-hint reception-wide">Do total de {money(tax)}, entram no total do hóspede e no caixa do hotel {money(taxHotelAmount)}. Pré-pago OYO: {money(taxPrepaidAmount)}. Se combinar, o valor informado na 2ª forma será descontado do saldo da 1ª.</p>
                 </>}
               </div>}
             </div>

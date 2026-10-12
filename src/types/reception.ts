@@ -70,11 +70,13 @@ export interface GuestStay {
   dailySplit?: { method: FinancePaymentMethod; amount: number };
   hasBreakfast: boolean;
   breakfastCount?: number;
+  breakfastDays?: number;
   breakfastRate: number;
   breakfastMethod?: FinancePaymentMethod;
   breakfastSplit?: { method: FinancePaymentMethod; amount: number };
   taxAmount: number;
   taxMethod: FinancePaymentMethod;
+  taxSplit?: { method: FinancePaymentMethod; amount: number };
   extras: StayExtra[];
   note: string;
   attendant: string;
@@ -215,6 +217,24 @@ export const FOLIO_PAYMENT_METHODS: FinancePaymentMethod[] = ['cash', 'pix', 'ba
 
 export const extraTotal = (extra: StayExtra, nights: number) => extra.mode === 'por_diaria' ? extra.amount * nights : extra.amount;
 
+export function stayBreakfastDays(stay: Pick<GuestStay, 'hasBreakfast' | 'breakfastDays' | 'nights'>): number {
+  if (!stay.hasBreakfast) return 0;
+  return Math.min(stay.nights, Math.max(1, Math.floor(stay.breakfastDays ?? stay.nights)));
+}
+
+export function stayBreakfastTotal(stay: Pick<GuestStay, 'hasBreakfast' | 'breakfastRate' | 'breakfastCount' | 'breakfastDays' | 'nights'>): number {
+  return stay.hasBreakfast ? stay.breakfastRate * (stay.breakfastCount ?? 1) * stayBreakfastDays(stay) : 0;
+}
+
+export function stayTaxPayments(stay: Pick<GuestStay, 'taxAmount' | 'taxMethod' | 'taxSplit'>): { id: string; method: FinancePaymentMethod; amount: number }[] {
+  const split = stay.taxSplit && stay.taxSplit.amount > 0 && stay.taxSplit.amount < stay.taxAmount && stay.taxSplit.method !== stay.taxMethod
+    ? stay.taxSplit
+    : undefined;
+  const parts = [{ id: 'taxa', method: stay.taxMethod, amount: stay.taxAmount - (split?.amount ?? 0) }];
+  if (split) parts.push({ id: 'taxa-2', method: split.method, amount: split.amount });
+  return parts;
+}
+
 export function stayPayments(stay: GuestStay): { id: string; method: FinancePaymentMethod; amount: number; label: string }[] {
   const list: { id: string; method: FinancePaymentMethod; amount: number; label: string }[] = [];
   const add = (suffix: string, method: FinancePaymentMethod, amount: number, label: string) => {
@@ -227,13 +247,14 @@ export function stayPayments(stay: GuestStay): { id: string; method: FinancePaym
   add('diaria', stay.dailyMethod, dailyTotal - (split?.amount ?? 0), dailyLabel);
   if (split) add('diaria-2', split.method, split.amount, `${dailyLabel} (2ª forma)`);
   if (stay.hasBreakfast) {
-    const total = Math.round(stay.breakfastRate * (stay.breakfastCount ?? 1) * stay.nights * 100) / 100;
+    const total = Math.round(stayBreakfastTotal(stay) * 100) / 100;
     const split = stay.breakfastSplit && stay.breakfastSplit.amount > 0 && stay.breakfastSplit.amount < total ? stay.breakfastSplit : undefined;
     add('cafe', stay.breakfastMethod ?? stay.dailyMethod, total - (split?.amount ?? 0), 'Café');
     if (split) add('cafe-2', split.method, split.amount, 'Café (2ª forma)');
   }
-  // A taxa pré-paga já foi paga diretamente à OYO, não é um valor a cobrar no caixa do hotel.
-  if (stay.taxMethod !== 'prepaid') add('taxa', stay.taxMethod, stay.taxAmount, 'Taxa');
+  // A parte pré-paga já foi paga diretamente à OYO, não é um valor a cobrar no caixa do hotel.
+  stayTaxPayments(stay).filter((payment) => payment.method !== 'prepaid')
+    .forEach((payment) => add(payment.id, payment.method, payment.amount, 'Taxa'));
   (stay.extras ?? []).forEach((extra) => add(`extra-${extra.id}`, extra.method ?? stay.dailyMethod, extraTotal(extra, stay.nights), extra.label));
   return list;
 }
@@ -244,7 +265,7 @@ export function roomChargePayments(charge: RoomCharge): RoomChargePayment[] {
 
 export function stayTotals(stay: GuestStay) {
   const daily = Math.max(0, stayDailyAmount(stay) - (stay.creditApplied ?? 0));
-  const breakfast = stay.hasBreakfast ? stay.breakfastRate * (stay.breakfastCount ?? 1) * stay.nights : 0;
+  const breakfast = stayBreakfastTotal(stay);
   const extras = (stay.extras ?? []).reduce((total, extra) => total + extraTotal(extra, stay.nights), 0);
   return { daily, breakfast, extras, total: stayPayments(stay).reduce((sum, payment) => sum + payment.amount, 0) };
 }

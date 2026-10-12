@@ -44,7 +44,7 @@ O café tem forma de pagamento própria e permite pagamento combinado no cadastr
 - **Pré-Pagos (Retidos - OYO):** saldo inicial informado mais pré-pagos dos hóspedes, menos repasses recebidos pelo hotel. Pagamentos enviados à OYO ficam discriminados separadamente e não aumentam o controle de pré-pagos. Este subtotal não é o acerto líquido com a OYO; comissões não são calculadas.
 - **Entradas e resumo por origem:** somente as parcelas recebidas diretamente no hotel. Em pagamentos combinados, a parcela pré-paga aparece exclusivamente no histórico da OYO. O relatório mensal discrimina as duas parcelas.
 
-No cadastro de hóspedes da recepção, uma taxa marcada como pré-paga fica fora do total a cobrar no hotel e permanece no histórico de pré-pagos da OYO. Quando a taxa é paga na recepção, ela entra no total do hóspede e gera uma despesa OYO pendente no fluxo de caixa para discriminar o valor a repassar.
+No cadastro de hóspedes da recepção, o café pode ser cobrado por uma quantidade de dias menor que a hospedagem. Uma taxa marcada como pré-paga fica fora do total a cobrar no hotel e permanece no histórico de pré-pagos da OYO. A taxa também pode ser dividida entre duas formas: a parte paga no hotel entra no total do hóspede e gera uma despesa OYO pendente; a parte pré-paga permanece no histórico da OYO e não entra no total do hotel.
 
 Registre o repasse pelo botão **Registrar repasse da OYO**, escolhendo banco ou caixa físico como destino. O histórico de pré-pagos mantém o valor bruto dos pagamentos, enquanto o cartão exibe pré-pagos menos repasses, sem deduzir comissões. Um repasse já lançado como transferência não deve ser cadastrado novamente como entrada manual.
 

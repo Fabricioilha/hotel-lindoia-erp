@@ -1,5 +1,5 @@
 import { incomePaymentWallet, type FinanceData, type FinanceExpense, type FinanceIncome, type FinancePaymentMethod } from '../types/finance';
-import { extraTotal, stayDailyAmount, type CashOut, type GuestStay, type RoomCharge, type StayExtra } from '../types/reception';
+import { extraTotal, stayBreakfastDays, stayBreakfastTotal, stayDailyAmount, stayTaxPayments, type CashOut, type GuestStay, type RoomCharge, type StayExtra } from '../types/reception';
 import type { FrigobarSale } from '../types/frigobar';
 import type { ReservationCollection } from '../types/housekeeping';
 
@@ -41,26 +41,29 @@ export function stayFinanceEntries(stay: GuestStay): Record<string, FinanceIncom
   add('diaria', category, description, dailyTotal - (dailySplit?.amount ?? 0), stay.dailyMethod);
   if (dailySplit) add('diaria-2', category, `${description} (2ª forma)`, dailySplit.amount, dailySplit.method);
   if (stay.hasBreakfast) {
-    const total = cents(stay.breakfastRate * (stay.breakfastCount ?? 1) * stay.nights);
+    const total = cents(stayBreakfastTotal(stay));
     const split = stay.breakfastSplit && stay.breakfastSplit.amount > 0 && stay.breakfastSplit.amount < total ? stay.breakfastSplit : undefined;
-    const breakfastDescription = `${stay.breakfastCount ?? 1} café(s) por dia × ${stay.nights} dia(s)`;
+    const breakfastDescription = `${stay.breakfastCount ?? 1} café(s) por dia × ${stayBreakfastDays(stay)} dia(s)`;
     // Registros antigos mantêm o pagamento original; novos cadastros informam o método do café.
     add('cafe', 'Café', breakfastDescription, total - (split?.amount ?? 0), stay.breakfastMethod ?? stay.dailyMethod);
     if (split) add('cafe-2', 'Café', `${breakfastDescription} (2ª forma)`, split.amount, split.method);
   }
-  add('taxa', 'Taxas', 'Taxa', stay.taxAmount, stay.taxMethod);
+  stayTaxPayments(stay).forEach((payment, index) => {
+    add(payment.id, 'Taxas', index === 0 ? 'Taxa' : 'Taxa (2ª forma)', payment.amount, payment.method);
+  });
   (stay.extras ?? []).forEach((extra) => add(`extra-${extra.id}`, extraCategories[extra.type] ?? 'Extras', extra.label, extraTotal(extra, stay.nights), extra.method ?? stay.dailyMethod));
   return entries;
 }
 
 export function stayOyoFeeExpense(stay: GuestStay): FinanceExpense | undefined {
-  if (!Number.isFinite(stay.taxAmount) || stay.taxAmount <= 0 || stay.taxMethod === 'prepaid') return undefined;
+  const amount = cents(stayTaxPayments(stay).filter((payment) => payment.method !== 'prepaid').reduce((total, payment) => total + payment.amount, 0));
+  if (!Number.isFinite(amount) || amount <= 0) return undefined;
   const id = `recepcao-${stay.id}-oyo-fee`;
   return {
     id,
     dueDate: stay.checkInDate,
     category: 'OYO',
-    plannedAmount: cents(stay.taxAmount),
+    plannedAmount: amount,
     paidCash: 0,
     paidBank: 0,
     note: [`Taxa da OYO recebida do hóspede`, `Quarto ${stay.roomNumber}`, stay.guestName].filter(Boolean).join(' · '),
