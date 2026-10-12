@@ -25,6 +25,7 @@ export interface OperationalExpenseInput {
   plannedAmount: number;
   paidCash: number;
   paidBank: number;
+  paidOyo?: number;
   note: string;
 }
 
@@ -95,7 +96,8 @@ export async function recordOperationalExpenses(inputs: OperationalExpenseInput[
   pending.forEach((input) => {
     if (!Number.isFinite(input.plannedAmount) || input.plannedAmount <= 0
       || !Number.isFinite(input.paidCash) || input.paidCash < 0
-      || !Number.isFinite(input.paidBank) || input.paidBank < 0) {
+      || !Number.isFinite(input.paidBank) || input.paidBank < 0
+      || !Number.isFinite(input.paidOyo ?? 0) || (input.paidOyo ?? 0) < 0) {
       throw new Error('A despesa precisa ter valores válidos.');
     }
   });

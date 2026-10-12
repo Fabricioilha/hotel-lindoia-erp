@@ -119,6 +119,7 @@
 
 .dashboard-page .dashboard-employee-modules { margin-top: 8px; }
 .dashboard-page .dashboard-employee-modules .dashboard-section-heading { margin-bottom: 7px; }
+.dashboard-price-suggestions { min-width: 0; max-width: 58%; overflow: hidden; color: #768397; font-size: 0.5625rem; font-weight: 500; line-height: 1.25; text-align: right; text-overflow: ellipsis; white-space: nowrap; }
 .dashboard-page .dashboard-employee-modules .action-grid { grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 8px; }
 .dashboard-page .dashboard-employee-modules .action-card { min-height: 62px; align-items: center; gap: 8px; padding: 8px 9px; border-radius: 7px; }
 .dashboard-page .dashboard-employee-modules .action-card-icon { flex-basis: 29px; width: 29px; height: 29px; }
@@ -185,6 +186,7 @@
 
 .dashboard-content-employee .dashboard-section-heading { gap: 10px; margin-bottom: 6px; }
 .dashboard-content-employee .dashboard-section-heading h2 { font-size: 0.8125rem; }
+.dashboard-content-employee .dashboard-price-suggestions { max-width: 58%; font-size: 0.53125rem; }
 .dashboard-content-employee .dashboard-rooms .dashboard-section-heading h2 { font-size: 1.125rem; }
 .dashboard-content-employee .dashboard-eyebrow { margin-bottom: 3px; }
 .dashboard-content-employee .dashboard-section-heading .dashboard-eyebrow { display: none; }
@@ -253,6 +255,7 @@
 }
 
 @media (max-width: 520px) {
+  .dashboard-content-employee .dashboard-price-suggestions { max-width: 52%; font-size: 0.5rem; }
   .dashboard-tool-backdrop { padding: 0; }
   .dashboard-tool-modal { width: 100%; height: 100dvh; max-height: 100dvh; border: 0; border-radius: 0; }
   .dashboard-tool-modal-header { min-height: 48px; flex-basis: 48px; }

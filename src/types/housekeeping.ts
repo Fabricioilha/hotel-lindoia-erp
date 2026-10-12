@@ -14,6 +14,27 @@ export interface RoomCategoryRecord {
   bedComposition: string;
 }
 
+export function roomCategoryGuestCounts(category: Pick<RoomCategoryRecord, 'name' | 'bedCount' | 'bedComposition'>): number[] {
+  const normalize = (value: string) => value.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const composition = normalize(category.bedComposition);
+  const bedPattern = /(\d+)?\s*(?:camas?\s*)?(?:de\s*)?(casal|queen|king|matrimonial|solteir[oa]|individual|beliche)/g;
+  let capacity = 0;
+  for (const match of composition.matchAll(bedPattern)) {
+    const count = Number(match[1] ?? 1);
+    const type = match[2];
+    capacity += count * (['casal', 'queen', 'king', 'matrimonial'].includes(type) ? 2 : 1);
+  }
+  if (capacity === 0) {
+    const name = normalize(category.name);
+    if (/\bsolteir[oa]\b|\bindividual\b/.test(name)) capacity = 1;
+    else if (/\bcasal\b|\bqueen\b|\bking\b|\bmatrimonial\b/.test(name)) capacity = 2;
+    else if (/\btripl[oa]\b/.test(name)) capacity = 3;
+    else capacity = Number.isFinite(category.bedCount) ? category.bedCount : 1;
+  }
+  const maxGuests = Math.min(10, Math.max(1, Math.floor(capacity)));
+  return Array.from({ length: maxGuests }, (_, index) => index + 1);
+}
+
 export const DEFAULT_ROOM_CATEGORIES: RoomCategoryRecord[] = [
   { id: 'solteiro', name: 'Solteiro', bedCount: 1, bedComposition: '1 cama de solteiro' },
   { id: 'casal', name: 'Casal', bedCount: 1, bedComposition: '1 cama de casal' },

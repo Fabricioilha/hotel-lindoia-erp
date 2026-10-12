@@ -2,7 +2,7 @@ import { equalTo, get, limitToLast, onValue, orderByChild, orderByKey, query, re
 import { db } from '../config/firebase';
 import { buildAuditEvents } from '../types/audit';
 import { recordOperationalIncome } from './operationalIncome';
-import { DEFAULT_ROOM_CATEGORIES, type HousekeepingData, type HousekeepingRoom, type Reservation, type ReservationCollection, type ReservationDirectoryEntry, type ReservationExtra, type ReservationStatus, type RoomCategoryRecord, type RoomCleaningLog, type RoomDayPlan } from '../types/housekeeping';
+import { DEFAULT_ROOM_CATEGORIES, roomCategoriesOf, type HousekeepingData, type HousekeepingRoom, type Reservation, type ReservationCollection, type ReservationDirectoryEntry, type ReservationExtra, type ReservationStatus, type RoomCategoryRecord, type RoomCleaningLog, type RoomDayPlan } from '../types/housekeeping';
 import { reservationOverlaps } from './reservationAnalytics';
 
 function currentLocalDateKey(): string {
@@ -147,6 +147,27 @@ export function subscribeRoomDirectory(
   return onValue(ref(db, 'erp_geral/quartos/rooms'), (snapshot) => {
     onChange(snapshot.val() ?? {});
   }, onError);
+}
+
+export function subscribeRoomCategories(
+  onChange: (categories: RoomCategoryRecord[]) => void,
+  onError: (error: Error) => void,
+): () => void {
+  let categories: Record<string, RoomCategoryRecord> | undefined;
+  let configured: boolean | undefined;
+  const publish = () => {
+    if (categories === undefined || configured === undefined) return;
+    onChange(roomCategoriesOf({ categories, categoriesConfigured: configured }));
+  };
+  const stopCategories = onValue(ref(db, 'erp_geral/quartos/categories'), (snapshot) => {
+    categories = snapshot.val() ?? {};
+    publish();
+  }, onError);
+  const stopConfigured = onValue(ref(db, 'erp_geral/quartos/categoriesConfigured'), (snapshot) => {
+    configured = Boolean(snapshot.val());
+    publish();
+  }, onError);
+  return () => { stopCategories(); stopConfigured(); };
 }
 
 export function subscribeReservationDirectory(

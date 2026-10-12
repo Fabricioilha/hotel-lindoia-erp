@@ -75,6 +75,20 @@ a.reception-primary { display: inline-flex; align-items: center; text-decoration
 .reception-modal-body { display: grid; min-height: 0; gap: 16px; overflow-y: auto; overscroll-behavior: contain; padding: 14px 3px 6px; scrollbar-color: #b9c6d7 transparent; scrollbar-width: thin; }
 .reception-modal .reception-grid { gap: 15px 18px; }
 .reception-modal .reception-grid > * { min-width: 0; }
+.reception-step-heading { display: flex; align-items: center; gap: 11px; margin: 2px 0 0; }
+.reception-step-heading > span { display: grid; width: 27px; height: 27px; flex: 0 0 27px; place-items: center; border-radius: 50%; color: #fff; background: #315f87; font-size: .75rem; font-weight: 800; }
+.reception-step-heading > div { display: grid; gap: 2px; }
+.reception-step-heading strong { color: #203a59; font-size: .9375rem; }
+.reception-step-heading small { color: #6b7a8c; font-size: .75rem; line-height: 1.35; }
+.reception-step-heading:not(.reception-step-heading-inline) { padding-bottom: 8px; border-bottom: 1px solid #e5ebf2; }
+.reception-step-heading-inline { margin: 0 0 2px; }
+.reception-modal .reception-service-card { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: center; gap: 12px 16px; }
+.reception-modal .reception-service-card .reception-small-field input,
+.reception-modal .reception-service-card .reception-small-field select { width: 100%; }
+.reception-service-intro { display: grid; grid-column: 1 / -1; gap: 3px; }
+.reception-service-intro strong { color: #253f5d; font-size: .875rem; }
+.reception-service-intro small { color: #718096; font-size: .75rem; line-height: 1.4; }
+.reception-modal .reception-service-card > .reception-check { grid-column: 1 / -1; }
 .reception-modal .sales-field { gap: 6px; color: #3e526d; font-size: 0.8125rem; font-weight: 750; }
 .reception-modal .sales-field > span { color: #354b68; font-size: 0.8125rem; font-weight: 750; line-height: 1.35; }
 .reception-modal .sales-field input,
@@ -99,6 +113,12 @@ a.reception-primary { display: inline-flex; align-items: center; text-decoration
 .reception-modal-footer { display: flex; flex-shrink: 0; align-items: center; justify-content: space-between; gap: 16px; padding-top: 16px; border-top: 1px solid #dce4ee; }
 .reception-modal-footer .reception-total { color: #435873; font-size: 0.875rem; font-weight: 700; }
 .reception-modal-footer .reception-total strong { margin-left: 4px; color: #142b4d; font-size: 1.0625rem; font-weight: 800; }
+.reception-total-summary { display: grid; min-width: 240px; max-width: 420px; flex: 1 1 280px; gap: 4px; }
+.reception-total-summary > p { display: flex; align-items: baseline; justify-content: space-between; gap: 16px; margin: 0; color: #53667f; font-size: .75rem; }
+.reception-total-summary > p strong { color: #293f5c; font-weight: 700; }
+.reception-total-summary > small { color: #8a6223; font-size: .6875rem; line-height: 1.35; }
+.reception-modal-footer .reception-total-summary > .reception-total { margin-top: 4px; padding-top: 7px; border-top: 1px solid #dce4ee; color: #263e5d; font-size: .875rem; }
+.reception-modal-footer .reception-total-summary > .reception-total strong { margin-left: 0; color: #142b4d; font-size: 1.0625rem; }
 .reception-modal-footer .reception-actions { margin-bottom: 0; }
 .reception-modal-footer button { min-height: 44px; border-radius: 6px; font-size: 0.8125rem; transition: transform 140ms ease, background 140ms ease, box-shadow 140ms ease; }
 .reception-modal-footer .reception-primary { padding: 0 18px; background: #183c66; box-shadow: 0 3px 9px rgb(20 43 77 / 18%); }
@@ -124,6 +144,8 @@ a.reception-primary { display: inline-flex; align-items: center; text-decoration
   .reception-modal-head h2 { font-size: 1.125rem; }
   .reception-modal-body { gap: 14px; padding-top: 11px; }
   .reception-modal .reception-grid { gap: 12px; }
+  .reception-modal .reception-service-card { grid-template-columns: 1fr; gap: 10px; }
+  .reception-modal .reception-service-card > * { grid-column: 1 / -1; }
   .reception-modal .sales-field > span { font-size: 0.75rem; }
   .reception-modal .sales-field input,
   .reception-modal .sales-field select { min-height: 42px; font-size: 0.8125rem; }
@@ -132,6 +154,8 @@ a.reception-primary { display: inline-flex; align-items: center; text-decoration
   .reception-modal .reception-extra-row { grid-template-columns: 1fr 1fr; }
   .reception-modal-footer { flex-direction: column; align-items: stretch; gap: 8px; }
   .reception-modal-footer .reception-total { text-align: center; }
+  .reception-total-summary { min-width: 0; max-width: none; width: 100%; }
+  .reception-modal-footer .reception-total-summary > .reception-total { text-align: left; }
   .reception-modal-footer .reception-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 8px; }
 }
 
@@ -141,4 +165,67 @@ a.reception-primary { display: inline-flex; align-items: center; text-decoration
   .reception-close,
   .reception-modal-footer button,
   .reception-modal .reception-chip { animation: none; transition: none; }
+}
+
+/* Modal de hospedagem: mais área útil e contraste com a página de fundo. */
+.reception-overlay { padding: clamp(10px, 2vw, 28px); background: rgb(5 16 30 / 76%); backdrop-filter: blur(5px) saturate(.72); -webkit-backdrop-filter: blur(5px) saturate(.72); }
+.reception-modal { width: min(100%, 1180px); min-height: min(78vh, 820px); min-height: min(78dvh, 820px); max-height: min(95vh, 1080px); max-height: min(95dvh, 1080px); padding: 0; border: 1px solid #7c91aa; border-top: 6px solid #c02d42; background: #e8eef5; box-shadow: 0 36px 100px rgb(0 0 0 / 56%), 0 8px 24px rgb(0 0 0 / 32%); }
+.reception-modal-head { min-height: 76px; padding: 14px 24px; border-bottom: 1px solid #0b1d34; background: #142b4d; }
+.reception-modal-head h2 { padding-left: 15px; color: #fff; font-size: 1.5rem; text-shadow: 0 1px 0 rgb(0 0 0 / 20%); }
+.reception-close { width: 44px; height: 44px; flex-basis: 44px; border-color: #b0bfd0; color: #fff; background: #294667; }
+.reception-modal-body { gap: 16px; padding: 20px 22px; background: #e8eef5; scrollbar-color: #71849a transparent; }
+.reception-modal .reception-grid { gap: 17px 20px; padding: 22px; border: 1px solid #9aacc0; border-radius: 12px; background: #fff; box-shadow: 0 3px 10px rgb(29 48 70 / 8%); }
+.reception-step-heading > span { width: 32px; height: 32px; flex-basis: 32px; border: 2px solid #fff; color: #fff; background: #173a62; box-shadow: 0 0 0 1px #173a62; font-size: .8125rem; }
+.reception-step-heading strong { color: #172f4e; font-size: 1rem; }
+.reception-step-heading small { color: #4e637b; font-size: .8125rem; line-height: 1.4; }
+.reception-step-heading:not(.reception-step-heading-inline) { padding-bottom: 9px; border-bottom: 2px solid #d0dbe7; }
+.reception-modal .reception-service-card { gap: 14px 18px; padding: 18px; border: 1px solid #8399b1; border-left-width: 6px; border-radius: 10px; box-shadow: 0 3px 10px rgb(29 48 70 / 8%); }
+.reception-modal .reception-service-breakfast { border-left-color: #28704c; background: #e7f2eb; }
+.reception-modal .reception-service-tax { border-left-color: #a76a0a; background: #fbf0dc; }
+.reception-service-intro strong { color: #172f4e; font-size: 1rem; }
+.reception-service-intro small { color: #40566f; font-size: .8125rem; }
+.reception-modal .sales-field { color: #243c5b; font-size: .875rem; }
+.reception-modal .sales-field > span { color: #203956; font-size: .875rem; font-weight: 800; }
+.reception-modal .sales-field input,
+.reception-modal .sales-field select { min-height: 49px; padding: 10px 12px; border: 1px solid #7f93aa; border-radius: 7px; color: #172f4e; background: #fff; font-size: .9375rem; box-shadow: inset 0 1px 2px rgb(24 47 78 / 6%); }
+.reception-modal .sales-field input:focus,
+.reception-modal .sales-field select:focus { border-color: #1e5d9d; outline: 0; box-shadow: 0 0 0 3px rgb(30 93 157 / 22%); }
+.reception-modal .sales-field input::placeholder { color: #65788e; opacity: 1; }
+.reception-modal .reception-hint { color: #40556e; font-size: .8125rem; font-weight: 600; line-height: 1.5; }
+.reception-modal .reception-check { color: #203956; font-size: .875rem; font-weight: 750; }
+.reception-modal .reception-check input { width: 19px; height: 19px; accent-color: #1d5b95; }
+.reception-modal .reception-service-card .reception-small-field input,
+.reception-modal .reception-service-card .reception-small-field select { width: 100%; min-height: 48px; border-color: #7f93aa; color: #172f4e; font-size: .875rem; }
+.reception-modal .reception-extras { gap: 13px; padding: 18px; border: 1px solid #8295aa; border-radius: 10px; background: #fff; box-shadow: 0 3px 10px rgb(29 48 70 / 8%); }
+.reception-modal .reception-extras-head { color: #203956; font-size: .9375rem; }
+.reception-modal .reception-chip { min-height: 39px; padding: 6px 12px; border: 1px solid #748ba5; color: #173c64; background: #f1f5fa; font-size: .8125rem; font-weight: 750; }
+.reception-modal .reception-extra-row input,
+.reception-modal .reception-extra-row select { border-color: #8799ad; color: #172f4e; background: #fff; font-size: .8125rem; }
+.reception-note { padding: 17px; border: 1px solid #ae8425; border-left: 6px solid #ae8425; background: #fff3d5; }
+.reception-note span { color: #59400b; }
+.reception-note textarea { border-color: #a88a43; color: #203956; }
+.reception-modal .reception-money-input { min-height: 49px; border-color: #7f93aa; }
+.reception-modal-footer { gap: 18px; padding: 15px 22px; border-top: 1px solid #9bacbf; background: #d9e3ed; }
+.reception-total-summary { min-width: 260px; max-width: 500px; flex-basis: 320px; padding: 10px 13px; border: 1px solid #92a5ba; border-radius: 8px; background: #fff; }
+.reception-total-summary > p { color: #3a506b; }
+.reception-total-summary > p strong { color: #203956; }
+.reception-total-summary > small { color: #714d10; }
+.reception-modal-footer .reception-primary { min-height: 48px; background: #153a62; }
+.reception-modal-footer .sales-outline-button { min-height: 48px; border-color: #70849b; color: #213a58; }
+.reception-date-nights { color: #203956; font-size: .8125rem; font-weight: 800; line-height: 1.4; }
+.reception-date-nights.is-invalid { color: #9c2435; }
+.reception-modal .sales-field > span button { min-height: 40px; border-color: #8295aa !important; color: #173a62; background: #dce7f3 !important; }
+
+@media (max-width: 600px) {
+  .reception-overlay { padding: 8px; }
+  .reception-modal { width: 100%; min-height: 0; max-height: 96vh; max-height: 96dvh; border-radius: 10px; }
+  .reception-modal-head { min-height: 62px; padding: 10px 14px; }
+  .reception-modal-head h2 { font-size: 1.1875rem; }
+  .reception-modal-body { gap: 12px; padding: 12px; }
+  .reception-modal .reception-grid { grid-template-columns: minmax(0, 1fr); gap: 13px; padding: 15px; }
+  .reception-modal .reception-service-card { grid-template-columns: minmax(0, 1fr); gap: 11px; padding: 14px; }
+  .reception-modal .reception-service-card > * { grid-column: 1 / -1; }
+  .reception-modal .reception-extra-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  .reception-modal-footer { padding: 12px; }
+  .reception-total-summary { min-width: 0; max-width: none; width: 100%; }
 }

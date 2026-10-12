@@ -48,11 +48,19 @@ export function stayFinanceEntries(stay: GuestStay): Record<string, FinanceIncom
     add('cafe', 'Café', breakfastDescription, total - (split?.amount ?? 0), stay.breakfastMethod ?? stay.dailyMethod);
     if (split) add('cafe-2', 'Café', `${breakfastDescription} (2ª forma)`, split.amount, split.method);
   }
-  stayTaxPayments(stay).forEach((payment, index) => {
-    add(payment.id, 'Taxas', index === 0 ? 'Taxa' : 'Taxa (2ª forma)', payment.amount, payment.method);
+  stayTaxPayments(stay).filter((payment) => payment.method !== 'prepaid').forEach((payment) => {
+    add(payment.id, 'Taxas', payment.id === 'taxa' ? 'Taxa' : 'Taxa (2ª forma)', payment.amount, payment.method);
   });
   (stay.extras ?? []).forEach((extra) => add(`extra-${extra.id}`, extraCategories[extra.type] ?? 'Extras', extra.label, extraTotal(extra, stay.nights), extra.method ?? stay.dailyMethod));
   return entries;
+}
+
+export function stayFinanceEntryIds(stay: GuestStay): string[] {
+  const prefix = `recepcao-${stay.id}-`;
+  return [...new Set([
+    ...Object.keys(stayFinanceEntries(stay)),
+    ...stayTaxPayments(stay).map((payment) => `${prefix}${payment.id}`),
+  ])];
 }
 
 export function stayOyoFeeExpense(stay: GuestStay): FinanceExpense | undefined {
@@ -66,7 +74,8 @@ export function stayOyoFeeExpense(stay: GuestStay): FinanceExpense | undefined {
     plannedAmount: amount,
     paidCash: 0,
     paidBank: 0,
-    note: [`Taxa da OYO recebida do hóspede`, `Quarto ${stay.roomNumber}`, stay.guestName].filter(Boolean).join(' · '),
+    paidOyo: amount,
+    note: [`Taxa cobrada no balcão e compensada com valores retidos pela OYO`, `Quarto ${stay.roomNumber}`, stay.guestName].filter(Boolean).join(' · '),
     createdAt: stay.createdAt,
     updatedAt: stay.createdAt,
   };
@@ -115,6 +124,9 @@ export function withOperationalFinance(data: FinanceData, sources: OperationalFi
   };
   Object.values(sources.stays).forEach((stay) => {
     Object.values(stayFinanceEntries(stay)).forEach(addIncome);
+    stayTaxPayments(stay).filter((payment) => payment.method === 'prepaid').forEach((payment) => {
+      delete incomes[`recepcao-${stay.id}-${payment.id}`];
+    });
     const oyoFee = stayOyoFeeExpense(stay);
     if (oyoFee) addExpense(oyoFee);
   });

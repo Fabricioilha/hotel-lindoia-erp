@@ -101,11 +101,13 @@ export function FluxoDeCaixa() {
 	const transfers = useMemo(() => Object.values(data.transfers).filter((item) => item.date.startsWith(month)).sort((a, b) => b.date.localeCompare(a.date)), [data.transfers, month]);
 	const receipts = monthlyReceipts(data, month);
 	const totalIncome = receipts.direct;
-	const paidExpenses = expenses.reduce((sum, item) => sum + item.paidCash + item.paidBank, 0) + payroll.reduce((sum, item) => sum + item.paidCash + item.paidBank, 0);
-	const pendingExpenses = expenses.reduce((sum, item) => sum + Math.max(0, item.plannedAmount - item.paidCash - item.paidBank), 0)
+	const oyoPaidExpenses = expenses.reduce((sum, item) => sum + (item.paidOyo ?? 0), 0);
+	const cashPaidExpenses = expenses.reduce((sum, item) => sum + item.paidCash + item.paidBank, 0) + payroll.reduce((sum, item) => sum + item.paidCash + item.paidBank, 0);
+	const paidExpenses = cashPaidExpenses + oyoPaidExpenses;
+	const pendingExpenses = expenses.reduce((sum, item) => sum + Math.max(0, item.plannedAmount - item.paidCash - item.paidBank - (item.paidOyo ?? 0)), 0)
 		+ payroll.reduce((sum, item) => sum + Math.max(0, payrollNet(item) - item.paidCash - item.paidBank), 0);
 	const balances = balancesAt(data, month);
-	const cashResult = Math.round((receipts.received - paidExpenses - receipts.sentToOyo) * 100) / 100;
+	const cashResult = Math.round((receipts.received - cashPaidExpenses - receipts.sentToOyo) * 100) / 100;
 	const prepaidEntries = useMemo(() => prepaidEntriesAt(data.incomes, month), [data.incomes, month]);
 	const prepaidTotal = prepaidEntriesTotal(prepaidEntries);
 	const prepaidMonthTotal = prepaidEntriesTotal(prepaidEntries.filter((entry) => entry.income.date.startsWith(month)));
@@ -128,7 +130,7 @@ export function FluxoDeCaixa() {
 			exportCsv(`entradas-${fileRange}.csv`, [['Data', 'Origem', 'Itens', 'Pagamentos', 'Valor total', 'Observação'], ...incomes.map((item) => [item.date, item.category, incomeItems(item).map((line) => `${line.description}: ${money(line.amount)}`).join(' | '), incomePaymentSummary(item), item.amount, item.note])]);
 			return;
 		}
-		exportCsv(`despesas-${fileRange}.csv`, [['Vencimento', 'Categoria', 'Previsto', 'Pago em caixa', 'Pago em banco', 'Pendente', 'Observação'], ...expenses.map((item) => [item.dueDate, item.category, item.plannedAmount, item.paidCash, item.paidBank, Math.max(0, item.plannedAmount - item.paidCash - item.paidBank), item.note]), ...payroll.map((item) => [item.dueDate, `Folha · ${item.employee}`, payrollNet(item), item.paidCash, item.paidBank, Math.max(0, payrollNet(item) - item.paidCash - item.paidBank), item.note])]);
+		exportCsv(`despesas-${fileRange}.csv`, [['Vencimento', 'Categoria', 'Previsto', 'Pago em caixa', 'Pago em banco', 'Pago com retidos OYO', 'Pendente', 'Observação'], ...expenses.map((item) => [item.dueDate, item.category, item.plannedAmount, item.paidCash, item.paidBank, item.paidOyo ?? 0, Math.max(0, item.plannedAmount - item.paidCash - item.paidBank - (item.paidOyo ?? 0)), item.note]), ...payroll.map((item) => [item.dueDate, `Folha · ${item.employee}`, payrollNet(item), item.paidCash, item.paidBank, 0, Math.max(0, payrollNet(item) - item.paidCash - item.paidBank), item.note])]);
 	}
 
 	function exportMonthlyReport() {
@@ -137,23 +139,23 @@ export function FluxoDeCaixa() {
 			const cash = payments.filter((line) => line.paymentMethod === 'cash').reduce((sum, line) => sum + line.amount, 0);
 			const bank = payments.filter((line) => line.paymentMethod !== 'cash' && line.paymentMethod !== 'prepaid').reduce((sum, line) => sum + line.amount, 0);
 			const prepaid = payments.filter((line) => line.paymentMethod === 'prepaid').reduce((sum, line) => sum + line.amount, 0);
-			return [prepaid && !cash && !bank ? 'Pré-pago externo OYO' : prepaid ? 'Pagamento combinado (hotel + OYO)' : 'Entrada no hotel', item.date, item.category, payments.map((line) => `${line.description}: ${money(line.amount)}`).join(' | '), '', '', '', item.amount, cash, bank, prepaid, 0, incomePaymentSummary(item), item.note];
+			return [prepaid && !cash && !bank ? 'Pré-pago externo OYO' : prepaid ? 'Pagamento combinado (hotel + OYO)' : 'Entrada no hotel', item.date, item.category, payments.map((line) => `${line.description}: ${money(line.amount)}`).join(' | '), '', '', '', item.amount, cash, bank, 0, prepaid, 0, incomePaymentSummary(item), item.note];
 		});
-		const expenseRows = expenses.map((item) => ['Despesa', item.dueDate, item.category, item.note, '', '', item.plannedAmount, item.paidCash + item.paidBank, item.paidCash, item.paidBank, 0, Math.max(0, item.plannedAmount - item.paidCash - item.paidBank), '', item.note]);
-		const payrollRows = payroll.map((item) => ['Folha', item.dueDate, 'Folha de pagamento', `${item.employee}${item.position ? ` · ${item.position}` : ''}`, '', '', payrollNet(item), item.paidCash + item.paidBank, item.paidCash, item.paidBank, 0, Math.max(0, payrollNet(item) - item.paidCash - item.paidBank), '', item.note]);
-		const transferRows = transfers.map((item) => ['Transferência', item.date, 'Entre carteiras', item.note, WALLET_LABELS[item.from], WALLET_LABELS[item.to], '', item.amount, 0, 0, 0, 0, '', item.note]);
+		const expenseRows = expenses.map((item) => ['Despesa', item.dueDate, item.category, item.note, '', '', item.plannedAmount, item.paidCash + item.paidBank + (item.paidOyo ?? 0), item.paidCash, item.paidBank, item.paidOyo ?? 0, 0, Math.max(0, item.plannedAmount - item.paidCash - item.paidBank - (item.paidOyo ?? 0)), '', item.note]);
+		const payrollRows = payroll.map((item) => ['Folha', item.dueDate, 'Folha de pagamento', `${item.employee}${item.position ? ` · ${item.position}` : ''}`, '', '', payrollNet(item), item.paidCash + item.paidBank, item.paidCash, item.paidBank, 0, 0, Math.max(0, payrollNet(item) - item.paidCash - item.paidBank), '', item.note]);
+		const transferRows = transfers.map((item) => ['Transferência', item.date, 'Entre carteiras', item.note, WALLET_LABELS[item.from], WALLET_LABELS[item.to], '', item.amount, 0, 0, 0, 0, 0, '', item.note]);
 		exportCsv(`financeiro-${month}.csv`, [
-			['Tipo', 'Data', 'Categoria', 'Detalhes', 'Origem', 'Destino', 'Previsto', 'Valor registrado', 'Pago em caixa', 'Pago em banco', 'Pré-pago à OYO', 'Pendente', 'Forma de pagamento', 'Observação'],
+			['Tipo', 'Data', 'Categoria', 'Detalhes', 'Origem', 'Destino', 'Previsto', 'Valor registrado', 'Pago em caixa', 'Pago em banco', 'Pago com retidos OYO', 'Pré-pago à OYO', 'Pendente', 'Forma de pagamento', 'Observação'],
 			...incomeRows,
 			...expenseRows,
 			...payrollRows,
 			...transferRows,
-			['Resumo', '', 'Recebimentos diretos no hotel', '', '', '', '', receipts.direct, '', '', '', '', '', 'Não inclui pré-pagos nem repasses'],
-			['Resumo', '', 'Pré-pagos do mês', '', '', '', '', receipts.prepaid, '', '', '', '', '', 'Pagos diretamente à OYO'],
-			['Resumo', '', 'Repasses da OYO ao hotel', '', '', '', '', receipts.repasses, '', '', '', '', '', 'Transferências da OYO para banco ou caixa'],
-			['Resumo', '', 'Entradas no hotel', '', '', '', '', receipts.received, '', '', '', '', '', 'Recebimentos diretos mais repasses'],
-			['Resumo', '', 'Resultado de caixa', '', '', '', '', cashResult, '', '', '', '', '', 'Entradas no hotel menos saídas pagas e valores enviados à OYO'],
-			['Saldo', '', WALLET_LABELS.oyo, '', '', '', '', balances.oyo, '', '', '', '', '', 'Pré-pagos menos repasses, sem cálculo de comissões'],
+			['Resumo', '', 'Recebimentos diretos no hotel', '', '', '', '', receipts.direct, '', '', '', '', '', '', 'Não inclui pré-pagos nem repasses'],
+			['Resumo', '', 'Pré-pagos do mês', '', '', '', '', receipts.prepaid, '', '', '', '', '', '', 'Pagos diretamente à OYO'],
+			['Resumo', '', 'Repasses da OYO ao hotel', '', '', '', '', receipts.repasses, '', '', '', '', '', '', 'Transferências da OYO para banco ou caixa'],
+			['Resumo', '', 'Entradas no hotel', '', '', '', '', receipts.received, '', '', '', '', '', '', 'Recebimentos diretos mais repasses'],
+			['Resumo', '', 'Resultado de caixa', '', '', '', '', cashResult, '', '', '', '', '', '', 'Entradas no hotel menos saídas do caixa/banco e valores enviados à OYO'],
+			['Saldo', '', WALLET_LABELS.oyo, '', '', '', '', balances.oyo, '', '', '', '', '', '', 'Pré-pagos menos repasses e taxas de balcão compensadas, sem cálculo de comissões'],
 		]);
 	}
 
@@ -217,7 +219,8 @@ export function FluxoDeCaixa() {
 		const plannedAmount = Number(form.get('plannedAmount'));
 		const paidCash = Number(form.get('paidCash'));
 		const paidBank = Number(form.get('paidBank'));
-		if (!category || [plannedAmount, paidCash, paidBank].some((value) => !Number.isFinite(value) || value < 0)) { setError('Confira a categoria e os valores da despesa.'); return; }
+		const paidOyo = Number(form.get('paidOyo'));
+		if (!category || [plannedAmount, paidCash, paidBank, paidOyo].some((value) => !Number.isFinite(value) || value < 0)) { setError('Confira a categoria e os valores da despesa.'); return; }
 		const current = data.expenses[editingId];
 		const timestamp = new Date().toISOString();
 		const item: FinanceExpense = {
@@ -227,6 +230,7 @@ export function FluxoDeCaixa() {
 			plannedAmount,
 			paidCash,
 			paidBank,
+			paidOyo,
 			note: String(form.get('note') ?? '').trim(),
 			createdAt: current?.createdAt ?? timestamp,
 			updatedAt: timestamp,
@@ -334,7 +338,7 @@ export function FluxoDeCaixa() {
 	const selectedTransfer = modal === 'transferencia' || modal === 'repasse' ? data.transfers[editingId] : undefined;
 	const activities: Activity[] = [
 		...incomes.map((item) => ({ id: item.id, date: item.date, title: item.category, detail: `${item.note}${item.note ? ' · ' : ''}${incomeItems(item).map((line) => line.description).join(', ')}`, amount: item.amount, paid: item.amount, type: 'entrada' as const, wallet: incomePaymentSummary(item) })),
-		...expenses.map((item) => ({ id: item.id, date: item.dueDate, title: item.category, detail: item.note, amount: item.plannedAmount, paid: item.paidCash + item.paidBank, type: 'saida' as const, wallet: `${money(item.paidCash)} em caixa · ${money(item.paidBank)} em banco` })),
+		...expenses.map((item) => ({ id: item.id, date: item.dueDate, title: item.category, detail: item.note, amount: item.plannedAmount, paid: item.paidCash + item.paidBank + (item.paidOyo ?? 0), type: 'saida' as const, wallet: `${money(item.paidCash)} em caixa · ${money(item.paidBank)} em banco · ${money(item.paidOyo ?? 0)} retidos OYO` })),
 		...payroll.map((item) => ({ id: item.id, date: item.dueDate, title: item.employee, detail: item.position || 'Folha de pagamento', amount: payrollNet(item), paid: item.paidCash + item.paidBank, type: 'folha' as const, wallet: `${money(item.paidCash)} em caixa · ${money(item.paidBank)} em banco` })),
 	].sort((a, b) => b.date.localeCompare(a.date));
 
@@ -363,11 +367,11 @@ export function FluxoDeCaixa() {
 				{loading ? <div className="finance-empty">Carregando lançamentos...</div> : <>
 					{!isMovementTab && <section className="finance-metrics" aria-label="Resumo financeiro do mês">
 						<Metric label="Entradas no hotel" value={money(receipts.received)} detail={`${money(receipts.direct)} diretos · ${money(receipts.repasses)} de repasses OYO`} tone="green" />
-						<Metric label="Saídas pagas" value={money(paidExpenses)} detail={`${money(pendingExpenses)} pendentes de pagamento`} tone="coral" />
+						<Metric label="Saídas pagas" value={money(paidExpenses)} detail={`${money(cashPaidExpenses)} caixa/banco · ${money(oyoPaidExpenses)} retidos OYO · ${money(pendingExpenses)} pendentes`} tone="coral" />
 						<Metric label="Resultado de caixa" value={money(cashResult)} detail="Recebimentos e repasses menos saídas do hotel" tone="blue" />
 						<Metric label="Caixa físico" value={money(balances.cash)} detail="Saldo acumulado até o mês" tone="gold" />
 						<Metric label="Banco" value={money(balances.bank)} detail="Saldo acumulado até o mês" tone="navy" />
-						<Metric label={WALLET_LABELS.oyo} value={money(balances.oyo)} detail="Pré-pagos menos repasses; comissões não calculadas" tone="gray" />
+						<Metric label={WALLET_LABELS.oyo} value={money(balances.oyo)} detail="Pré-pagos menos repasses e taxas de balcão compensadas" tone="gray" />
 					</section>}
 
 					<div className="finance-tabs" role="tablist" aria-label="Visões do fluxo de caixa">
@@ -383,14 +387,14 @@ export function FluxoDeCaixa() {
 
 					{tab === 'prepagos' && <section className="finance-panel">
 						<div className="finance-panel-heading">
-							<div><h2>{WALLET_LABELS.oyo}</h2><p>{money(balances.oyo)} em pré-pagos menos repasses · {money(prepaidMonthTotal)} pré-pagos no mês · {money(prepaidTotal)} no histórico</p></div>
+							<div><h2>{WALLET_LABELS.oyo}</h2><p>{money(balances.oyo)} em pré-pagos menos repasses e taxas de balcão · {money(prepaidMonthTotal)} pré-pagos no mês · {money(prepaidTotal)} no histórico</p></div>
 							<div className="finance-heading-actions">
 								<button className="finance-button finance-button-soft" onClick={exportPrepaidHistory}>Exportar histórico</button>
 								<button className="finance-button finance-button-soft" onClick={() => openModal('repasse')}>Registrar repasse da OYO</button>
 								<button className="finance-button finance-button-dark" onClick={() => openModal('entrada-prepaga')}>+ Registrar pré-pago</button>
 							</div>
 						</div>
-						<p className="finance-form-hint">Os hóspedes pagaram estes valores diretamente à OYO antes da chegada. Eles não entram no caixa ou banco do hotel. Esta lista discrimina os pré-pagos, inclusive a parcela de pagamentos combinados. O controle de pré-pagos menos repasses não representa o saldo final do acerto: as comissões e compensações serão calculadas pela gerência.</p>
+						<p className="finance-form-hint">Os hóspedes pagaram estes valores diretamente à OYO antes da chegada. Eles não entram no caixa ou banco do hotel. Esta lista discrimina os pré-pagos de hospedagem, café e extras, inclusive parcelas de pagamentos combinados. Taxas pré-pagas ficam fora do fluxo; taxas cobradas no balcão são compensadas nesta carteira. Comissões e o acerto final continuam sob controle da gerência.</p>
                         <p>Transferências enviadas pelo hotel à OYO até o mês: <strong>{money(oyoPaymentsAt(data, month))}</strong>. Esses pagamentos ficam separados dos pré-pagos dos hóspedes.</p>
 						<PrepaidTable entries={prepaidEntries} onEdit={(entry) => openModal('entrada-prepaga', entry.income.id)} onDelete={(entry) => void removeRecord('entrada', entry.income.id)} />
 					</section>}
@@ -398,8 +402,8 @@ export function FluxoDeCaixa() {
 					{tab === 'resumo' && <>
 						<section className="finance-summary-grid">
 							<CategorySummary title="Recebimentos diretos por origem" items={incomes.map((item) => [item.category, item.amount] as [string, number])} empty="Nenhuma entrada nesta competência." />
-							  <CategorySummary title="Despesas por categoria" items={[...expenses.map((item) => [item.category, item.paidCash + item.paidBank] as [string, number]), ...payroll.map((item) => ['Folha de pagamento', item.paidCash + item.paidBank] as [string, number])]} empty="Nenhuma despesa nesta competência." />
-							<section className="finance-panel finance-wallet-panel"><div className="finance-panel-heading"><div><h2>Movimento entre carteiras</h2><p>Movimentos entre caixa e banco são internos. Repasses e pagamentos à OYO afetam o caixa do hotel.</p></div><button className="finance-text-button" onClick={() => openModal('transferencia')}>+ Registrar</button></div>{transfers.length === 0 ? <p className="finance-empty-inline">Sem transferências no mês.</p> : transfers.slice(0, 5).map((item) => <div className="finance-transfer-row" key={item.id}><span>{dateLabel(item.date)}</span><strong>{WALLET_LABELS[item.from]} → {WALLET_LABELS[item.to]}</strong><b>{money(item.amount)}</b></div>)}</section>
+							  <CategorySummary title="Despesas por categoria" items={[...expenses.map((item) => [item.category, item.paidCash + item.paidBank + (item.paidOyo ?? 0)] as [string, number]), ...payroll.map((item) => ['Folha de pagamento', item.paidCash + item.paidBank] as [string, number])]} empty="Nenhuma despesa nesta competência." />
+							<section className="finance-panel finance-wallet-panel"><div className="finance-panel-heading"><div><h2>Movimento entre carteiras</h2><p>Movimentos entre caixa e banco são internos. Repasses movem valores entre carteiras; taxas de balcão podem ser compensadas com valores retidos pela OYO.</p></div><button className="finance-text-button" onClick={() => openModal('transferencia')}>+ Registrar</button></div>{transfers.length === 0 ? <p className="finance-empty-inline">Sem transferências neste mês.</p> : transfers.slice(0, 5).map((item) => <div className="finance-transfer-row" key={item.id}><span>{dateLabel(item.date)}</span><strong>{WALLET_LABELS[item.from]} → {WALLET_LABELS[item.to]}</strong><b>{money(item.amount)}</b></div>)}</section>
 						</section>
 						<ActivityTable activities={activities.slice(0, 10)} onEdit={(activity) => activity.type === 'entrada' ? openModal('entrada', activity.id) : activity.type === 'saida' ? openModal('saida', activity.id) : undefined} onDelete={(activity) => activity.type !== 'folha' && void removeRecord(activity.type, activity.id)} title="Lançamentos recentes" />
 						<AuditTable onDelete={(eventId) => { if (window.confirm('Excluir este registro de auditoria?')) void commit((current) => { const auditLog = { ...current.auditLog }; delete auditLog[eventId]; return { ...current, auditLog }; }, 'Registro de auditoria excluído.'); }} events={Object.values(data.auditLog).sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0, 20)} />
@@ -528,8 +532,9 @@ function ExpenseForm({ record, month, categories, saving, onClose, onSubmit }: {
 		<label className="finance-field"><span>Valor previsto</span><input name="plannedAmount" type="number" min="0" step="0.01" defaultValue={record?.plannedAmount ?? 0} /></label>
 		<label className="finance-field"><span>Pago em dinheiro</span><input name="paidCash" type="number" min="0" step="0.01" defaultValue={record?.paidCash ?? 0} /></label>
 		<label className="finance-field"><span>Pago pelo banco</span><input name="paidBank" type="number" min="0" step="0.01" defaultValue={record?.paidBank ?? 0} /></label>
+		<label className="finance-field"><span>Pago com retidos da OYO</span><input name="paidOyo" type="number" min="0" step="0.01" defaultValue={record?.paidOyo ?? 0} /></label>
 		<label className="finance-field finance-field-wide"><span>Observação</span><textarea name="note" rows={2} defaultValue={record?.note} /></label>
-		<p className="finance-form-hint finance-field-wide">Pagamentos parciais podem ser divididos entre dinheiro e banco. A diferença entre o previsto e o pago aparece como pendência.</p>
+		<p className="finance-form-hint finance-field-wide">Pagamentos parciais podem ser divididos entre caixa, banco e valores retidos pela OYO. A diferença entre o previsto e o pago aparece como pendência.</p>
 	</div><ModalFooter saving={saving} onClose={onClose} submit={record ? 'Salvar despesa' : 'Registrar despesa'} /></form>;
 }
 

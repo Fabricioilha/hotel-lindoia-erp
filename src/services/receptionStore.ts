@@ -1,7 +1,7 @@
 import { endAt, equalTo, get, increment, onValue, orderByChild, query, ref, remove, runTransaction, set, startAt, update } from 'firebase/database';
 import { db } from '../config/firebase';
 import { commitDeletion, removeChargeUpdates, removeFinanceEntries } from './deletionStore';
-import { stayFinanceEntries, stayOyoFeeExpense } from './operationalLedger';
+import { stayFinanceEntryIds, stayOyoFeeExpense } from './operationalLedger';
 import { emptyReceptionRateSettings, type CashOut, type FloatCheck, type GuestStay, type ReceptionData, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge } from '../types/reception';
 import { staffReference } from './staffStore';
 
@@ -57,15 +57,18 @@ export function subscribeReceptionRates(onChange: (settings: ReceptionRateSettin
   return onValue(ref(db, RATE_PATH), (snapshot) => {
     const value = snapshot.val() as Partial<ReceptionRateSettings> | null;
     onChange({ ...emptyReceptionRateSettings(), ...value,
-      roomRates: value?.roomRates ?? {}, addOnRates: value?.addOnRates ?? {}, holidays: value?.holidays ?? {},
+      roomRates: value?.roomRates ?? {}, roomRatesByGuests: value?.roomRatesByGuests ?? {},
+      addOnRates: value?.addOnRates ?? {}, holidays: value?.holidays ?? {},
     });
   }, onError);
 }
 
 export async function saveReceptionRates(settings: ReceptionRateSettings): Promise<void> {
   const roomRates = Object.values(settings.roomRates).flatMap((rates) => Object.values(rates ?? {}));
+  const roomRatesByGuests = Object.values(settings.roomRatesByGuests ?? {}).flatMap((guestRates) =>
+    Object.values(guestRates).flatMap((rates) => Object.values(rates ?? {})));
   const addOnRates = Object.values(settings.addOnRates);
-  if ([...roomRates, ...addOnRates].some((rate) => !Number.isFinite(rate) || rate! < 0)) {
+  if ([...roomRates, ...roomRatesByGuests, ...addOnRates].some((rate) => !Number.isFinite(rate) || rate! < 0)) {
     throw new Error('Os valores das diárias e adicionais devem ser números iguais ou maiores que zero.');
   }
   if (Object.entries(settings.holidays).some(([date, label]) => !/^\d{4}-\d{2}-\d{2}$/.test(date) || !label.trim())) {
@@ -207,10 +210,6 @@ export async function convertRotativoToDaily(rotativo: GuestStay, dailyStay: Gue
   });
 }
 
-function incomeIdsForStay(stay: GuestStay): string[] {
-  return Object.keys(stayFinanceEntries(stay));
-}
-
 export async function deleteStay(stay: GuestStay): Promise<void> {
   const [staySnapshot, chargeSnapshot] = await Promise.all([get(ref(db, `${PATH}/stays`)), get(ref(db, `${PATH}/roomCharges`))]);
   const stays = Object.values(staySnapshot.val() ?? {}) as GuestStay[];
@@ -224,7 +223,7 @@ export async function deleteStay(stay: GuestStay): Promise<void> {
   const updates: Record<string, unknown> = {};
   stays.filter((item) => ids.has(item.id)).forEach((item) => {
     updates[`${PATH}/stays/${item.id}`] = null;
-    removeFinanceEntries(updates, incomeIdsForStay({ ...item, voidedPayments: undefined }));
+    removeFinanceEntries(updates, stayFinanceEntryIds({ ...item, voidedPayments: undefined }));
     const oyoFee = stayOyoFeeExpense(item);
     if (oyoFee) removeFinanceEntries(updates, [oyoFee.id], 'expenses');
   });

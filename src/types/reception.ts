@@ -21,13 +21,14 @@ export const WEEKDAYS: { key: WeekdayKey; label: string }[] = [
 ];
 
 export interface ReceptionRateSettings {
-  roomRates: Partial<Record<RoomType, Partial<Record<WeekdayKey | 'holiday', number>>>>;
+  roomRates: Record<string, Partial<Record<WeekdayKey | 'holiday', number>>>;
+  roomRatesByGuests?: Record<string, Record<number, Partial<Record<WeekdayKey | 'holiday', number>>>>;
   addOnRates: Partial<Record<'breakfast' | ExtraType, number>>;
   holidays: Record<string, string>;
 }
 
 export function emptyReceptionRateSettings(): ReceptionRateSettings {
-  return { roomRates: {}, addOnRates: {}, holidays: {} };
+  return { roomRates: {}, roomRatesByGuests: {}, addOnRates: {}, holidays: {} };
 }
 
 export const EXTRA_LABELS: Record<ExtraType, string> = {

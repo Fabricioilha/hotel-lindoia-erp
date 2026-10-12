@@ -36,6 +36,7 @@ export interface FinanceExpense {
   plannedAmount: number;
   paidCash: number;
   paidBank: number;
+  paidOyo?: number;
   note: string;
   createdAt: string;
   updatedAt: string;

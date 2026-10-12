@@ -2,12 +2,15 @@
 .rates-page .rates-panel { margin: 20px 0; padding: 22px; }
 .rates-panel h2 { margin: 0 0 6px; color: #142b4d; }
 .rates-panel h3 { margin: 0 0 16px; color: #142b4d; font-size: 1rem; }
+.rates-panel h3 small { display: block; margin-top: 4px; color: #718096; font-size: 0.7rem; font-weight: 500; }
 .rates-help { margin: 0 0 16px; color: #637287; font-size: .875rem; }
 .rates-alert, .rates-notice { padding: 10px 12px; border-radius: 6px; }
 .rates-alert { color: #8b1d2c !important; background: #fff0f1; }
 .rates-notice { color: #1f6843 !important; background: #ecf8f0; }
 .rates-room-list { display: grid; gap: 14px; }
 .rates-room-card { padding: 16px; border: 1px solid #dbe3ed; border-radius: 8px; background: #fbfcfe; }
+.rates-occupancy-card { margin-top: 14px; padding: 14px; border: 1px solid #e4eaf1; border-radius: 7px; background: #fff; }
+.rates-occupancy-card h4 { margin: 0 0 12px; color: #304560; font-size: .875rem; }
 .rates-presets { display: grid; grid-template-columns: minmax(150px, 1fr) auto minmax(150px, 1fr) auto; align-items: end; gap: 10px; margin-bottom: 16px; }
 .rates-page label { display: grid; gap: 6px; color: #304560; font-size: .8125rem; font-weight: 650; }
 .rates-page input { box-sizing: border-box; width: 100%; min-width: 0 !important; min-height: 38px; padding: 8px 10px !important; border: 1px solid #cbd5e1; border-radius: 6px; color: #172d47; background: #fff; font: inherit; }

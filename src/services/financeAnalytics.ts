@@ -19,6 +19,7 @@ export function balancesAt(data: FinanceData, month: string): FinanceBalances {
   Object.values(data.expenses).filter((item) => item.dueDate <= endDate).forEach((item) => {
     balances.cash -= item.paidCash;
     balances.bank -= item.paidBank;
+    balances.oyo -= item.paidOyo ?? 0;
   });
   Object.values(data.payroll).filter((item) => item.dueDate <= endDate).forEach((item) => {
     balances.cash -= item.paidCash;

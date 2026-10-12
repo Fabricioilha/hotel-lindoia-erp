@@ -2,19 +2,19 @@ import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from 're
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAttendant } from '../services/useAttendant';
 import type { UserRole } from '../types';
-import { subscribeDashboardHousekeeping, subscribeCurrentReservationDirectory, subscribeReservationCollections, subscribeRoomDirectory, syncReservationCollections, type DashboardHousekeepingData } from '../services/housekeepingStore';
+import { subscribeDashboardHousekeeping, subscribeCurrentReservationDirectory, subscribeReservationCollections, subscribeRoomCategories, subscribeRoomDirectory, syncReservationCollections, type DashboardHousekeepingData } from '../services/housekeepingStore';
 import { guestStayOccupiesToday, hotelOccupancySummary, occupiedRoomNumbers, reservationOccupiesToday } from '../services/reservationAnalytics';
 import { subscribeRoomAddOnInventory } from '../services/frigobarStore';
-import { convertRotativoToDaily, emptyReception, localDateKey, saveRoomCharge, subscribeReceptionBoard } from '../services/receptionStore';
+import { convertRotativoToDaily, emptyReception, localDateKey, saveRoomCharge, subscribeReceptionBoard, subscribeReceptionRates } from '../services/receptionStore';
 import { emptyCleaning, subscribeActiveCleaningTasks, subscribeDashboardCleaningTasks } from '../services/cleaningStore';
 import { subscribeInventoryProducts } from '../services/inventoryStore';
 import { useInternalOutputSync } from '../services/internalOutputs';
 import type { CleaningData, CleaningTask } from '../types/cleaning';
-import { FOLIO_PAYMENT_METHODS, ROOM_TYPE_LABELS, stayBreakfastDays, stayDailyAmount, type GuestStay, type ReceptionRoom, type RoomCharge, type RoomChargeKind, type StayKind } from '../types/reception';
+import { FOLIO_PAYMENT_METHODS, ROOM_TYPE_LABELS, stayBreakfastDays, stayDailyAmount, weekdayKey, type GuestStay, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge, type RoomChargeKind, type StayKind } from '../types/reception';
 import { PAYMENT_METHOD_LABELS, type FinancePaymentMethod } from '../types/finance';
 import type { StockProduct } from '../types/inventory';
 import type { FrigobarData } from '../types/frigobar';
-import { roomCategoryDescription, type HousekeepingRoom, type ReservationDirectoryEntry } from '../types/housekeeping';
+import { roomCategoryDescription, roomCategoryGuestCounts, type HousekeepingRoom, type ReservationDirectoryEntry, type RoomCategoryRecord } from '../types/housekeeping';
 import type { ReceptionEntryContext } from './caixa/CaixaRecepcao';
 import { ActionCard } from '../components/ui/ActionCard';
 import { PanelModalProvider } from '../components/ui/PanelModalContext';
@@ -53,11 +53,29 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   const [receptionRooms, setReceptionRooms] = useState<Record<string, ReceptionRoom>>({});
   const [roomDirectory, setRoomDirectory] = useState<Record<string, HousekeepingRoom>>({});
   const [reservationDirectory, setReservationDirectory] = useState<Record<string, ReservationDirectoryEntry>>({});
+  const [receptionRates, setReceptionRates] = useState<ReceptionRateSettings>({ roomRates: {}, roomRatesByGuests: {}, addOnRates: {}, holidays: {} });
+  const [priceCategories, setPriceCategories] = useState<RoomCategoryRecord[]>([]);
   const [boardRoomsLoadedKey, setBoardRoomsLoadedKey] = useState('');
   const [boardReservationsLoadedKey, setBoardReservationsLoadedKey] = useState('');
   const [boardReceptionLoadedKey, setBoardReceptionLoadedKey] = useState('');
   const [clock, setClock] = useState(() => Date.now());
   const boardTodayKey = localDateKey(new Date(clock));
+  const boardWeekday = weekdayKey(boardTodayKey);
+  const todayHoliday = receptionRates.holidays[boardTodayKey];
+  const priceSuggestions = useMemo(() => priceCategories.flatMap((category) => {
+    if (!boardWeekday) return [];
+    const guestCounts = roomCategoryGuestCounts(category);
+    const maximumGuests = guestCounts.at(-1) ?? 1;
+    return guestCounts.flatMap((guestCount) => {
+      const rates = receptionRates.roomRatesByGuests?.[category.id]?.[guestCount];
+      const legacyRates = guestCount === maximumGuests ? receptionRates.roomRates[category.id] : undefined;
+      const amount = todayHoliday
+        ? rates?.holiday ?? rates?.[boardWeekday] ?? legacyRates?.holiday ?? legacyRates?.[boardWeekday]
+        : rates?.[boardWeekday] ?? legacyRates?.[boardWeekday];
+      return amount === undefined ? [] : [{ category: `${category.name} · ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}`, amount }];
+    });
+  }), [priceCategories, receptionRates, boardWeekday, todayHoliday]);
+  const priceSuggestionSummary = priceSuggestions.map(({ category, amount }) => `${category} ${money(amount)}`).join(' · ');
   const boardRequestKey = `${userRole}:${boardTodayKey}`;
   const metricsLoaded = metricsLoadedKey === boardRequestKey;
   const metricsError = metricsErrorKey === boardRequestKey;
@@ -174,6 +192,17 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
       unsubscribeReservations();
     };
   }, [boardRequestKey, userRole]);
+
+  useEffect(() => {
+    if (userRole === 'admin') return;
+    const stopRates = subscribeReceptionRates(setReceptionRates, () => setReceptionRates({ roomRates: {}, roomRatesByGuests: {}, addOnRates: {}, holidays: {} }));
+    return () => stopRates();
+  }, [userRole]);
+
+  useEffect(() => {
+    if (userRole === 'admin') return;
+    return subscribeRoomCategories(setPriceCategories, () => setPriceCategories([]));
+  }, [userRole]);
 
   useEffect(() => {
     if (userRole !== 'admin') return;
@@ -316,6 +345,9 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
         {userRole !== 'admin' && <section className="dashboard-modules dashboard-employee-modules" aria-label="O que você quer fazer?">
           <div className="dashboard-section-heading">
             <div><p className="dashboard-eyebrow">PLANTÃO</p><h2>O que você quer fazer?</h2></div>
+            {priceSuggestionSummary && <small className="dashboard-price-suggestions" title={`Sugestões de diária para hoje${todayHoliday ? ` · ${todayHoliday}` : ''}: ${priceSuggestionSummary}`} aria-label={`Sugestões de diária para hoje: ${priceSuggestionSummary}`}>
+              Diárias hoje{todayHoliday ? ` · ${todayHoliday}` : ''}: {priceSuggestionSummary}
+            </small>}
           </div>
           <div className="action-grid">
             <ActionCard tone="blue" icon="bed" title="Adicionar Hóspede" onClick={() => setQuickReceptionKind('hospede')} />

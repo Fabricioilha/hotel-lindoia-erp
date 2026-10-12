@@ -1,14 +1,15 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import { BackToPanel } from '../components/ui/BackToPanel';
 import { saveReceptionRates, subscribeReceptionRates } from '../services/receptionStore';
+import { subscribeRoomCategories } from '../services/housekeepingStore';
 import {
-  EXTRA_LABELS, ROOM_TYPE_LABELS, SELECTABLE_ROOM_TYPES, WEEKDAYS,
-  emptyReceptionRateSettings, type ExtraType, type ReceptionRateSettings, type RoomType, type WeekdayKey,
+  EXTRA_LABELS, WEEKDAYS,
+  emptyReceptionRateSettings, type ExtraType, type ReceptionRateSettings, type WeekdayKey,
 } from '../types/reception';
+import { roomCategoryGuestCounts, type RoomCategoryRecord } from '../types/housekeeping';
 import './financeiro/financeiro.css';
 import './tarifas.css';
 
-const ROOM_TYPES: RoomType[] = [...SELECTABLE_ROOM_TYPES, 'triplo'];
 const ADD_ON_FIELDS: { key: 'breakfast' | ExtraType; label: string; unit: string }[] = [
   { key: 'breakfast', label: 'Café da manhã', unit: 'por pessoa e por noite' },
   { key: 'cama_extra', label: 'Colchão / cama extra', unit: 'por noite' },
@@ -27,75 +28,139 @@ const parseAmount = (value: string) => {
 
 type RateDayKey = WeekdayKey | 'holiday';
 const RATE_DAY_KEYS: RateDayKey[] = [...WEEKDAYS.map(({ key }) => key), 'holiday'];
-type DraftRates = Record<RoomType, Record<RateDayKey, string>>;
+type DraftRates = Record<string, Record<number, Record<RateDayKey, string>>>;
 type DraftAddOns = Record<'breakfast' | ExtraType, string>;
-type DraftPresets = Record<RoomType, { weekday: string; weekend: string }>;
+type DraftPresets = Record<string, Record<number, { weekday: string; weekend: string }>>;
 
-function settingsToDraft(settings: ReceptionRateSettings): { rates: DraftRates; addOns: DraftAddOns; holidays: Record<string, string> } {
-  const rates = Object.fromEntries(ROOM_TYPES.map((type) => [type, Object.fromEntries(RATE_DAY_KEYS.map((key) => [key, amountString(settings.roomRates[type]?.[key])]))])) as DraftRates;
+function settingsToDraft(settings: ReceptionRateSettings, categories: RoomCategoryRecord[]): { rates: DraftRates; addOns: DraftAddOns; holidays: Record<string, string> } {
+  const rates = Object.fromEntries(categories.map((category) => {
+    const guestCounts = roomCategoryGuestCounts(category);
+    const maximumGuests = guestCounts.at(-1) ?? 1;
+    return [category.id, Object.fromEntries(guestCounts.map((guestCount) => [
+      guestCount,
+      Object.fromEntries(RATE_DAY_KEYS.map((key) => {
+        const configuredRate = settings.roomRatesByGuests?.[category.id]?.[guestCount]?.[key];
+        const legacyRate = guestCount === maximumGuests ? settings.roomRates[category.id]?.[key] : undefined;
+        return [key, amountString(configuredRate ?? legacyRate)];
+      })),
+    ]))];
+  })) as DraftRates;
   const addOns = Object.fromEntries(ADD_ON_FIELDS.map(({ key }) => [key, amountString(settings.addOnRates[key])])) as DraftAddOns;
   return { rates, addOns, holidays: { ...settings.holidays } };
 }
 
-function draftToSettings(rates: DraftRates, addOns: DraftAddOns, holidays: Record<string, string>): ReceptionRateSettings {
-  const roomRates: ReceptionRateSettings['roomRates'] = {};
-  ROOM_TYPES.forEach((type) => {
-    const values = Object.fromEntries(RATE_DAY_KEYS.flatMap((key) => {
-      const value = parseAmount(rates[type][key]);
-      return value === undefined ? [] : [[key, value]];
-    }));
-    if (Object.keys(values).length) roomRates[type] = values;
+function draftToSettings(
+  rates: DraftRates,
+  addOns: DraftAddOns,
+  holidays: Record<string, string>,
+  previousSettings: ReceptionRateSettings,
+  categories: RoomCategoryRecord[],
+): ReceptionRateSettings {
+  const roomRates = { ...previousSettings.roomRates };
+  const roomRatesByGuests: NonNullable<ReceptionRateSettings['roomRatesByGuests']> = Object.fromEntries(
+    Object.entries(previousSettings.roomRatesByGuests ?? {}).map(([categoryId, guestRates]) => [categoryId, { ...guestRates }]),
+  );
+  categories.forEach((category) => {
+    const categoryRates = { ...(roomRatesByGuests[category.id] ?? {}) };
+    roomCategoryGuestCounts(category).forEach((guestCount) => {
+      const values = Object.fromEntries(RATE_DAY_KEYS.flatMap((key) => {
+        const value = parseAmount(rates[category.id]?.[guestCount]?.[key] ?? '');
+        return value === undefined ? [] : [[key, value]];
+      }));
+      if (Object.keys(values).length) categoryRates[guestCount] = values;
+      else delete categoryRates[guestCount];
+    });
+    if (Object.keys(categoryRates).length) roomRatesByGuests[category.id] = categoryRates;
+    else delete roomRatesByGuests[category.id];
+    // Move managed categories away from the old single-price format.
+    delete roomRates[category.id];
   });
   const addOnRates: ReceptionRateSettings['addOnRates'] = {};
   ADD_ON_FIELDS.forEach(({ key }) => {
     const value = parseAmount(addOns[key]);
     if (value !== undefined) addOnRates[key] = value;
   });
-  return { roomRates, addOnRates, holidays: Object.fromEntries(Object.entries(holidays).map(([date, label]) => [date, label.trim()])) };
+  return {
+    roomRates,
+    roomRatesByGuests,
+    addOnRates,
+    holidays: Object.fromEntries(Object.entries(holidays).map(([date, label]) => [date, label.trim()])),
+  };
 }
 
 export function Tarifas() {
-  const [rates, setRates] = useState<DraftRates>(() => settingsToDraft(emptyReceptionRateSettings()).rates);
-  const [addOns, setAddOns] = useState<DraftAddOns>(() => settingsToDraft(emptyReceptionRateSettings()).addOns);
+  const [categories, setCategories] = useState<RoomCategoryRecord[]>([]);
+  const [categoriesLoaded, setCategoriesLoaded] = useState(false);
+  const [settings, setSettings] = useState<ReceptionRateSettings>(() => emptyReceptionRateSettings());
+  const [settingsLoaded, setSettingsLoaded] = useState(false);
+  const [rates, setRates] = useState<DraftRates>({});
+  const [addOns, setAddOns] = useState<DraftAddOns>(() => settingsToDraft(emptyReceptionRateSettings(), []).addOns);
   const [holidays, setHolidays] = useState<Record<string, string>>({});
   const [newHolidayDate, setNewHolidayDate] = useState('');
   const [newHolidayLabel, setNewHolidayLabel] = useState('');
-  const [presets, setPresets] = useState<DraftPresets>(() => Object.fromEntries(ROOM_TYPES.map((type) => [type, { weekday: '', weekend: '' }])) as DraftPresets);
-  const [loaded, setLoaded] = useState(false);
+  const [presets, setPresets] = useState<DraftPresets>({});
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
+  const loaded = categoriesLoaded && settingsLoaded;
 
-  useEffect(() => subscribeReceptionRates((settings) => {
-    setLoaded(true);
-    if (dirty) return;
-    const draft = settingsToDraft(settings);
+  useEffect(() => subscribeRoomCategories((next) => {
+    setCategories(next);
+    setCategoriesLoaded(true);
+  }, (cause) => {
+    setCategoriesLoaded(true);
+    setError(`Não foi possível carregar as categorias dos quartos: ${cause.message}`);
+  }), []);
+
+  useEffect(() => subscribeReceptionRates((next) => {
+    setSettings(next);
+    setSettingsLoaded(true);
+  }, (cause) => {
+    setSettingsLoaded(true);
+    setError(`Não foi possível carregar as tarifas: ${cause.message}`);
+  }), []);
+
+  useEffect(() => {
+    if (!loaded || dirty) return;
+    const draft = settingsToDraft(settings, categories);
     setRates(draft.rates);
     setAddOns(draft.addOns);
     setHolidays(draft.holidays);
-  }, (cause) => {
-    setLoaded(true);
-    setError(`Não foi possível carregar as tarifas: ${cause.message}`);
-  }), [dirty]);
+  }, [loaded, dirty, settings, categories]);
 
-  function changeRate(type: RoomType, day: RateDayKey, value: string) {
+  function changeRate(categoryId: string, guestCount: number, day: RateDayKey, value: string) {
     setDirty(true);
-    setRates((current) => ({ ...current, [type]: { ...current[type], [day]: value } }));
+    setRates((current) => ({
+      ...current,
+      [categoryId]: {
+        ...current[categoryId],
+        [guestCount]: { ...current[categoryId]?.[guestCount], [day]: value },
+      },
+    }));
   }
 
-  function applyGroup(type: RoomType, days: WeekdayKey[], value: string) {
+  function applyGroup(categoryId: string, guestCount: number, days: WeekdayKey[], value: string) {
     setDirty(true);
-    setRates((current) => ({ ...current, [type]: { ...current[type], ...Object.fromEntries(days.map((day) => [day, value])) } }));
+    setRates((current) => ({
+      ...current,
+      [categoryId]: {
+        ...current[categoryId],
+        [guestCount]: { ...current[categoryId]?.[guestCount], ...Object.fromEntries(days.map((day) => [day, value])) },
+      },
+    }));
   }
 
   async function save(event: FormEvent) {
     event.preventDefault();
-    for (const type of ROOM_TYPES) {
-      for (const { key, label } of [...WEEKDAYS, { key: 'holiday' as const, label: 'feriado' }]) {
-        if (rates[type][key].trim() && parseAmount(rates[type][key]) === undefined) {
-          setError(`Informe um valor válido para ${ROOM_TYPE_LABELS[type]} na ${label.toLocaleLowerCase('pt-BR')}.`);
-          return;
+    for (const category of categories) {
+      for (const guestCount of roomCategoryGuestCounts(category)) {
+        for (const { key, label } of [...WEEKDAYS, { key: 'holiday' as const, label: 'feriado' }]) {
+          const value = rates[category.id]?.[guestCount]?.[key] ?? '';
+          if (value.trim() && parseAmount(value) === undefined) {
+            setError(`Informe um valor válido para ${category.name}, com ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}, na ${label.toLocaleLowerCase('pt-BR')}.`);
+            return;
+          }
         }
       }
     }
@@ -113,9 +178,10 @@ export function Tarifas() {
     setError('');
     setNotice('');
     try {
-      const settings = draftToSettings(rates, addOns, holidays);
-      await saveReceptionRates(settings);
-      const draft = settingsToDraft(settings);
+      const nextSettings = draftToSettings(rates, addOns, holidays, settings, categories);
+      await saveReceptionRates(nextSettings);
+      setSettings(nextSettings);
+      const draft = settingsToDraft(nextSettings, categories);
       setRates(draft.rates);
       setAddOns(draft.addOns);
       setHolidays(draft.holidays);
@@ -131,24 +197,40 @@ export function Tarifas() {
   return <main className="finance-page rates-page"><div className="finance-content">
     <BackToPanel />
     <h1>Tarifas dos quartos</h1>
-    <p>Cadastre valores de referência por tipo de quarto, dia da semana e feriado. No cadastro do hóspede, o valor total das diárias será informado manualmente.</p>
+    <p>Cadastre valores de referência por categoria, quantidade de hóspedes, dia da semana e feriado. No cadastro do hóspede, o valor total das diárias será informado manualmente.</p>
     {error && <p role="alert" className="rates-alert">{error}</p>}
     {notice && <p role="status" className="rates-notice">{notice}</p>}
     <form onSubmit={(event) => void save(event)}>
-      {!loaded && <p role="status">Carregando tarifas salvas…</p>}
+      {!loaded && <p role="status">Carregando categorias e tarifas salvas…</p>}
       <section className="finance-panel rates-panel">
-        <h2>Diárias por tipo de quarto</h2>
-        <p className="rates-help">Use os atalhos para preencher segunda a quinta e sexta a domingo. Depois, edite qualquer dia ou a tarifa de feriado individualmente.</p>
-        <div className="rates-room-list">{ROOM_TYPES.map((type) => <article className="rates-room-card" key={type}>
-          <h3>{ROOM_TYPE_LABELS[type]}</h3>
-          <div className="rates-presets">
-            <label>Preço de segunda a quinta (R$)<input inputMode="decimal" placeholder="Ex.: 180,00" onChange={(event) => { setDirty(true); setPresets((current) => ({ ...current, [type]: { ...current[type], weekday: event.target.value } })); }} value={presets[type].weekday} /></label>
-            <button type="button" onClick={() => applyGroup(type, WEEKDAY_DAYS, presets[type].weekday)}>Aplicar seg. a qui.</button>
-            <label>Preço de sexta a domingo (R$)<input inputMode="decimal" placeholder="Ex.: 240,00" onChange={(event) => { setDirty(true); setPresets((current) => ({ ...current, [type]: { ...current[type], weekend: event.target.value } })); }} value={presets[type].weekend} /></label>
-            <button type="button" onClick={() => applyGroup(type, WEEKEND_DAYS, presets[type].weekend)}>Aplicar sex. a dom.</button>
-          </div>
-          <div className="rates-week-grid">{WEEKDAYS.map(({ key, label }) => <label key={key}>{label}<span className="rates-money-input"><span>R$</span><input aria-label={`${label}, ${ROOM_TYPE_LABELS[type]}`} inputMode="decimal" placeholder="Sem tarifa" value={rates[type][key]} onChange={(event) => changeRate(type, key, event.target.value)} /></span></label>)}<label>Feriado<span className="rates-money-input"><span>R$</span><input aria-label={`Feriado, ${ROOM_TYPE_LABELS[type]}`} inputMode="decimal" placeholder="Sem tarifa" value={rates[type].holiday} onChange={(event) => changeRate(type, 'holiday', event.target.value)} /></span></label></div>
-        </article>)}</div>
+        <h2>Diárias por categoria de quarto</h2>
+        <p className="rates-help">As categorias e configurações de camas vêm do cadastro de quartos da gerência. Cada categoria mostra uma opção de preço para cada quantidade de hóspedes comportada. Os atalhos preenchem segunda a quinta ou sexta a domingo.</p>
+        {loaded && categories.length === 0
+          ? <p className="rates-empty">Nenhuma categoria cadastrada. Cadastre categorias em Gerenciar quartos para configurar as tarifas.</p>
+          : <div className="rates-room-list">{categories.map((category) => {
+            const guestCounts = roomCategoryGuestCounts(category);
+            return <article className="rates-room-card" key={category.id}>
+              <h3>{category.name}<small>{category.bedComposition} · {category.bedCount} {category.bedCount === 1 ? 'cama' : 'camas'}</small></h3>
+              {guestCounts.map((guestCount) => {
+                const preset = presets[category.id]?.[guestCount] ?? { weekday: '', weekend: '' };
+                const guestLabel = `${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}`;
+                const categoryLabel = `${category.name} · ${guestLabel}`;
+                return <section className="rates-occupancy-card" key={guestCount} aria-label={`Tarifas para ${categoryLabel}`}>
+                  <h4>{guestLabel}</h4>
+                  <div className="rates-presets">
+                    <label>Preço de segunda a quinta (R$)<input inputMode="decimal" placeholder="Ex.: 180,00" onChange={(event) => { setDirty(true); setPresets((current) => ({ ...current, [category.id]: { ...current[category.id], [guestCount]: { ...preset, weekday: event.target.value } } })); }} value={preset.weekday} /></label>
+                    <button type="button" onClick={() => applyGroup(category.id, guestCount, WEEKDAY_DAYS, preset.weekday)}>Aplicar seg. a qui.</button>
+                    <label>Preço de sexta a domingo (R$)<input inputMode="decimal" placeholder="Ex.: 240,00" onChange={(event) => { setDirty(true); setPresets((current) => ({ ...current, [category.id]: { ...current[category.id], [guestCount]: { ...preset, weekend: event.target.value } } })); }} value={preset.weekend} /></label>
+                    <button type="button" onClick={() => applyGroup(category.id, guestCount, WEEKEND_DAYS, preset.weekend)}>Aplicar sex. a dom.</button>
+                  </div>
+                  <div className="rates-week-grid">
+                    {WEEKDAYS.map(({ key, label }) => <label key={key}>{label}<span className="rates-money-input"><span>R$</span><input aria-label={`${label}, ${categoryLabel}`} inputMode="decimal" placeholder="Sem tarifa" value={rates[category.id]?.[guestCount]?.[key] ?? ''} onChange={(event) => changeRate(category.id, guestCount, key, event.target.value)} /></span></label>)}
+                    <label>Feriado<span className="rates-money-input"><span>R$</span><input aria-label={`Feriado, ${categoryLabel}`} inputMode="decimal" placeholder="Sem tarifa" value={rates[category.id]?.[guestCount]?.holiday ?? ''} onChange={(event) => changeRate(category.id, guestCount, 'holiday', event.target.value)} /></span></label>
+                  </div>
+                </section>;
+              })}
+            </article>;
+          })}</div>}
       </section>
       <section className="finance-panel rates-panel">
         <h2>Feriados</h2>
