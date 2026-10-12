@@ -34,10 +34,7 @@ export async function deleteFinancialIncome(entry: FinanceIncome): Promise<void>
       const collectionId = entry.id.slice(`reservation-${reservation.id}-checkout-`.length);
       const pending = entry.id.startsWith(`reservation-${reservation.id}-checkout-`)
         ? await get(ref(db, `erp_geral/reservationCollections/${reservation.id}/${collectionId}`)) : null;
-      if (pending?.exists()) {
-        updates[`erp_geral/reservationCollections/${reservation.id}/${collectionId}`] = null;
-        updates[`erp_geral/reservationCollectionsByDate/${collectionId}`] = null;
-      }
+      if (pending?.exists()) updates[`erp_geral/reservationCollections/${reservation.id}/${collectionId}`] = null;
       else updates[`erp_geral/quartos/reservations/${reservation.id}/balanceDue`] = increment(entry.amount);
     }
   }

@@ -2,7 +2,6 @@ import { endAt, get, limitToLast, onValue, orderByChild, query, ref, startAt, up
 import { db } from '../config/firebase';
 import { buildAuditEvents } from '../types/audit';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, type FinanceData } from '../types/finance';
-import type { ReservationCollection } from '../types/housekeeping';
 import { withOperationalFinance, type OperationalFinanceSources } from './operationalLedger';
 
 const DEPRECATED_INCOME_CATEGORIES = ['Rotativo cartão', 'Consumo Cartão', 'Diária Cartão', 'Café da manhã', 'Café da manhã cartão', 'Outros'];
@@ -92,7 +91,7 @@ export function subscribeFinance(
     roomCharges: 'erp_geral/recepcao/roomCharges',
     cashOuts: 'erp_geral/recepcao/cashOuts',
     sales: 'erp_geral/frigobar/operations/sales',
-    reservationCollections: 'erp_geral/reservationCollectionsByDate',
+    reservationCollections: 'erp_geral/reservationCollections',
   };
   const operationEntries = Object.entries(operationalPaths).flatMap(([key, location]) =>
     options.transactionRange && key === 'sales'
@@ -109,7 +108,6 @@ export function subscribeFinance(
         : key === 'transfers' ? 'date' : '';
     const dateField = key === 'stays' ? 'checkInDate'
       : key === 'roomCharges' || key === 'cashOuts' ? 'date'
-        : key === 'reservationCollections' ? 'date'
         : key === 'sales' || key === 'salesCreatedAt' ? 'createdAt'
           : key === 'salesSettledAt' ? 'settledAt' : '';
     const rangeField = transactionDateField || dateField;
@@ -137,15 +135,9 @@ export function subscribeFinance(
         const sales = options.transactionRange
           ? { ...((values.salesCreatedAt ?? {}) as Record<string, unknown>), ...((values.salesSettledAt ?? {}) as Record<string, unknown>) }
           : values.sales;
-        const reservationCollections = Object.values((values.reservationCollections ?? {}) as Record<string, ReservationCollection>)
-          .reduce<Record<string, Record<string, ReservationCollection>>>((all, collection) => {
-            const reservationId = collection.reservationId;
-            (all[reservationId] ??= {})[collection.id] = collection;
-            return all;
-          }, {});
         onChange(options.includeOperations === false ? data : withOperationalFinance(data, {
           stays: values.stays, roomCharges: values.roomCharges, cashOuts: values.cashOuts,
-          sales, reservationCollections,
+          sales, reservationCollections: values.reservationCollections,
         } as OperationalFinanceSources));
       }
     }, onError);

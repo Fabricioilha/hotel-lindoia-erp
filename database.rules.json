@@ -144,14 +144,6 @@
           }
         }
       },
-      "reservationCollectionsByDate": {
-        ".read": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
-        ".indexOn": ["date"],
-        "$collectionId": {
-          ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
-          ".validate": "newData.child('id').val() === $collectionId && newData.child('reservationId').isString() && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && newData.child('date').isString() && newData.child('paymentMethod').isString() && newData.child('actor').isString()"
-        }
-      },
       "reservationExtras": {
         ".read": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
         "$reservationId": {
