@@ -68,7 +68,8 @@ function normalizeFinance(value: unknown): FinanceData {
     incomeCategories: [...new Set([...INCOME_CATEGORIES, ...normalizeCategories(data.incomeCategories, INCOME_CATEGORIES)])]
       .filter((category) => !categoryAliases.income[category] && category.toLocaleLowerCase('pt-BR') !== 'oyo'
         && !DEPRECATED_INCOME_CATEGORIES.some((deprecated) => deprecated.toLocaleLowerCase('pt-BR') === category.toLocaleLowerCase('pt-BR'))),
-    expenseCategories: normalizeCategories(data.expenseCategories, EXPENSE_CATEGORIES).filter((category) => !categoryAliases.expense[category]),
+    expenseCategories: [...new Set([...normalizeCategories(data.expenseCategories, EXPENSE_CATEGORIES), 'Adiantamento de salário'])]
+      .filter((category) => !categoryAliases.expense[category]),
     auditLog: data.auditLog ?? {},
     suppressed: data.suppressed ?? {},
     deletions: data.deletions ?? {},

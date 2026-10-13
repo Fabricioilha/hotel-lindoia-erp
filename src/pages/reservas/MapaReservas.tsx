@@ -11,7 +11,7 @@ import type { HousekeepingData, HousekeepingRoom, Reservation, ReservationChanne
 import { cancelConfirmedReservation, createReservation, emptyHousekeeping, housekeepingStorageMode, recordReservationCollection, recordReservationExtra, releaseObsoleteReservationSlots, releaseReservationSlots, reserveReservationSlots, rollbackReservationSlots, saveReservationBalanceDue, saveReservationRecord, subscribeCurrentReservationDirectory, subscribeReservationCollections, subscribeReservationExtras, subscribeReservationWorkspace, syncReservationCollections, syncReservationDirectory, transitionReservation } from '../../services/housekeepingStore';
 import { emptyFinance, subscribeReservationPaymentIncomes } from '../../services/financeStore';
 import { deleteStay, subscribeReceptionStayDirectory } from '../../services/receptionStore';
-import { dateKeyAfterDays, guestStayOccupiesToday, hotelOccupancySummary, reservationOverlaps, stayCheckOutDate } from '../../services/reservationAnalytics';
+import { dateKeyAfterDays, guestStayOccupiesToday, hotelOccupancySummary, occupiedRoomNumbers, reservationOccupiesToday, reservationOverlaps, stayCheckOutDate } from '../../services/reservationAnalytics';
 import type { GuestStay, ReceptionRoom } from '../../types/reception';
 import { recordOperationalIncome } from '../../services/operationalIncome';
 import '../camareiras/quartos.css';
@@ -80,13 +80,15 @@ function createId() {
 }
 
 export function MapaReservas({ userRole }: { userRole: UserRole }) {
-	const today = dateKey(new Date());
+	const now = new Date();
+	const today = dateKey(now);
 	const isAdmin = userRole === 'admin';
 	const [data, setData] = useState<HousekeepingData>(emptyHousekeeping());
 	const [loading, setLoading] = useState(true);
 	const [receptionDirectory, setReceptionDirectory] = useState<{ stays: Record<string, GuestStay>; rooms: Record<string, ReceptionRoom> }>({ stays: {}, rooms: {} });
 	const [receptionLoading, setReceptionLoading] = useState(true);
 	const [currentReservationIndex, setCurrentReservationIndex] = useState<Record<string, ReservationDirectoryEntry>>({});
+	const [currentReservationIndexLoaded, setCurrentReservationIndexLoaded] = useState(false);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState('');
 	const [notice, setNotice] = useState('');
@@ -124,11 +126,6 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 	}, [dateFrom, dateTo, isAdmin, validDateRange]);
 
 	useEffect(() => {
-		if (!validDateRange) {
-			setReceptionDirectory((current) => ({ ...current, stays: {} }));
-			setReceptionLoading(false);
-			return;
-		}
 		setReceptionLoading(true);
 		return subscribeReceptionStayDirectory((next) => {
 			setReceptionDirectory(next);
@@ -137,10 +134,16 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 		}, (cause) => {
 			setReceptionLoading(false);
 			setError(`Não foi possível carregar as hospedagens da recepção: ${cause.message}`);
-		}, { from: dateFrom, to: dateTo });
-	}, [dateFrom, dateTo, validDateRange]);
+		});
+	}, []);
 
-	useEffect(() => subscribeCurrentReservationDirectory(setCurrentReservationIndex, (cause) => setError(`Não foi possível atualizar o resumo da ocupação: ${cause.message}`)), []);
+	useEffect(() => subscribeCurrentReservationDirectory((next) => {
+		setCurrentReservationIndex(next);
+		setCurrentReservationIndexLoaded(true);
+	}, (cause) => {
+		setCurrentReservationIndexLoaded(true);
+		setError(`Não foi possível atualizar o resumo da ocupação: ${cause.message}`);
+	}), []);
 
 	useEffect(() => {
 		if (!isAdmin) {
@@ -165,7 +168,34 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 
 	const rooms = useMemo(() => Object.values(data.rooms).sort((a, b) => a.number.localeCompare(b.number, 'pt-BR', { numeric: true })), [data.rooms]);
 	const reservations = useMemo(() => Object.values(data.reservations).sort((a, b) => a.checkInDate.localeCompare(b.checkInDate) || a.guestName.localeCompare(b.guestName, 'pt-BR')), [data.reservations]);
-	const occupancy = hotelOccupancySummary({ rooms: data.rooms, reservations: currentReservationIndex }, new Date(), receptionDirectory);
+	const occupancy = hotelOccupancySummary({ rooms: data.rooms, reservations: currentReservationIndex }, now, receptionDirectory);
+	const occupancyRooms = (() => {
+		const roomByNumber = new Map<string, { number: string; maintenanceStatus?: string }>();
+		Object.values(data.rooms).forEach((room) => roomByNumber.set(room.number.trim(), room));
+		Object.values(receptionDirectory.rooms).forEach((room) => {
+			if (!roomByNumber.has(room.number.trim())) roomByNumber.set(room.number.trim(), room);
+		});
+
+		const occupiedNumbers = occupiedRoomNumbers({ rooms: data.rooms, reservations: currentReservationIndex }, receptionDirectory.stays, now);
+		const occupantByRoom = new Map<string, string>();
+		Object.values(receptionDirectory.stays).forEach((stay) => {
+			const roomNumber = stay.roomNumber.trim();
+			if (roomNumber && guestStayOccupiesToday(stay, today, now.getTime())) occupantByRoom.set(roomNumber, stay.guestName?.trim() || 'Hóspede hospedado');
+		});
+		Object.values(currentReservationIndex).forEach((reservation) => {
+			const roomNumber = reservation.roomNumber.trim();
+			if (roomNumber && reservationOccupiesToday(reservation, today, now.getTime())) occupantByRoom.set(roomNumber, reservation.guestName?.trim() || 'Hóspede hospedado');
+		});
+
+		return [...roomByNumber.values()]
+			.filter((room) => room.number)
+			.sort((a, b) => a.number.localeCompare(b.number, 'pt-BR', { numeric: true }))
+			.map((room) => ({
+				...room,
+				occupied: occupiedNumbers.has(room.number.trim()),
+				guestName: occupantByRoom.get(room.number.trim()) ?? '',
+			}));
+	})();
 	const visibleReservations = reservations.filter((reservation) => {
 		const term = search.trim().toLocaleLowerCase('pt-BR');
 		const matchesSearch = !term || reservation.guestName.toLocaleLowerCase('pt-BR').includes(term)
@@ -536,6 +566,19 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 						<ReservationMetric label="Chegadas amanhã" value={String(occupancy.arrivalsTomorrow.rooms)} detail="quartos" tone="green" />
 						<ReservationMetric label="Saídas amanhã" value={String(occupancy.departuresTomorrow.rooms)} detail="quartos" tone="neutral" />
 					</section>
+					{isAdmin && <section className="reservation-room-occupancy" aria-labelledby="reservation-room-occupancy-title">
+						<div className="reservation-room-occupancy-heading"><div><p className="eyebrow">ACOMPANHAMENTO DE HOJE</p><h2 id="reservation-room-occupancy-title">Grade de ocupação dos quartos</h2></div><span>{loading || receptionLoading || !currentReservationIndexLoaded ? 'Carregando...' : `${occupancyRooms.filter((room) => room.occupied).length} ocupados · ${occupancyRooms.length} quartos`}</span></div>
+						{loading || receptionLoading || !currentReservationIndexLoaded ? <div className="loading-state">Carregando ocupação dos quartos...</div> : !occupancyRooms.length ? <div className="reservation-empty"><strong>Nenhum quarto cadastrado</strong><p>Cadastre os quartos para acompanhar a ocupação.</p></div> : <div className="reservation-room-grid" role="list">
+							{occupancyRooms.map((room) => {
+								const status = room.occupied ? 'occupied' : room.maintenanceStatus === 'em_manutencao' ? 'maintenance' : 'free';
+								const label = status === 'occupied' ? 'Ocupado' : status === 'maintenance' ? 'Em manutenção' : 'Livre';
+								return <article key={room.number} role="listitem" className={`reservation-room-tile is-${status}`} aria-label={`Quarto ${room.number}, ${label}${room.guestName ? ` por ${room.guestName}` : ''}`}>
+									<div className="reservation-room-tile-top"><strong>Quarto {room.number}</strong><span>{label}</span></div>
+									<p>{room.occupied ? room.guestName || 'Hóspede hospedado' : status === 'maintenance' ? 'Indisponível para hospedagem' : 'Sem hospedagem ativa'}</p>
+								</article>;
+							})}
+						</div>}
+					</section>}
 					<section className="reservation-panel">
 						<div className="reservation-toolbar"><div className="reservation-period"><label className="schedule-field"><span>Check-in de</span><input name="reservationFrom" type="date" value={dateFrom} max={dateTo || undefined} onChange={(event) => setDateFrom(event.target.value)} /></label><label className="schedule-field"><span>Até</span><input name="reservationTo" type="date" value={dateTo} min={dateFrom || undefined} onChange={(event) => setDateTo(event.target.value)} /></label></div><div className="reservation-toolbar-controls"><div className="reservation-tabs" role="tablist" aria-label="Filtrar reservas">{([['proximas', 'Ativas'], ['chegadas', 'Chegadas'], ['hospedados', 'Hospedados'], ['todas', 'Todas']] as [ReservationFilter, string][]).map(([id, label]) => <button key={id} role="tab" aria-selected={filter === id} className={filter === id ? 'selected' : ''} onClick={() => setFilter(id)}>{label}</button>)}</div><label className="schedule-field reservation-search"><span>Buscar hóspede ou quarto</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nome, telefone ou quarto" /></label></div></div>
 						{loading || receptionLoading ? <div className="loading-state">Carregando reservas e hospedagens...</div> : !validDateRange ? <div className="reservation-empty"><strong>Informe um período válido</strong><p>A data final deve ser igual ou posterior à data inicial.</p></div> : !rooms.length ? <div className="reservation-empty"><strong>Cadastre os quartos antes de criar reservas</strong><p>O mapa de reservas usa os mesmos quartos e status do serviço de quarto.</p>{isAdmin && <Link className="button button-primary" to="/quartos">Cadastrar quartos</Link>}</div> : !visibleReservations.length ? <div className="reservation-empty"><strong>Nenhuma reserva nesta visão</strong><p>Hospedagens registradas pela recepção aparecem na seção abaixo.</p><button className="button button-primary" onClick={openCreate}>+ Nova reserva</button></div> : <div className="reservation-list">{visibleReservations.map((reservation) => {

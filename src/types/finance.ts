@@ -33,6 +33,7 @@ export interface FinanceExpense {
   id: string;
   dueDate: string;
   category: string;
+  employee?: string;
   plannedAmount: number;
   paidCash: number;
   paidBank: number;
@@ -159,6 +160,7 @@ export const EXPENSE_CATEGORIES = [
   'Plano de saúde',
   'Simples',
   'Vale-transporte',
+  'Adiantamento de salário',
   'Folha de pagamento',
   'Outros',
 ];

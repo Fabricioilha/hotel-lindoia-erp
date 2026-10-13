@@ -1,0 +1,433 @@
+:root {
+  --modal-navy: #142b4d;
+  --modal-navy-action: #183c66;
+  --modal-navy-hover: #244e7d;
+  --modal-red: #c02d42;
+  --modal-surface: #e8eef5;
+  --modal-line: #9aacc0;
+  --modal-control-line: #7f93aa;
+  --modal-ink: #172f4e;
+  --modal-muted: #4e637b;
+  --modal-font: "Avenir Next", "Segoe UI", sans-serif;
+}
+
+/* Shared shell and overlay colors for every custom dialog. */
+.modal-backdrop,
+.reservation-backdrop,
+.finance-modal-backdrop,
+.dashboard-room-charge-backdrop,
+.dashboard-tool-backdrop,
+.cx-modal-backdrop,
+.float-gate,
+.reception-overlay {
+  background-color: rgb(5 16 30 / 76%);
+  -webkit-backdrop-filter: blur(5px) saturate(.72);
+  backdrop-filter: blur(5px) saturate(.72);
+}
+
+:where([role="dialog"][aria-modal="true"]):not(.reception-overlay):not(.float-gate):not(.finance-expense-modal) {
+  box-sizing: border-box;
+  border: 1px solid #7c91aa !important;
+  border-top: 6px solid var(--modal-red) !important;
+  border-radius: 12px !important;
+  color: var(--modal-ink) !important;
+  background: var(--modal-surface) !important;
+  box-shadow: 0 36px 100px rgb(0 0 0 / 46%), 0 8px 24px rgb(0 0 0 / 28%) !important;
+  font-family: var(--modal-font) !important;
+}
+
+:where([role="dialog"][aria-modal="true"]:not(.reception-overlay):not(.float-gate):not(.finance-expense-modal):not(.dashboard-tool-modal)) h2 {
+  color: var(--modal-navy) !important;
+  font-family: var(--modal-font) !important;
+  font-size: 1.5rem !important;
+  font-weight: 750 !important;
+  line-height: 1.2;
+}
+
+:where([role="dialog"][aria-modal="true"]:not(.reception-overlay):not(.float-gate):not(.finance-expense-modal):not(.dashboard-tool-modal)) p:not(.eyebrow):not(.schedule-eyebrow):not(.finance-eyebrow):not(.cx-eyebrow):not(.float-eyebrow):not(.dashboard-eyebrow) {
+  font-family: var(--modal-font) !important;
+  font-size: .875rem !important;
+  line-height: 1.5;
+}
+
+.float-box {
+  border: 1px solid #7c91aa !important;
+  border-top: 6px solid var(--modal-red) !important;
+  border-radius: 12px !important;
+  color: var(--modal-ink) !important;
+  background: var(--modal-surface) !important;
+  box-shadow: 0 36px 100px rgb(0 0 0 / 46%), 0 8px 24px rgb(0 0 0 / 28%) !important;
+  font-family: var(--modal-font) !important;
+}
+
+.float-box h2 {
+  margin: -14px -28px 0 !important;
+  padding: 0 24px 14px;
+  border-bottom: 1px solid #0b1d34;
+  color: #fff !important;
+  background: var(--modal-navy);
+  font-family: var(--modal-font) !important;
+  font-size: 1.5rem !important;
+}
+
+.float-box > p:not(.float-eyebrow) {
+  color: #40556e;
+  font-family: var(--modal-font) !important;
+  font-size: .875rem !important;
+  line-height: 1.5;
+}
+
+.float-box .float-eyebrow {
+  margin: -28px -28px 0 !important;
+  padding: 14px 24px 3px;
+  color: #e69aa5 !important;
+  background: var(--modal-navy);
+  font-family: var(--modal-font) !important;
+  font-size: .6875rem !important;
+}
+
+.cx-handoff-modal > div:first-child {
+  margin: -22px -22px 0;
+  padding: 14px 24px;
+  border-bottom: 1px solid #0b1d34;
+  color: #fff;
+  background: var(--modal-navy);
+}
+
+#cx-handoff-title {
+  color: #fff !important;
+}
+
+.cx-handoff-modal > div:first-child .cx-eyebrow {
+  color: #e69aa5;
+}
+
+.cx-handoff-modal > div:first-child > p:last-child {
+  color: #d5deea;
+}
+
+.float-box .float-yes,
+.float-box .float-no,
+.float-box .float-back {
+  min-height: 44px;
+  border-radius: 6px;
+  font-family: var(--modal-font) !important;
+  font-size: .8125rem !important;
+}
+
+/* Consistent navy title bars, with the red brand accent on the dialog shell. */
+.modal-backdrop .stock-modal .modal-header,
+.modal-backdrop .stock-modal .schedule-modal-heading,
+.modal-backdrop .stock-modal .schedule-modal-header,
+.modal-backdrop .stock-modal .reservation-modal-heading,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-modal-header,
+.dashboard-tool-backdrop .dashboard-tool-modal .dashboard-tool-modal-header {
+  min-height: 76px;
+  flex-basis: 76px;
+  align-items: center;
+  padding: 14px 24px;
+  border-top: 0 !important;
+  border-bottom: 1px solid #0b1d34 !important;
+  color: #fff !important;
+  background: var(--modal-navy) !important;
+  font-family: var(--modal-font) !important;
+}
+
+.modal-backdrop .stock-modal .modal-header h2,
+.modal-backdrop .stock-modal .schedule-modal-heading h2,
+.modal-backdrop .stock-modal .schedule-modal-header h2,
+.modal-backdrop .stock-modal .reservation-modal-heading h2,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-modal-header h2,
+.dashboard-tool-backdrop .dashboard-tool-modal .dashboard-tool-modal-header h2 {
+  color: #fff !important;
+  font-family: var(--modal-font) !important;
+  font-size: 1.5rem !important;
+  font-weight: 750 !important;
+}
+
+.modal-backdrop .stock-modal .eyebrow,
+.modal-backdrop .stock-modal .schedule-eyebrow,
+.modal-backdrop .stock-modal .reservation-modal-heading .eyebrow,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-eyebrow {
+  color: #e69aa5 !important;
+  font-family: var(--modal-font) !important;
+  font-size: .6875rem !important;
+  font-weight: 800 !important;
+  letter-spacing: .08em;
+}
+
+.modal-backdrop .stock-modal .modal-header .close-button,
+.modal-backdrop .stock-modal .schedule-modal-close,
+.modal-backdrop .stock-modal .schedule-modal-header > button,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-close,
+.dashboard-tool-backdrop .dashboard-tool-modal .dashboard-tool-modal-header button,
+.dashboard-room-charge-modal .dashboard-room-charge-close {
+  width: 44px !important;
+  height: 44px !important;
+  flex: 0 0 44px !important;
+  border: 1px solid #b0bfd0 !important;
+  border-radius: 50% !important;
+  color: #fff !important;
+  background: #294667 !important;
+  font-family: var(--modal-font) !important;
+  font-size: 1.5rem !important;
+}
+
+.modal-backdrop .stock-modal .modal-header .close-button:hover,
+.modal-backdrop .stock-modal .schedule-modal-close:hover,
+.modal-backdrop .stock-modal .schedule-modal-header > button:hover,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-close:hover,
+.dashboard-tool-backdrop .dashboard-tool-modal .dashboard-tool-modal-header button:hover,
+.dashboard-room-charge-modal .dashboard-room-charge-close:hover {
+  border-color: var(--modal-red) !important;
+  background: var(--modal-red) !important;
+}
+
+/* Stock, room, reservation, finance and shift forms use the guest form's scale. */
+.modal-backdrop .stock-modal .modal-header + .modal-body,
+.modal-backdrop .stock-modal .modal-body,
+.modal-backdrop .stock-modal .reservation-modal-content,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-modal-body {
+  color: var(--modal-ink);
+  background: var(--modal-surface);
+}
+
+.modal-backdrop .stock-modal .form-field,
+.modal-backdrop .stock-modal .schedule-field,
+.modal-backdrop .stock-modal .reservation-modal .schedule-field,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-field,
+.dashboard-room-charge-modal .dashboard-room-charge-field,
+.dashboard-room-charge-modal .dashboard-room-charge-types legend,
+.cx-handoff-modal .cx-field,
+.float-box .float-form label {
+  color: #203956 !important;
+  font-family: var(--modal-font) !important;
+  font-size: .875rem !important;
+  font-weight: 800 !important;
+}
+
+.modal-backdrop .stock-modal .form-field > span,
+.modal-backdrop .stock-modal .schedule-field > span,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-field > span,
+.dashboard-room-charge-modal .dashboard-room-charge-field,
+.cx-handoff-modal .cx-field,
+.float-box .float-form label {
+  color: #203956 !important;
+  font-size: .875rem !important;
+  font-weight: 800 !important;
+}
+
+.modal-backdrop .stock-modal .form-field input,
+.modal-backdrop .stock-modal .form-field select,
+.modal-backdrop .stock-modal .form-field textarea,
+.modal-backdrop .stock-modal .schedule-field input,
+.modal-backdrop .stock-modal .schedule-field select,
+.modal-backdrop .stock-modal .schedule-field textarea,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-field input,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-field select,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-field textarea,
+.dashboard-room-charge-modal .dashboard-room-charge-field input,
+.dashboard-room-charge-modal .dashboard-room-charge-field select,
+.cx-handoff-modal .cx-field input,
+.cx-handoff-modal .cx-field select,
+.cx-handoff-modal .cx-field textarea,
+.float-box .float-form input,
+.float-box .float-form select,
+.float-box .float-form textarea {
+  min-height: 49px !important;
+  padding: 10px 12px !important;
+  border: 1px solid var(--modal-control-line) !important;
+  border-radius: 7px !important;
+  color: var(--modal-ink) !important;
+  background: #fff !important;
+  font-family: var(--modal-font) !important;
+  font-size: .9375rem !important;
+  font-weight: 500 !important;
+  box-shadow: inset 0 1px 2px rgb(24 47 78 / 6%);
+}
+
+.modal-backdrop .stock-modal .form-field input:focus,
+.modal-backdrop .stock-modal .form-field select:focus,
+.modal-backdrop .stock-modal .form-field textarea:focus,
+.modal-backdrop .stock-modal .schedule-field input:focus,
+.modal-backdrop .stock-modal .schedule-field select:focus,
+.modal-backdrop .stock-modal .schedule-field textarea:focus,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-field input:focus,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-field select:focus,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-field textarea:focus,
+.dashboard-room-charge-modal .dashboard-room-charge-field input:focus,
+.dashboard-room-charge-modal .dashboard-room-charge-field select:focus,
+.cx-handoff-modal .cx-field input:focus,
+.cx-handoff-modal .cx-field select:focus,
+.cx-handoff-modal .cx-field textarea:focus,
+.float-box .float-form input:focus,
+.float-box .float-form select:focus,
+.float-box .float-form textarea:focus {
+  border-color: #1e5d9d !important;
+  outline: 0 !important;
+  box-shadow: 0 0 0 3px rgb(30 93 157 / 22%) !important;
+}
+
+.modal-backdrop .stock-modal .modal-footer,
+.modal-backdrop .stock-modal .schedule-modal-actions,
+.modal-backdrop .stock-modal .reservation-modal-footer,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-modal-footer {
+  border-color: var(--modal-line) !important;
+  background: var(--modal-surface) !important;
+  box-shadow: none !important;
+}
+
+.modal-backdrop .stock-modal .button,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-button,
+.modal-backdrop .stock-modal .reservation-modal-footer button,
+.dashboard-room-charge-modal .dashboard-room-charge-actions button,
+.cx-handoff-modal .cx-secondary,
+.cx-handoff-modal .cx-primary {
+  min-height: 44px;
+  border-radius: 6px;
+  font-family: var(--modal-font) !important;
+  font-size: .8125rem !important;
+  font-weight: 750;
+}
+
+.modal-backdrop .stock-modal .button-primary,
+.modal-backdrop .stock-modal .reservation-modal-footer .button-primary,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-button-primary,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-button-dark,
+.dashboard-room-charge-modal .dashboard-room-charge-submit,
+.cx-handoff-modal .cx-primary {
+  border-color: var(--modal-navy-action) !important;
+  color: #fff !important;
+  background: var(--modal-navy-action) !important;
+  box-shadow: 0 3px 9px rgb(20 43 77 / 18%);
+}
+
+.modal-backdrop .stock-modal .button-primary:hover:not(:disabled),
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-button-primary:hover:not(:disabled),
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-button-dark:hover:not(:disabled),
+.dashboard-room-charge-modal .dashboard-room-charge-submit:hover:not(:disabled),
+.cx-handoff-modal .cx-primary:hover:not(:disabled) {
+  background: var(--modal-navy-hover) !important;
+}
+
+.modal-backdrop .stock-modal .button-plain,
+.modal-backdrop .stock-modal .reservation-modal-footer .button-plain,
+.finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-button-soft,
+.dashboard-room-charge-modal .dashboard-room-charge-cancel,
+.cx-handoff-modal .cx-secondary {
+  border: 1px solid var(--modal-line) !important;
+  color: #294667 !important;
+  background: #fff !important;
+}
+
+/* Dashboard dialogs have a distinct compact header but share the same palette. */
+.dashboard-tool-modal {
+  border: 1px solid #7c91aa !important;
+  border-top: 6px solid var(--modal-red) !important;
+  border-radius: 12px !important;
+  font-family: var(--modal-font) !important;
+}
+
+.dashboard-tool-modal-header h2 {
+  font-size: 1.5rem !important;
+}
+
+.dashboard-room-charge-header {
+  margin: -19px -19px 16px !important;
+  padding: 14px 18px !important;
+  border-bottom: 1px solid #0b1d34;
+  background: var(--modal-navy);
+}
+
+.dashboard-room-charge-header h2,
+.dashboard-room-charge-header .dashboard-eyebrow,
+.dashboard-room-charge-header small {
+  color: #fff !important;
+  font-family: var(--modal-font) !important;
+}
+
+.dashboard-room-charge-header .dashboard-eyebrow {
+  color: #e69aa5 !important;
+}
+
+.dashboard-room-choice h2 {
+  font-size: 1.5rem !important;
+}
+
+.dashboard-room-choice-actions button {
+  border-color: var(--modal-line) !important;
+  border-radius: 8px !important;
+  color: #294667 !important;
+  background: #fff !important;
+  font-family: var(--modal-font) !important;
+  font-size: .9375rem !important;
+}
+
+.dashboard-room-choice-actions svg {
+  color: var(--modal-navy-action) !important;
+}
+
+.dashboard-room-choice-cancel {
+  min-height: 44px !important;
+  border-color: var(--modal-line) !important;
+  color: #294667 !important;
+  background: #fff !important;
+  font-family: var(--modal-font) !important;
+  font-size: .8125rem !important;
+}
+
+/* Shift editor form was structurally different from the other stock dialogs. */
+.modal-backdrop .stock-modal.schedule-modal > form {
+  display: grid;
+  gap: 14px;
+  padding-bottom: 20px;
+}
+
+.modal-backdrop .stock-modal.schedule-modal .schedule-modal-heading {
+  margin: 0;
+  padding: 14px 22px;
+}
+
+.modal-backdrop .stock-modal.schedule-modal .schedule-modal-date,
+.modal-backdrop .stock-modal.schedule-modal > form > .schedule-field,
+.modal-backdrop .stock-modal.schedule-modal .modal-times,
+.modal-backdrop .stock-modal.schedule-modal .schedule-modal-actions {
+  margin-right: 22px;
+  margin-left: 22px;
+}
+
+.modal-backdrop .stock-modal.schedule-modal .schedule-modal-date {
+  margin-top: 0;
+  margin-bottom: 0;
+  color: var(--modal-muted);
+  font-size: .875rem;
+}
+
+@media (max-width: 620px) {
+  :where([role="dialog"][aria-modal="true"]:not(.reception-overlay):not(.float-gate):not(.finance-expense-modal):not(.dashboard-tool-modal)) h2,
+  .modal-backdrop .stock-modal .modal-header h2,
+  .modal-backdrop .stock-modal .schedule-modal-heading h2,
+  .modal-backdrop .stock-modal .schedule-modal-header h2,
+  .modal-backdrop .stock-modal .reservation-modal-heading h2,
+  .finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-modal-header h2,
+  .dashboard-tool-modal-header h2 {
+    font-size: 1.1875rem !important;
+  }
+
+  .modal-backdrop .stock-modal .modal-header,
+  .modal-backdrop .stock-modal .schedule-modal-heading,
+  .modal-backdrop .stock-modal .schedule-modal-header,
+  .modal-backdrop .stock-modal .reservation-modal-heading,
+  .finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-modal-header,
+  .dashboard-tool-backdrop .dashboard-tool-modal .dashboard-tool-modal-header {
+    min-height: 62px;
+    flex-basis: 62px;
+    padding: 10px 16px;
+  }
+
+  .float-box h2 { margin-right: -28px !important; margin-left: -28px !important; font-size: 1.1875rem !important; }
+
+  .dashboard-room-charge-header {
+    margin: -15px -15px 14px !important;
+  }
+}

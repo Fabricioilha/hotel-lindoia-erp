@@ -20,6 +20,111 @@
   font-size: 0.625rem;
 }
 
+.reservation-room-occupancy {
+  margin: 0 0 14px;
+  padding: 15px;
+  border: 1px solid #cdd6e3;
+  border-radius: 4px;
+  background: #fff;
+}
+
+.reservation-room-occupancy-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.reservation-room-occupancy-heading .eyebrow {
+  margin: 0 0 3px;
+}
+
+.reservation-room-occupancy-heading h2 {
+  margin: 0;
+  color: #243954;
+  font-size: 1rem;
+}
+
+.reservation-room-occupancy-heading > span {
+  color: #5a6a80;
+  font-size: 0.6875rem;
+  font-weight: 750;
+  white-space: nowrap;
+}
+
+.reservation-room-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 9px;
+}
+
+.reservation-room-tile {
+  min-width: 0;
+  min-height: 82px;
+  padding: 11px 12px;
+  border: 1px solid #cdd6e3;
+  border-left: 4px solid #39845d;
+  border-radius: 5px;
+  background: #fbfcfe;
+}
+
+.reservation-room-tile.is-occupied {
+  border-left-color: #c52e43;
+  background: #fff9fa;
+}
+
+.reservation-room-tile.is-maintenance {
+  border-left-color: #b78332;
+  background: #fffaf0;
+}
+
+.reservation-room-tile-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 7px;
+}
+
+.reservation-room-tile-top strong {
+  color: #243954;
+  font-size: 0.8125rem;
+}
+
+.reservation-room-tile-top span {
+  padding: 3px 6px;
+  border-radius: 999px;
+  color: #247146;
+  background: #eaf6ee;
+  font-size: 0.5625rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.reservation-room-tile.is-occupied .reservation-room-tile-top span {
+  color: #a52b3c;
+  background: #fff0f2;
+}
+
+.reservation-room-tile.is-maintenance .reservation-room-tile-top span {
+  color: #805c2d;
+  background: #fbf3e4;
+}
+
+.reservation-room-tile p {
+  overflow: hidden;
+  margin: 8px 0 0;
+  color: #5a6a80;
+  font-size: 0.6875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.reservation-room-tile.is-occupied p {
+  color: #283b58;
+  font-weight: 700;
+}
+
 .reservation-panel {
   overflow: hidden;
   border: 1px solid #cdd6e3;

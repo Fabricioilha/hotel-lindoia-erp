@@ -167,4 +167,48 @@
   .finance-income-line .finance-remove-line { grid-column: 2; grid-row: 2; }
   .finance-income-section-heading { align-items: flex-start; flex-direction: column; }
   .finance-modal-header, .finance-modal-footer { padding-right: 16px; padding-left: 16px; }
-}.finance-audit > summary { cursor: pointer; }
+}
+.finance-audit > summary { cursor: pointer; }
+
+/* Cadastro de despesas com a identidade visual do modal "Adicionar hóspede". */
+.finance-expense-backdrop { z-index: 130; padding: clamp(10px, 2vw, 28px); background: rgb(5 16 30 / 76%); backdrop-filter: blur(5px) saturate(.72); -webkit-backdrop-filter: blur(5px) saturate(.72); }
+.finance-expense-modal { display: flex; flex-direction: column; width: min(100%, 900px); max-height: min(90vh, 900px); max-height: min(90dvh, 900px); overflow: hidden; padding: 0; border: 1px solid #7c91aa; border-top: 6px solid #c02d42; border-radius: 14px; background: #e8eef5; box-shadow: 0 36px 100px rgb(0 0 0 / 56%), 0 8px 24px rgb(0 0 0 / 32%); }
+.finance-expense-modal > form { display: flex; min-height: 0; flex-direction: column; }
+.finance-expense-modal .finance-modal-header { min-height: 76px; align-items: center; padding: 14px 24px; border-top: 0; border-bottom: 1px solid #0b1d34; background: #142b4d; }
+.finance-expense-modal .finance-modal-header .finance-eyebrow { color: #e69aa5; }
+.finance-expense-modal .finance-modal-header h2 { color: #fff; font-size: 1.5rem; }
+.finance-expense-modal .finance-close { width: 44px; height: 44px; flex: 0 0 44px; border-color: #b0bfd0; border-radius: 50%; color: #fff; background: #294667; font-size: 1.5rem; }
+.finance-expense-modal .finance-close:hover { border-color: #c02d42; background: #c02d42; }
+.finance-expense-modal .finance-modal-body { display: grid; min-height: 0; grid-template-columns: minmax(0, 1fr); gap: 14px; overflow-y: auto; padding: 20px 22px; background: #e8eef5; overscroll-behavior: contain; }
+.finance-expense-section { display: grid; grid-template-columns: minmax(0, 1fr); gap: 15px; padding: 20px; border: 1px solid #9aacc0; border-radius: 12px; background: #fff; box-shadow: 0 3px 10px rgb(29 48 70 / 8%); }
+.finance-expense-step { display: flex; align-items: center; gap: 11px; padding-bottom: 9px; border-bottom: 2px solid #d0dbe7; }
+.finance-expense-step > span { display: grid; width: 32px; height: 32px; flex: 0 0 32px; place-items: center; border: 2px solid #fff; border-radius: 50%; color: #fff; background: #173a62; box-shadow: 0 0 0 1px #173a62; font-size: .8125rem; font-weight: 800; }
+.finance-expense-step > div { display: grid; gap: 2px; }
+.finance-expense-step strong { color: #172f4e; font-size: 1rem; }
+.finance-expense-step small { color: #4e637b; font-size: .8125rem; line-height: 1.4; }
+.finance-expense-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 15px 18px; }
+.finance-expense-modal .finance-field > span { color: #203956; font-size: .875rem; font-weight: 800; }
+.finance-expense-modal .finance-field input, .finance-expense-modal .finance-field select, .finance-expense-modal .finance-field textarea { min-height: 49px; padding: 10px 12px; border: 1px solid #7f93aa; border-radius: 7px; color: #172f4e; background: #fff; font-size: .9375rem; box-shadow: inset 0 1px 2px rgb(24 47 78 / 6%); }
+.finance-expense-modal .finance-field textarea { min-height: 86px; }
+.finance-expense-modal .finance-field input:focus, .finance-expense-modal .finance-field select:focus, .finance-expense-modal .finance-field textarea:focus { border-color: #1e5d9d; outline: 0; box-shadow: 0 0 0 3px rgb(30 93 157 / 22%); }
+.finance-expense-money { display: flex; min-height: 49px; align-items: center; overflow: hidden; border: 1px solid #7f93aa; border-radius: 7px; background: #fff; box-shadow: inset 0 1px 2px rgb(24 47 78 / 6%); }
+.finance-expense-modal .finance-field .finance-expense-money > span { padding-left: 12px; color: #566b85; font-size: .875rem; }
+.finance-expense-modal .finance-field .finance-expense-money input { width: 0; flex: 1 1 0; border: 0; box-shadow: none; }
+.finance-expense-modal .finance-field .finance-expense-money input:focus { box-shadow: none; }
+.finance-expense-modal .finance-form-hint { color: #40556e; font-size: .8125rem; font-weight: 600; }
+.finance-expense-modal .finance-modal-footer { flex-shrink: 0; gap: 10px; padding: 14px 24px; border-top: 1px solid #9aacc0; background: #e8eef5; box-shadow: none; }
+.finance-expense-modal .finance-modal-footer .finance-button { min-height: 44px; padding: 9px 15px; border-radius: 6px; font-size: .8125rem; }
+.finance-expense-modal .finance-modal-footer .finance-button-soft { border-color: #9aacc0; color: #294667; background: #fff; }
+.finance-expense-modal .finance-modal-footer .finance-button-primary { background: #183c66; box-shadow: 0 3px 9px rgb(20 43 77 / 18%); }
+.finance-expense-modal .finance-modal-footer .finance-button-primary:hover:not(:disabled) { background: #244e7d; box-shadow: 0 6px 14px rgb(20 43 77 / 21%); }
+
+@media (max-width: 620px) {
+  .finance-expense-backdrop { padding: 12px; }
+  .finance-expense-modal { max-height: 92vh; max-height: 92dvh; border-radius: 12px; }
+  .finance-expense-modal .finance-modal-header { padding: 14px 16px; }
+  .finance-expense-modal .finance-modal-header h2 { font-size: 1.125rem; }
+  .finance-expense-modal .finance-modal-body { gap: 12px; padding: 14px; }
+  .finance-expense-section { gap: 12px; padding: 15px; }
+  .finance-expense-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+  .finance-expense-modal .finance-modal-footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; padding: 12px 14px; }
+}

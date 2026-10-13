@@ -5,7 +5,9 @@ import { CASH_OUT_REASONS } from '../../types/reception';
 import { DateInput } from '../../components/ui/DateInput';
 import { emptyFinance, financeStorageMode, subscribeFinance, updateFinance } from '../../services/financeStore';
 import { deleteFinancialExpense, deleteFinancialIncome } from '../../services/financeDeletion';
+import { useStaff } from '../../services/staffStore';
 import { balancesAt, hotelIncomeView, oyoPaymentsAt, monthlyReceipts, prepaidEntriesAt, prepaidEntriesTotal, type PrepaidIncomeEntry } from '../../services/financeAnalytics';
+import { staffMembers } from '../../types/staff';
 import {
 	DAILY_INCOME_ITEMS,
 	INCOME_CATEGORIES,
@@ -29,7 +31,8 @@ type Tab = 'resumo' | 'entradas' | 'prepagos' | 'saidas' | 'transferencias' | 'c
 type Modal = 'entrada' | 'entrada-prepaga' | 'saida' | 'transferencia' | 'repasse' | 'saldo' | null;
 type TransactionRange = { from: string; to: string };
 // Categorias usadas por lançamentos automáticos (hospedagem, venda, estoque, OYO).
-const LOCKED_CATEGORIES = { income: INCOME_CATEGORIES, expense: ['Estoque', 'OYO', ...CASH_OUT_REASONS] };
+const SALARY_ADVANCE_CATEGORY = 'Adiantamento de salário';
+const LOCKED_CATEGORIES = { income: INCOME_CATEGORIES, expense: ['Estoque', 'OYO', SALARY_ADVANCE_CATEGORY, ...CASH_OUT_REASONS] };
 type Activity = { id: string; date: string; title: string; detail: string; amount: number; paid: number; type: 'entrada' | 'saida' | 'folha'; wallet: string };
 
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -69,6 +72,7 @@ function exportCsv(filename: string, rows: (string | number)[][]) {
 }
 
 export function FluxoDeCaixa() {
+	const { data: staff } = useStaff();
 	const [data, setData] = useState<FinanceData>(emptyFinance());
 	const [month, setMonth] = useState(localMonth);
 	const [tab, setTab] = useState<Tab>('entradas');
@@ -112,6 +116,7 @@ export function FluxoDeCaixa() {
 	const prepaidTotal = prepaidEntriesTotal(prepaidEntries);
 	const prepaidMonthTotal = prepaidEntriesTotal(prepaidEntries.filter((entry) => entry.income.date.startsWith(month)));
 	const visibleIncomeTotal = incomes.reduce((total, item) => total + item.amount, 0);
+	const expenseCategories = useMemo(() => [...new Set([...data.expenseCategories, SALARY_ADVANCE_CATEGORY])], [data.expenseCategories]);
 
 	function applyTransactionRange(event: FormEvent<HTMLFormElement>) {
 		event.preventDefault();
@@ -130,7 +135,7 @@ export function FluxoDeCaixa() {
 			exportCsv(`entradas-${fileRange}.csv`, [['Data', 'Origem', 'Itens', 'Pagamentos', 'Valor total', 'Observação'], ...incomes.map((item) => [item.date, item.category, incomeItems(item).map((line) => `${line.description}: ${money(line.amount)}`).join(' | '), incomePaymentSummary(item), item.amount, item.note])]);
 			return;
 		}
-		exportCsv(`despesas-${fileRange}.csv`, [['Vencimento', 'Categoria', 'Previsto', 'Pago em caixa', 'Pago em banco', 'Pago com retidos OYO', 'Pendente', 'Observação'], ...expenses.map((item) => [item.dueDate, item.category, item.plannedAmount, item.paidCash, item.paidBank, item.paidOyo ?? 0, Math.max(0, item.plannedAmount - item.paidCash - item.paidBank - (item.paidOyo ?? 0)), item.note]), ...payroll.map((item) => [item.dueDate, `Folha · ${item.employee}`, payrollNet(item), item.paidCash, item.paidBank, 0, Math.max(0, payrollNet(item) - item.paidCash - item.paidBank), item.note])]);
+		exportCsv(`despesas-${fileRange}.csv`, [['Vencimento', 'Categoria', 'Funcionário', 'Valor', 'Pago em caixa', 'Pago em banco', 'Pago com retidos OYO', 'Pendente', 'Observação'], ...expenses.map((item) => [item.dueDate, item.category, item.employee ?? '', item.plannedAmount, item.paidCash, item.paidBank, item.paidOyo ?? 0, Math.max(0, item.plannedAmount - item.paidCash - item.paidBank - (item.paidOyo ?? 0)), item.note]), ...payroll.map((item) => [item.dueDate, `Folha · ${item.employee}`, item.employee, payrollNet(item), item.paidCash, item.paidBank, 0, Math.max(0, payrollNet(item) - item.paidCash - item.paidBank), item.note])]);
 	}
 
 	function exportMonthlyReport() {
@@ -141,7 +146,7 @@ export function FluxoDeCaixa() {
 			const prepaid = payments.filter((line) => line.paymentMethod === 'prepaid').reduce((sum, line) => sum + line.amount, 0);
 			return [prepaid && !cash && !bank ? 'Pré-pago externo OYO' : prepaid ? 'Pagamento combinado (hotel + OYO)' : 'Entrada no hotel', item.date, item.category, payments.map((line) => `${line.description}: ${money(line.amount)}`).join(' | '), '', '', '', item.amount, cash, bank, 0, prepaid, 0, incomePaymentSummary(item), item.note];
 		});
-		const expenseRows = expenses.map((item) => ['Despesa', item.dueDate, item.category, item.note, '', '', item.plannedAmount, item.paidCash + item.paidBank + (item.paidOyo ?? 0), item.paidCash, item.paidBank, item.paidOyo ?? 0, 0, Math.max(0, item.plannedAmount - item.paidCash - item.paidBank - (item.paidOyo ?? 0)), '', item.note]);
+		const expenseRows = expenses.map((item) => ['Despesa', item.dueDate, item.category, [item.employee ? `Adiantamento para ${item.employee}` : '', item.note].filter(Boolean).join(' · '), '', '', item.plannedAmount, item.paidCash + item.paidBank + (item.paidOyo ?? 0), item.paidCash, item.paidBank, item.paidOyo ?? 0, 0, Math.max(0, item.plannedAmount - item.paidCash - item.paidBank - (item.paidOyo ?? 0)), '', item.note]);
 		const payrollRows = payroll.map((item) => ['Folha', item.dueDate, 'Folha de pagamento', `${item.employee}${item.position ? ` · ${item.position}` : ''}`, '', '', payrollNet(item), item.paidCash + item.paidBank, item.paidCash, item.paidBank, 0, 0, Math.max(0, payrollNet(item) - item.paidCash - item.paidBank), '', item.note]);
 		const transferRows = transfers.map((item) => ['Transferência', item.date, 'Entre carteiras', item.note, WALLET_LABELS[item.from], WALLET_LABELS[item.to], '', item.amount, 0, 0, 0, 0, 0, '', item.note]);
 		exportCsv(`financeiro-${month}.csv`, [
@@ -216,20 +221,22 @@ export function FluxoDeCaixa() {
 		event.preventDefault();
 		const form = new FormData(event.currentTarget);
 		const category = String(form.get('category') ?? '').trim();
-		const plannedAmount = Number(form.get('plannedAmount'));
-		const paidCash = Number(form.get('paidCash'));
-		const paidBank = Number(form.get('paidBank'));
-		const paidOyo = Number(form.get('paidOyo'));
-		if (!category || [plannedAmount, paidCash, paidBank, paidOyo].some((value) => !Number.isFinite(value) || value < 0)) { setError('Confira a categoria e os valores da despesa.'); return; }
+		const amount = Number(form.get('amount'));
+		const paymentMethod = String(form.get('paymentMethod'));
+		const employee = String(form.get('employee') ?? '').trim();
+		if (!category || !Number.isFinite(amount) || amount <= 0 || !['cash', 'bank'].includes(paymentMethod)
+			|| (category === SALARY_ADVANCE_CATEGORY && !employee)) { setError('Confira a categoria, o funcionário e o valor da despesa.'); return; }
 		const current = data.expenses[editingId];
 		const timestamp = new Date().toISOString();
+		const paidOyo = current?.paidOyo ?? 0;
 		const item: FinanceExpense = {
 			id: current?.id ?? id(),
 			dueDate: String(form.get('dueDate')),
 			category,
-			plannedAmount,
-			paidCash,
-			paidBank,
+			...(category === SALARY_ADVANCE_CATEGORY ? { employee } : {}),
+			plannedAmount: amount + paidOyo,
+			paidCash: paymentMethod === 'cash' ? amount : 0,
+			paidBank: paymentMethod === 'bank' ? amount : 0,
 			paidOyo,
 			note: String(form.get('note') ?? '').trim(),
 			createdAt: current?.createdAt ?? timestamp,
@@ -338,7 +345,7 @@ export function FluxoDeCaixa() {
 	const selectedTransfer = modal === 'transferencia' || modal === 'repasse' ? data.transfers[editingId] : undefined;
 	const activities: Activity[] = [
 		...incomes.map((item) => ({ id: item.id, date: item.date, title: item.category, detail: `${item.note}${item.note ? ' · ' : ''}${incomeItems(item).map((line) => line.description).join(', ')}`, amount: item.amount, paid: item.amount, type: 'entrada' as const, wallet: incomePaymentSummary(item) })),
-		...expenses.map((item) => ({ id: item.id, date: item.dueDate, title: item.category, detail: item.note, amount: item.plannedAmount, paid: item.paidCash + item.paidBank + (item.paidOyo ?? 0), type: 'saida' as const, wallet: `${money(item.paidCash)} em caixa · ${money(item.paidBank)} em banco · ${money(item.paidOyo ?? 0)} retidos OYO` })),
+		...expenses.map((item) => ({ id: item.id, date: item.dueDate, title: item.category, detail: [item.employee ? `Para: ${item.employee}` : '', item.note].filter(Boolean).join(' · '), amount: item.plannedAmount, paid: item.paidCash + item.paidBank + (item.paidOyo ?? 0), type: 'saida' as const, wallet: `${money(item.paidCash)} em caixa · ${money(item.paidBank)} em banco · ${money(item.paidOyo ?? 0)} retidos OYO` })),
 		...payroll.map((item) => ({ id: item.id, date: item.dueDate, title: item.employee, detail: item.position || 'Folha de pagamento', amount: payrollNet(item), paid: item.paidCash + item.paidBank, type: 'folha' as const, wallet: `${money(item.paidCash)} em caixa · ${money(item.paidBank)} em banco` })),
 	].sort((a, b) => b.date.localeCompare(a.date));
 
@@ -421,9 +428,9 @@ export function FluxoDeCaixa() {
 				<footer className="finance-page-footer"><span>Armazenamento: {financeStorageMode}</span><span>Fluxo de caixa · Hotel Lindoia</span></footer>
 			</main>
 
-			{modal && <div className="finance-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setModal(null); }}><section className="finance-modal" role="dialog" aria-modal="true" aria-labelledby="finance-modal-title">
+			{modal && <div className={`finance-modal-backdrop${modal === 'saida' ? ' finance-expense-backdrop' : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget) setModal(null); }}><section className={`finance-modal${modal === 'saida' ? ' finance-expense-modal' : ''}`} role="dialog" aria-modal="true" aria-labelledby="finance-modal-title">
 				{(modal === 'entrada' || modal === 'entrada-prepaga') && <IncomeForm record={selectedEntry} month={month} categories={data.incomeCategories} initialPaymentMethod={modal === 'entrada-prepaga' ? 'prepaid' : 'cash'} saving={saving} onClose={() => setModal(null)} onSubmit={saveIncome} />}
-				{modal === 'saida' && <ExpenseForm record={selectedExpense} month={month} categories={data.expenseCategories} saving={saving} onClose={() => setModal(null)} onSubmit={saveExpense} />}
+				{modal === 'saida' && <ExpenseForm record={selectedExpense} month={month} categories={expenseCategories} employees={staffMembers(staff).map((member) => member.name)} saving={saving} onClose={() => setModal(null)} onSubmit={saveExpense} />}
 				{(modal === 'transferencia' || modal === 'repasse') && <TransferForm record={selectedTransfer} initialFrom={modal === 'repasse' ? 'oyo' : 'cash'} month={month} saving={saving} onClose={() => setModal(null)} onSubmit={saveTransfer} />}
 				{modal === 'saldo' && <BalancesForm balances={data.openingBalances} saving={saving} onClose={() => setModal(null)} onSubmit={saveOpeningBalances} />}
 			</section></div>}
@@ -455,7 +462,7 @@ function CategoryManager({ title, categories, locked, onAdd, onRename, onRemove 
 }
 
 function ActivityTable({ activities, onEdit, onDelete, title }: { activities: Activity[]; onEdit: (activity: Activity) => void; onDelete: (activity: Activity) => void; title: string }) {
-	return <section className="finance-panel finance-activity-panel">{title && <div className="finance-panel-heading"><div><h2>{title}</h2><p>Registros da competência selecionada</p></div></div>}{activities.length === 0 ? <div className="finance-empty">Nenhum lançamento nesta competência.</div> : <div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Data / vencimento</th><th>Origem / categoria</th><th>Carteira / pagamentos</th><th className="numeric">Valor</th><th><span className="sr-only">Ações</span></th></tr></thead><tbody>{activities.map((item) => <tr key={`${item.type}-${item.id}`}><td>{dateLabel(item.date)}</td><td><strong>{item.title}</strong>{item.detail && <small>{item.detail}</small>}{item.type === 'folha' && <small>Folha de pagamento</small>}</td><td>{item.wallet}</td><td className={`numeric ${item.type === 'entrada' ? 'positive-value' : ''}`}>{item.type === 'entrada' ? money(item.amount) : <>{money(item.amount)}<small>Previsto</small><small>Pago {money(item.paid)}</small><small>Falta {money(Math.max(0, item.amount - item.paid))}</small></>}</td><td><div className="finance-row-actions">{item.type !== 'folha' && <><button onClick={() => onEdit(item)}>Editar</button><button className="danger" onClick={() => onDelete(item)}>Excluir</button></>}</div></td></tr>)}</tbody></table></div>}</section>;
+	return <section className="finance-panel finance-activity-panel">{title && <div className="finance-panel-heading"><div><h2>{title}</h2><p>Registros da competência selecionada</p></div></div>}{activities.length === 0 ? <div className="finance-empty">Nenhum lançamento nesta competência.</div> : <div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Data / vencimento</th><th>Origem / categoria</th><th>Carteira / pagamentos</th><th className="numeric">Valor</th><th><span className="sr-only">Ações</span></th></tr></thead><tbody>{activities.map((item) => <tr key={`${item.type}-${item.id}`}><td>{dateLabel(item.date)}</td><td><strong>{item.title}</strong>{item.detail && <small>{item.detail}</small>}{item.type === 'folha' && <small>Folha de pagamento</small>}</td><td>{item.wallet}</td><td className={`numeric ${item.type === 'entrada' ? 'positive-value' : ''}`}>{item.type === 'entrada' ? money(item.amount) : <>{money(item.amount)}<small>{item.type === 'saida' ? 'Despesa' : 'Previsto'}</small><small>Pago {money(item.paid)}</small><small>Falta {money(Math.max(0, item.amount - item.paid))}</small></>}</td><td><div className="finance-row-actions">{item.type !== 'folha' && <><button onClick={() => onEdit(item)}>Editar</button><button className="danger" onClick={() => onDelete(item)}>Excluir</button></>}</div></td></tr>)}</tbody></table></div>}</section>;
 }
 
 function PrepaidTable({ entries, onEdit, onDelete }: { entries: PrepaidIncomeEntry[]; onEdit: (entry: PrepaidIncomeEntry) => void; onDelete: (entry: PrepaidIncomeEntry) => void }) {
@@ -525,16 +532,26 @@ function IncomeForm({ record, month, categories, initialPaymentMethod = 'cash', 
 	</div><ModalFooter saving={saving} onClose={onClose} submit={record ? 'Salvar entrada' : 'Registrar entrada'} /></form>;
 }
 
-function ExpenseForm({ record, month, categories, saving, onClose, onSubmit }: { record?: FinanceExpense; month: string; categories: string[]; saving: boolean; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
-	return <form onSubmit={onSubmit}><ModalHeader title={record ? 'Editar despesa' : 'Nova despesa'} onClose={onClose} /><div className="finance-modal-body">
-		<label className="finance-field"><span>Vencimento *</span><DateInput name="dueDate" required defaultValue={record?.dueDate ?? monthDueDate(month)} /></label>
-		<label className="finance-field"><span>Categoria *</span><select name="category" required defaultValue={record?.category ?? ''}><option value="" disabled>Selecione uma categoria</option>{record && !categories.includes(record.category) && <option value={record.category}>{record.category} (histórica)</option>}{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
-		<label className="finance-field"><span>Valor previsto</span><input name="plannedAmount" type="number" min="0" step="0.01" defaultValue={record?.plannedAmount ?? 0} /></label>
-		<label className="finance-field"><span>Pago em dinheiro</span><input name="paidCash" type="number" min="0" step="0.01" defaultValue={record?.paidCash ?? 0} /></label>
-		<label className="finance-field"><span>Pago pelo banco</span><input name="paidBank" type="number" min="0" step="0.01" defaultValue={record?.paidBank ?? 0} /></label>
-		<label className="finance-field"><span>Pago com retidos da OYO</span><input name="paidOyo" type="number" min="0" step="0.01" defaultValue={record?.paidOyo ?? 0} /></label>
-		<label className="finance-field finance-field-wide"><span>Observação</span><textarea name="note" rows={2} defaultValue={record?.note} /></label>
-		<p className="finance-form-hint finance-field-wide">Pagamentos parciais podem ser divididos entre caixa, banco e valores retidos pela OYO. A diferença entre o previsto e o pago aparece como pendência.</p>
+function ExpenseForm({ record, month, categories, employees, saving, onClose, onSubmit }: { record?: FinanceExpense; month: string; categories: string[]; employees: string[]; saving: boolean; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+	const [category, setCategory] = useState(record?.category ?? '');
+	const employeeOptions = [...new Set([...employees, ...(record?.employee ? [record.employee] : [])])];
+	return <form onSubmit={onSubmit}><ModalHeader title={record ? 'Editar despesa' : 'Nova despesa'} onClose={onClose} /><div className="finance-modal-body finance-expense-body">
+		<section className="finance-expense-section" aria-labelledby="finance-expense-details-title">
+			<div className="finance-expense-step finance-field-wide"><span>1</span><div><strong id="finance-expense-details-title">Dados da despesa</strong><small>Informe a data, a categoria e o valor pago.</small></div></div>
+			<div className="finance-expense-grid">
+				<label className="finance-field"><span>Data *</span><DateInput name="dueDate" required defaultValue={record?.dueDate ?? monthDueDate(month)} /></label>
+				<label className="finance-field"><span>Categoria *</span><select name="category" value={category} onChange={(event) => setCategory(event.target.value)} required><option value="" disabled>Selecione uma categoria</option>{record && !categories.includes(record.category) && <option value={record.category}>{record.category} (histórica)</option>}{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
+				<label className="finance-field"><span>Forma de pagamento *</span><select name="paymentMethod" defaultValue={record?.paidBank && !record.paidCash ? 'bank' : 'cash'}><option value="cash">Dinheiro</option><option value="bank">Banco</option></select></label>
+				<label className="finance-field"><span>Valor pago (R$) *</span><span className="finance-expense-money"><span>R$</span><input name="amount" type="number" min="0.01" step="0.01" required defaultValue={record ? record.paidCash + record.paidBank : ''} /></span></label>
+				<label className="finance-field finance-field-wide"><span>Observação</span><textarea name="note" rows={2} defaultValue={record?.note} /></label>
+			</div>
+		</section>
+		{category === SALARY_ADVANCE_CATEGORY && <section className="finance-expense-section" aria-labelledby="finance-expense-employee-title">
+			<div className="finance-expense-step finance-field-wide"><span>2</span><div><strong id="finance-expense-employee-title">Beneficiário do adiantamento</strong><small>Selecione no quadro de funcionários quem receberá o valor.</small></div></div>
+			<label className="finance-field finance-field-wide"><span>Funcionário *</span><select name="employee" required defaultValue={record?.employee ?? ''}><option value="" disabled>Selecione um funcionário</option>{employeeOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+			{employeeOptions.length === 0 && <p className="finance-form-hint finance-field-wide">Nenhum funcionário ativo no quadro de funcionários.</p>}
+		</section>}
+		<p className="finance-form-hint finance-field-wide">A despesa será registrada como paga na forma selecionada.</p>
 	</div><ModalFooter saving={saving} onClose={onClose} submit={record ? 'Salvar despesa' : 'Registrar despesa'} /></form>;
 }
 
