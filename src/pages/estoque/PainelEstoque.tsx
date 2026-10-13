@@ -7,8 +7,8 @@ import { subscribeInventory, updateInventory } from '../../services/inventorySto
 import { updateFinance } from '../../services/financeStore';
 import { DateInput } from '../../components/ui/DateInput';
 import { useMinibarFinanceSync } from '../../services/minibarFinanceSync';
-import { createFrigobarSale, emptyFrigobar, subscribeFrigobar, syncFrigobarCatalog } from '../../services/frigobarStore';
-import type { FrigobarData } from '../../types/frigobar';
+import { createFrigobarSale, deleteFrigobarSale, emptyFrigobar, subscribeFrigobar, syncFrigobarCatalog } from '../../services/frigobarStore';
+import type { FrigobarData, FrigobarSale } from '../../types/frigobar';
 import {
   SALES_CATEGORY,
   SALES_CATEGORY_ID,
@@ -166,6 +166,8 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
     });
   }, []);
 
+  // Keep the operational sale records available in the movement history as well as
+  // in the period totals. Both views follow the same selected date range.
   useEffect(() => subscribeFrigobar(setFrigobar, (error) => setStorageError(error.message), minibarStartDate, minibarEndDate), [minibarStartDate, minibarEndDate]);
 
   useEffect(() => {
@@ -339,6 +341,16 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
     try { await deleteStockProduct(product.id); setNotice('Produto, movimentações e lançamentos vinculados excluídos.'); }
     catch (cause) { setStorageError(cause instanceof Error ? cause.message : 'Não foi possível excluir.'); }
     finally { setSaving(false); }
+  }
+
+  function deleteOperationalSale(sale: FrigobarSale) {
+    if (!window.confirm(`Excluir esta venda da geladeira (${money(sale.amount)})? Os itens voltarão ao estoque e o valor recebido será recalculado.`)) return;
+    setSaving(true);
+    setStorageError('');
+    void deleteFrigobarSale(sale)
+      .then(() => setNotice('Venda excluída; estoque e valores do painel atualizados.'))
+      .catch((cause: unknown) => setStorageError(cause instanceof Error ? cause.message : 'Não foi possível excluir a venda.'))
+      .finally(() => setSaving(false));
   }
 
   async function toggleProductArchive(product: StockProduct) {
@@ -618,7 +630,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
             </div>
             <div className="heading-actions">
               {view === 'produtos' && <><button className="button button-soft" onClick={() => exportCsv(`produtos-estoque-${new Date().toISOString().slice(0, 10)}.csv`, [['Produto', 'Código', 'Categoria', 'Unidade', 'Saldo', 'Estoque mínimo', ...(canViewFinancials ? ['Custo unitário'] : []), 'Locais', 'Validade'], ...products.map((product) => [product.name, product.sku, categoryName(product.category), product.unit, quantityOf(product), product.minimumQuantity, ...(canViewFinancials ? [product.cost] : []), Object.entries(product.locationQuantities).map(([location, quantity]) => `${location}: ${quantity}`).join(' | '), product.expiresAt])])}>Exportar CSV</button><button className="button button-primary" onClick={() => openProduct()}>+ Novo produto</button></>}
-              {view === 'movimentacoes' && <><button className="button button-soft" onClick={() => exportCsv(`movimentacoes-estoque-${new Date().toISOString().slice(0, 10)}.csv`, [['Data', 'Movimento', 'Produto', 'Categoria', 'Quantidade', 'Unidade', 'Origem', 'Destino', 'Quarto', 'Hóspede', 'Cobrança', 'Pagamento', 'Recebido em', 'Recebido por', 'Observação', 'Responsável'], ...movements.map((movement) => [movement.createdAt, movementName(movement.type), movement.productName, categoryName(movement.category), movement.quantity, movement.unit, movement.fromLocation, movement.toLocation, movement.roomNumber ?? '', movement.guestName ?? '', movement.settlement ?? '', movement.paymentMethod ?? '', movement.settledAt ?? '', movement.settledBy ?? '', movement.note, movement.actor])])}>Exportar CSV</button><button className="button button-primary" onClick={() => openMovement()} disabled={!products.length}>+ Registrar movimento</button></>}
+              {view === 'movimentacoes' && <><button className="button button-soft" onClick={() => setView('resumo')}>← Voltar ao painel do Estoque</button><button className="button button-soft" onClick={() => exportCsv(`movimentacoes-estoque-${new Date().toISOString().slice(0, 10)}.csv`, [['Data', 'Movimento', 'Produto', 'Categoria', 'Quantidade', 'Unidade', 'Origem', 'Destino', 'Quarto', 'Hóspede', 'Cobrança', 'Pagamento', 'Recebido em', 'Recebido por', 'Observação', 'Responsável'], ...movements.map((movement) => [movement.createdAt, movementName(movement.type), movement.productName, categoryName(movement.category), movement.quantity, movement.unit, movement.fromLocation, movement.toLocation, movement.roomNumber ?? '', movement.guestName ?? '', movement.settlement ?? '', movement.paymentMethod ?? '', movement.settledAt ?? '', movement.settledBy ?? '', movement.note, movement.actor])])}>Exportar CSV</button><button className="button button-primary" onClick={() => openMovement()} disabled={!products.length}>+ Registrar movimento</button></>}
               {view === 'fornecedores' && <button className="button button-primary" onClick={() => openSupplier()}>+ Novo fornecedor</button>}
               {view === 'patrimonio' && <button className="button button-primary" onClick={() => openAsset()}>+ Cadastrar bem</button>}
               {view === 'resumo' && <button className="button button-primary" onClick={() => openProduct()}>+ Novo produto</button>}
@@ -676,7 +688,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
                   canViewFinancials={canViewFinancials}
                 />
               )}
-              {view === 'movimentacoes' && <MovementsView movements={movements} canViewFinancials={canViewFinancials} onDelete={(movement) => {
+              {view === 'movimentacoes' && <MovementsView movements={movements} sales={Object.values(frigobar.sales).sort((a, b) => b.createdAt.localeCompare(a.createdAt))} canViewFinancials={canViewFinancials} onDeleteSale={deleteOperationalSale} onDelete={(movement) => {
                 const question = movement.id.startsWith('saida-') ? 'Excluir a saída para uso interno associada, incluindo os outros itens dessa saída? As quantidades voltam ao estoque.' : `Excluir esta movimentação de ${movement.productName}? O efeito sobre o estoque e os valores financeiros vinculados será desfeito.`;
                 if (!window.confirm(question)) return;
                 setSaving(true); setStorageError('');
@@ -768,8 +780,8 @@ function Overview({
       <section className="metric-grid">
         <Metric label="Produtos cadastrados" value={String(products.length)} detail="Itens de consumo" tone="green" />
         <Metric label="Abaixo do mínimo ou sem saldo" value={String(lowStock.length)} detail={`${outOfStock.length} sem saldo entre produtos ativos`} tone={lowStock.length ? 'coral' : 'green'} />
-        {canViewFinancials && <Metric label="Valor em estoque" value={money(inventoryValue)} detail="Estimativa: saldo atual × custo unitário cadastrado" tone="blue" />}
-        {canViewFinancials && <Metric label="Geladeira recebida" value={money(minibarSales)} detail={minibarPeriodValid ? `${money(minibarPending)} a cobrar no checkout · período selecionado` : 'Informe um período válido para pesquisar'} tone="gold" />}
+        {canViewFinancials && <Metric label="Valor em estoque" value={money(inventoryValue)} detail="Saldo atual × custo cadastrado; vendas excluídas devolvem itens ao estoque" tone="blue" />}
+        {canViewFinancials && <Metric label="Geladeira recebida" value={money(minibarSales)} detail={minibarPeriodValid ? `${money(minibarPending)} a cobrar · vendas recebidas no período selecionado` : 'Informe um período válido para pesquisar'} tone="gold" />}
       </section>
 
       <div className="overview-grid">
@@ -858,10 +870,37 @@ function ProductsView({
   );
 }
 
-function MovementsView({ movements, canViewFinancials, onCheckout, onDelete }: { onDelete: (movement: StockMovement) => void; movements: StockMovement[]; canViewFinancials: boolean; onCheckout: (movement: StockMovement) => void }) {
+function MovementsView({ movements, sales, canViewFinancials, onCheckout, onDelete, onDeleteSale }: { onDelete: (movement: StockMovement) => void; onDeleteSale: (sale: FrigobarSale) => void; movements: StockMovement[]; sales: FrigobarSale[]; canViewFinancials: boolean; onCheckout: (movement: StockMovement) => void }) {
   const pending = movements.filter((movement) => movement.type === 'consumo_frigobar' && movement.settlement === 'cobrar_no_checkout');
   const pendingTotal = pending.reduce((total, movement) => total + movement.quantity * movement.unitPrice, 0);
-  return <section className="panel table-panel"><div className="panel-heading movement-heading"><div><h2>Histórico de estoque</h2><p>Registros feitos pela equipe{pending.length > 0 && ` · ${pending.length} consumo(s) aguardando checkout`}</p></div><span className="record-count">{canViewFinancials && pending.length > 0 ? `${money(pendingTotal)} pendentes · ` : ''}{movements.length} registros</span></div>{movements.length === 0 ? <EmptyState title="Histórico vazio" detail="As entradas, saídas e transferências aparecerão aqui." /> : <MovementTable movements={movements} onDelete={onDelete} onCheckout={onCheckout} canViewFinancials={canViewFinancials} />}</section>;
+  const operationalPending = sales.filter((sale) => sale.settlement === 'cobrar_no_checkout').reduce((total, sale) => total + sale.amount, 0);
+  return <>
+    <section className="panel table-panel"><div className="panel-heading movement-heading"><div><h2>Histórico de estoque</h2><p>Entradas, saídas, transferências e vendas registradas no estoque{pending.length > 0 && ` · ${pending.length} consumo(s) aguardando checkout`}</p></div><span className="record-count">{canViewFinancials && pending.length > 0 ? `${money(pendingTotal)} pendentes · ` : ''}{movements.length} registros</span></div>{movements.length === 0 ? <EmptyState title="Histórico vazio" detail="As entradas, saídas e transferências aparecerão aqui." /> : <MovementTable movements={movements} onDelete={onDelete} onCheckout={onCheckout} canViewFinancials={canViewFinancials} />}</section>
+    <section className="panel table-panel"><div className="panel-heading movement-heading"><div><h2>Vendas da geladeira</h2><p>Vendas operacionais que também entram no resumo · período selecionado</p></div><span className="record-count">{canViewFinancials && operationalPending > 0 ? `${money(operationalPending)} pendentes · ` : ''}{sales.length} vendas</span></div>{sales.length === 0 ? <EmptyState title="Nenhuma venda operacional" detail="Não há vendas operacionais no período selecionado." /> : <FrigobarSalesTable sales={sales} canViewFinancials={canViewFinancials} onDelete={onDeleteSale} />}</section>
+  </>;
+}
+
+function FrigobarSalesTable({ sales, canViewFinancials, onDelete }: { sales: FrigobarSale[]; canViewFinancials: boolean; onDelete: (sale: FrigobarSale) => void }) {
+  const paymentLabels: Record<MinibarPaymentMethod, string> = {
+    dinheiro: 'Dinheiro',
+    pix: 'Pix',
+    cartao_debito: 'Cartão de débito',
+    cartao_credito: 'Cartão de crédito',
+  };
+  return <div className="table-scroll"><table className="data-table movement-table"><thead><tr><th>Data e hora</th><th>Produto</th><th>Quantidade</th><th>Quarto / hóspede</th><th>Cobrança</th><th>Valor</th>{canViewFinancials && <th>Ação</th>}<th>Responsável</th></tr></thead><tbody>
+    {sales.map((sale) => (
+      <tr key={sale.id}>
+        <td className="date-cell">{dateTime(sale.createdAt)}</td>
+        <td>{sale.items.map((item) => <span key={`${sale.id}-${item.productId}`} className="product-line"><strong>{item.productName}</strong><small className="sub-cell">{money(item.unitPrice)} por {item.unit}</small></span>)}</td>
+        <td>{sale.items.map((item) => <span key={`${sale.id}-${item.productId}`} className="product-line"><strong>{item.quantity} {item.unit}</strong></span>)}</td>
+        <td>{sale.roomNumber && <span>Quarto {sale.roomNumber}</span>}{sale.guestName && <small className="sub-cell">{sale.guestName}</small>}{!sale.roomNumber && !sale.guestName && '—'}</td>
+        <td><span className={`movement-tag ${sale.settlement === 'cobrar_no_checkout' ? 'tag-neutral' : 'tag-positive'}`}>{sale.settlement === 'cobrar_no_checkout' ? 'Cobrar no checkout' : `${paymentLabels[sale.paymentMethod as MinibarPaymentMethod] ?? 'Recebido'}${sale.settledAt ? ` · ${dateTime(sale.settledAt)}` : ''}`}</span></td>
+        <td><strong>{money(sale.amount)}</strong></td>
+        {canViewFinancials && <td><button className="button button-plain" onClick={() => onDelete(sale)}>Excluir</button></td>}
+        <td>{sale.settledBy ?? sale.actor}</td>
+      </tr>
+    ))}
+  </tbody></table></div>;
 }
 
 function MovementTable({ movements, onCheckout, onDelete, canViewFinancials = true }: { onDelete?: (movement: StockMovement) => void; movements: StockMovement[]; onCheckout?: (movement: StockMovement) => void; canViewFinancials?: boolean }) {

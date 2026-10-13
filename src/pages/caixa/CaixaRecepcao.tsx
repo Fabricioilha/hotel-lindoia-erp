@@ -8,12 +8,13 @@ import { DateInput } from '../../components/ui/DateInput';
 import { PAYMENT_METHOD_LABELS, type FinancePaymentMethod } from '../../types/finance';
 import {
   EXTRA_LABELS, FOLIO_PAYMENT_METHODS, ROOM_TYPE_LABELS, SELECTABLE_EXTRAS, extraTotal,
+  stayDailyAmount,
   emptyReceptionRateSettings,
   type ExtraType, type GuestStay, type ReceptionData, type ReceptionRateSettings, type ReceptionRoom, type StayExtra, type StayKind,
 } from '../../types/reception';
 import { subscribeReservationDirectory, subscribeRoomDirectory } from '../../services/housekeepingStore';
 import { roomCategoryDescription, type HousekeepingRoom, type ReservationDirectoryEntry } from '../../types/housekeeping';
-import { emptyReception, localDateKey, saveStay, subscribeReception, subscribeReceptionRates } from '../../services/receptionStore';
+import { emptyReception, localDateKey, saveStay, subscribeReception, subscribeReceptionRates, updateStayAndFinance } from '../../services/receptionStore';
 import '../venda-geladeira.css';
 import './recepcao.css';
 
@@ -82,21 +83,24 @@ interface CaixaRecepcaoProps {
   modalOnly?: boolean;
   initialKind?: StayKind;
   initialRoom?: string;
+  editingStay?: GuestStay;
   entryContext?: ReceptionEntryContext;
   onModalClose?: (notice?: string) => void;
 }
 
 export function CaixaRecepcao(props: CaixaRecepcaoProps) {
   const [searchParams] = useSearchParams();
-  const requested = props.modalOnly
-    ? (props.initialKind === 'periodo' ? 'rotativo' : 'hospede')
-    : searchParams.get('novo');
-  const requestedRoom = props.modalOnly ? props.initialRoom ?? '' : searchParams.get('quarto') ?? '';
-  const formKey = `${props.modalOnly ? 'modal' : 'page'}:${requested ?? ''}:${requestedRoom}`;
+  const requested = props.editingStay
+    ? (props.editingStay.kind === 'periodo' ? 'rotativo' : 'hospede')
+    : props.modalOnly
+      ? (props.initialKind === 'periodo' ? 'rotativo' : 'hospede')
+      : searchParams.get('novo');
+  const requestedRoom = props.editingStay?.roomNumber ?? (props.modalOnly ? props.initialRoom ?? '' : searchParams.get('quarto') ?? '');
+  const formKey = props.editingStay ? `edit:${props.editingStay.id}` : `${props.modalOnly ? 'modal' : 'page'}:${requested ?? ''}:${requestedRoom}`;
   return <CaixaRecepcaoContent key={formKey} {...props} />;
 }
 
-function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hospede', initialRoom = '', entryContext, onModalClose }: CaixaRecepcaoProps) {
+function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hospede', initialRoom = '', editingStay, entryContext, onModalClose }: CaixaRecepcaoProps) {
   const isAdmin = userRole === 'admin';
   const [receptionData, setReceptionData] = useState<ReceptionData>(() => emptyReception());
   const [rateSettings, setRateSettings] = useState<ReceptionRateSettings>(() => emptyReceptionRateSettings());
@@ -115,37 +119,45 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   const attendant = isAdmin ? 'Gerência' : entryContext?.attendant ?? dutyAttendant;
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const requested = modalOnly ? (initialKind === 'periodo' ? 'rotativo' : 'hospede') : searchParams.get('novo');
-  const requestedRoom = modalOnly ? initialRoom : searchParams.get('quarto') ?? '';
+  const requested = editingStay
+    ? (editingStay.kind === 'periodo' ? 'rotativo' : 'hospede')
+    : modalOnly
+      ? (initialKind === 'periodo' ? 'rotativo' : 'hospede')
+      : searchParams.get('novo');
+  const requestedRoom = editingStay?.roomNumber ?? (modalOnly ? initialRoom : searchParams.get('quarto') ?? '');
   const formKind: StayKind | null = requested === 'hospede' ? 'hospede' : requested === 'rotativo' ? 'periodo' : null;
-  const [checkInDate, setCheckInDate] = useState(() => localDateKey());
-  const [checkOutDate, setCheckOutDate] = useState(() => dateKeyAfterDays(localDateKey(), 1));
+  const initialCheckIn = editingStay?.checkInDate ?? localDateKey();
+  const initialNights = Math.max(1, editingStay?.nights ?? 1);
+  const initialRate = editingStay ? stayDailyAmount(editingStay) / initialNights : 0;
+  const initialRateText = editingStay?.kind === 'hospede' ? String(Math.round(initialRate * 100) / 100).replace('.', ',') : '';
+  const [checkInDate, setCheckInDate] = useState(() => initialCheckIn);
+  const [checkOutDate, setCheckOutDate] = useState(() => editingStay?.checkOutDate ?? dateKeyAfterDays(initialCheckIn, initialNights));
   const [roomNumber, setRoomNumber] = useState(() => requestedRoom);
-  const [guestName, setGuestName] = useState('');
-  const [guestCount, setGuestCount] = useState('1');
-  const [hours, setHours] = useState('4');
-  const [dailyRate, setDailyRate] = useState('');
-  const [dailyRateText, setDailyRateText] = useState('');
-  const [dailyMethod, setDailyMethod] = useState<FinancePaymentMethod>('pix');
-  const [splitPayment, setSplitPayment] = useState(false);
-  const [splitMethod, setSplitMethod] = useState<FinancePaymentMethod>('cash');
-  const [splitAmount, setSplitAmount] = useState('');
-  const [hasBreakfast, setHasBreakfast] = useState(false);
-  const [breakfastCount, setBreakfastCount] = useState('1');
-  const [breakfastDays, setBreakfastDays] = useState('1');
-  const [breakfastRate, setBreakfastRate] = useState('');
-  const [breakfastMethod, setBreakfastMethod] = useState<FinancePaymentMethod>('pix');
-  const [breakfastSplitPayment, setBreakfastSplitPayment] = useState(false);
-  const [breakfastSplitMethod, setBreakfastSplitMethod] = useState<FinancePaymentMethod>('cash');
-  const [breakfastSplitAmount, setBreakfastSplitAmount] = useState('');
-  const [hasTax, setHasTax] = useState(false);
-  const [taxAmount, setTaxAmount] = useState('');
-  const [taxMethod, setTaxMethod] = useState<FinancePaymentMethod>('cash');
-  const [taxSplitPayment, setTaxSplitPayment] = useState(false);
-  const [taxSplitMethod, setTaxSplitMethod] = useState<FinancePaymentMethod>('prepaid');
-  const [taxSplitAmount, setTaxSplitAmount] = useState('');
-  const [extras, setExtras] = useState<ExtraDraft[]>([]);
-  const [note, setNote] = useState('');
+  const [guestName, setGuestName] = useState(() => editingStay?.guestName ?? '');
+  const [guestCount, setGuestCount] = useState(() => String(editingStay?.guestCount ?? (editingStay?.hasAdditionalGuests ? 2 : 1)));
+  const [hours, setHours] = useState(() => String(editingStay?.hours ?? 4));
+  const [dailyRate, setDailyRate] = useState(() => editingStay?.kind === 'periodo' ? String(editingStay.dailyRate).replace('.', ',') : '');
+  const [dailyRateText, setDailyRateText] = useState(() => initialRateText);
+  const [dailyMethod, setDailyMethod] = useState<FinancePaymentMethod>(() => editingStay?.dailyMethod ?? 'pix');
+  const [splitPayment, setSplitPayment] = useState(() => Boolean(editingStay?.dailySplit));
+  const [splitMethod, setSplitMethod] = useState<FinancePaymentMethod>(() => editingStay?.dailySplit?.method ?? 'cash');
+  const [splitAmount, setSplitAmount] = useState(() => editingStay?.dailySplit ? String(editingStay.dailySplit.amount).replace('.', ',') : '');
+  const [hasBreakfast, setHasBreakfast] = useState(() => Boolean(editingStay?.hasBreakfast));
+  const [breakfastCount, setBreakfastCount] = useState(() => String(editingStay?.breakfastCount ?? 1));
+  const [breakfastDays, setBreakfastDays] = useState(() => String(editingStay?.breakfastDays ?? editingStay?.nights ?? 1));
+  const [breakfastRate, setBreakfastRate] = useState(() => editingStay?.hasBreakfast ? String(editingStay.breakfastRate).replace('.', ',') : '');
+  const [breakfastMethod, setBreakfastMethod] = useState<FinancePaymentMethod>(() => editingStay?.breakfastMethod ?? editingStay?.dailyMethod ?? 'pix');
+  const [breakfastSplitPayment, setBreakfastSplitPayment] = useState(() => Boolean(editingStay?.breakfastSplit));
+  const [breakfastSplitMethod, setBreakfastSplitMethod] = useState<FinancePaymentMethod>(() => editingStay?.breakfastSplit?.method ?? 'cash');
+  const [breakfastSplitAmount, setBreakfastSplitAmount] = useState(() => editingStay?.breakfastSplit ? String(editingStay.breakfastSplit.amount).replace('.', ',') : '');
+  const [hasTax, setHasTax] = useState(() => Boolean(editingStay && editingStay.taxAmount > 0));
+  const [taxAmount, setTaxAmount] = useState(() => editingStay?.taxAmount ? String(editingStay.taxAmount).replace('.', ',') : '');
+  const [taxMethod, setTaxMethod] = useState<FinancePaymentMethod>(() => editingStay?.taxMethod ?? 'cash');
+  const [taxSplitPayment, setTaxSplitPayment] = useState(() => Boolean(editingStay?.taxSplit));
+  const [taxSplitMethod, setTaxSplitMethod] = useState<FinancePaymentMethod>(() => editingStay?.taxSplit?.method ?? 'prepaid');
+  const [taxSplitAmount, setTaxSplitAmount] = useState(() => editingStay?.taxSplit ? String(editingStay.taxSplit.amount).replace('.', ',') : '');
+  const [extras, setExtras] = useState<ExtraDraft[]>(() => (editingStay?.extras ?? []).map((extra) => ({ ...extra, amount: String(extra.amount).replace('.', ','), method: extra.method ?? editingStay?.dailyMethod ?? 'pix', mode: extra.mode ?? 'fixo' })));
+  const [note, setNote] = useState(() => editingStay?.note ?? '');
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -181,7 +193,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   }, [entryContext]);
 
   const today = localDateKey();
-  const allRoomNumbers = [...new Set([...Object.values(roomDirectory).map((room) => room.number), ...Object.values(data.rooms).map((room) => room.number)])]
+  const allRoomNumbers = [...new Set([...Object.values(roomDirectory).map((room) => room.number), ...Object.values(data.rooms).map((room) => room.number), ...(editingStay?.roomNumber ? [editingStay.roomNumber] : [])])]
     .sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
   const roomByNumber = new Map(Object.values(roomDirectory).map((room) => [room.number, room]));
   const receptionRoomByNumber = new Map(Object.values(data.rooms).map((room) => [room.number, room]));
@@ -203,8 +215,12 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   const draftBreakfastCount = Number(breakfastCount);
   const draftBreakfastDays = Number(breakfastDays);
   const enteredDailyRate = parseOptionalRate(dailyRateText);
+  const unchangedStayRateAndPeriod = Boolean(editingStay?.kind === 'hospede'
+    && dailyRateText === initialRateText
+    && checkInDate === editingStay.checkInDate
+    && checkOutDate === (editingStay.checkOutDate ?? dateKeyAfterDays(editingStay.checkInDate, initialNights)));
   const dailyTotal = formKind === 'hospede'
-    ? Math.round((enteredDailyRate ?? 0) * draftNights * 100) / 100
+    ? unchangedStayRateAndPeriod ? stayDailyAmount(editingStay!) : Math.round((enteredDailyRate ?? 0) * draftNights * 100) / 100
     : parseAmount(dailyRate) * draftNights;
   const breakfastTotal = parseAmount(breakfastRate) * draftBreakfastCount * draftBreakfastDays;
   const breakfastSplit = breakfastSplitPayment ? parseAmount(breakfastSplitAmount) : 0;
@@ -338,7 +354,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
     if (withTax && taxSplitPayment && (!taxSplit || taxSplit >= tax || taxSplitMethod === taxMethod)) return setError('Escolha duas formas diferentes para a taxa e informe um valor positivo menor que o total na segunda forma.');
     if (formKind === 'hospede' && draftExtras.some((extra) => !extra.amount || !extra.label.trim())) return setError('Preencha o nome e o valor de todos os extras.');
     const stay: GuestStay = {
-      id: crypto.randomUUID(),
+      id: editingStay?.id ?? crypto.randomUUID(),
       kind: formKind,
       checkInDate,
       nights: draftNights,
@@ -349,6 +365,9 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
       ...(formKind === 'periodo' ? { hours: draftHours } : {}),
       dailyRate: rate,
       ...(formKind === 'hospede' ? { lodgingTotal: dailyTotal } : {}),
+      ...(editingStay?.creditApplied !== undefined ? { creditApplied: editingStay.creditApplied } : {}),
+      ...(editingStay?.convertedFromStayId ? { convertedFromStayId: editingStay.convertedFromStayId } : {}),
+      ...(editingStay?.voidedPayments ? { voidedPayments: editingStay.voidedPayments } : {}),
       dailyMethod,
       ...(splitPayment ? { dailySplit: { method: splitMethod, amount: draftSplit } } : {}),
       hasBreakfast: withBreakfast,
@@ -361,9 +380,9 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
       ...(withTax && taxSplitPayment ? { taxSplit: { method: taxSplitMethod, amount: taxSplit } } : {}),
       extras: formKind === 'periodo' ? [] : draftExtras.map<StayExtra>((extra) => ({ ...extra, label: extra.label.trim() })),
       note: note.trim(),
-      attendant,
-      status: 'hospedado',
-      createdAt: new Date().toISOString(),
+      attendant: editingStay?.attendant ?? attendant,
+      status: editingStay?.status ?? 'hospedado',
+      createdAt: editingStay?.createdAt ?? new Date().toISOString(),
     };
     if (!reservationDirectoryLoaded) return setError('Aguarde o carregamento da disponibilidade dos quartos e tente novamente.');
     const requestedInterval = stayInterval(stay);
@@ -373,14 +392,17 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
       return interval && intervalsOverlap(requestedInterval, interval);
     });
     const conflictsWithStay = Object.values(data.stays).some((existing) => {
-      if (existing.status !== 'hospedado' || existing.roomNumber !== stay.roomNumber) return false;
+      if (existing.id === stay.id || existing.status !== 'hospedado' || existing.roomNumber !== stay.roomNumber) return false;
       return intervalsOverlap(requestedInterval, stayInterval(existing));
     });
     if (conflictsWithReservation || conflictsWithStay) return setError(`O quarto ${stay.roomNumber} já tem uma hospedagem ou reserva nesse período.`);
     setSaving(true);
-    const message = formKind === 'periodo' ? `Rotativo do quarto ${stay.roomNumber} registrado com sucesso.` : `Hóspede do quarto ${stay.roomNumber} registrado com sucesso.`;
+    const message = editingStay
+      ? `Hospedagem do quarto ${stay.roomNumber} atualizada.`
+      : formKind === 'periodo' ? `Rotativo do quarto ${stay.roomNumber} registrado com sucesso.` : `Hóspede do quarto ${stay.roomNumber} registrado com sucesso.`;
     await run(async () => {
-      await saveStay(stay);
+      if (editingStay) await updateStayAndFinance(stay);
+      else await saveStay(stay);
       if (modalOnly) {
         onModalClose?.(message);
         return;
@@ -443,10 +465,10 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
           <button type="button" className="reception-primary" onClick={cancelForm}>Fechar</button>
         </section>
       </div>}
-      {formKind && attendant && <div className="reception-overlay" role="dialog" aria-modal="true" aria-label={formKind === 'periodo' ? 'Adicionar rotativo' : 'Adicionar hóspede'} onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) cancelForm(); }}>
+      {formKind && attendant && <div className="reception-overlay" role="dialog" aria-modal="true" aria-label={editingStay ? `Editar ${formKind === 'periodo' ? 'rotativo' : 'hóspede'}` : formKind === 'periodo' ? 'Adicionar rotativo' : 'Adicionar hóspede'} onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) cancelForm(); }}>
         <form className="reception-panel reception-modal" onSubmit={(event) => void submitStay(event)}>
           <div className="reception-modal-head">
-            <h2>{formKind === 'periodo' ? 'Adicionar rotativo' : 'Adicionar hóspede'}</h2>
+            <h2>{editingStay ? `Editar ${formKind === 'periodo' ? 'rotativo' : 'hóspede'}` : formKind === 'periodo' ? 'Adicionar rotativo' : 'Adicionar hóspede'}</h2>
             <button type="button" className="reception-close" onClick={cancelForm} aria-label="Fechar">×</button>
           </div>
           <div className="reception-modal-body">
@@ -570,7 +592,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
               <p className="reception-total"><span>Total a pagar no hotel</span><strong>{money(draftTotal)}</strong></p>
             </div> : <p className="reception-total">Total: <strong>{money(draftTotal)}</strong></p>}
             <div className="reception-actions">
-              <button className="reception-primary" type="submit" disabled={saving}>{saving ? 'Salvando...' : formKind === 'periodo' ? 'Confirmar rotativo' : 'Salvar hospedagem'}</button>
+              <button className="reception-primary" type="submit" disabled={saving}>{saving ? 'Salvando...' : editingStay ? 'Salvar alterações' : formKind === 'periodo' ? 'Confirmar rotativo' : 'Salvar hospedagem'}</button>
               <button type="button" className="sales-outline-button" onClick={cancelForm}>Cancelar</button>
             </div>
           </footer>

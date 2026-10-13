@@ -852,6 +852,14 @@
   max-width: 220px;
 }
 
+.movement-table .product-line {
+  display: block;
+}
+
+.movement-table .product-line + .product-line {
+  margin-top: 5px;
+}
+
 .date-cell {
   white-space: nowrap;
 }

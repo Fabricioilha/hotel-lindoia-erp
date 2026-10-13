@@ -179,6 +179,41 @@
   padding: 18px 20px 22px;
 }
 
+.reception-stays-section {
+  border-top: 1px solid #e7ebf1;
+}
+
+.reception-stays-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 18px 20px 0;
+}
+
+.reception-stays-heading h2 {
+  margin: 0;
+  color: #263c55;
+  font-size: 0.875rem;
+}
+
+.reception-stays-heading p {
+  margin: 4px 0 0;
+  color: #68788d;
+  font-size: 0.6875rem;
+}
+
+.reception-stays-heading > span {
+  flex: 0 0 auto;
+  padding: 5px 8px;
+  border: 1px solid #d7e2f0;
+  border-radius: 999px;
+  color: #315f87;
+  background: #f0f6fc;
+  font-size: 0.625rem;
+  font-weight: 750;
+}
+
 .reservation-card {
   display: grid;
   grid-template-columns: minmax(220px, 2.2fr) minmax(70px, 0.6fr) repeat(3, minmax(100px, 1fr)) minmax(170px, 1.5fr) auto;
@@ -190,6 +225,10 @@
   background: #fff;
   box-shadow: 0 1px 2px rgb(13 30 42 / 5%);
   overflow-wrap: anywhere;
+}
+
+.reception-stay-card {
+	grid-template-columns: minmax(220px, 2.2fr) repeat(3, minmax(100px, 1fr)) minmax(90px, 0.7fr) auto;
 }
 
 .reservation-card:hover {

@@ -6,10 +6,13 @@ import type { AuditEvent } from '../../types/audit';
 import { incomeItems, PAYMENT_METHOD_LABELS, type FinanceData, type FinanceIncome, type FinancePaymentMethod } from '../../types/finance';
 import { roomCategoryDescription } from '../../types/housekeeping';
 import { DateInput } from '../../components/ui/DateInput';
+import { CaixaRecepcao, type ReceptionEntryContext } from '../caixa/CaixaRecepcao';
 import type { HousekeepingData, HousekeepingRoom, Reservation, ReservationChannel, ReservationCollection, ReservationExtra, ReservationExtraType, ReservationGuest, ReservationStatus } from '../../types/housekeeping';
 import { cancelConfirmedReservation, createReservation, emptyHousekeeping, housekeepingStorageMode, recordReservationCollection, recordReservationExtra, releaseObsoleteReservationSlots, releaseReservationSlots, reserveReservationSlots, rollbackReservationSlots, saveReservationBalanceDue, saveReservationRecord, subscribeHousekeeping, subscribeReservationCollections, subscribeReservationExtras, syncReservationCollections, syncReservationDirectory, transitionReservation } from '../../services/housekeepingStore';
 import { emptyFinance, subscribeFinance } from '../../services/financeStore';
-import { dateKeyAfterDays, hotelOccupancySummary, reservationOverlaps } from '../../services/reservationAnalytics';
+import { deleteStay, subscribeReceptionStayDirectory } from '../../services/receptionStore';
+import { dateKeyAfterDays, guestStayOccupiesToday, hotelOccupancySummary, reservationOverlaps, stayCheckOutDate } from '../../services/reservationAnalytics';
+import type { GuestStay, ReceptionRoom } from '../../types/reception';
 import { recordOperationalIncome } from '../../services/operationalIncome';
 import '../camareiras/quartos.css';
 import './reservas.css';
@@ -82,6 +85,8 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 	const isAdmin = userRole === 'admin';
 	const [data, setData] = useState<HousekeepingData>(emptyHousekeeping());
 	const [loading, setLoading] = useState(true);
+	const [receptionDirectory, setReceptionDirectory] = useState<{ stays: Record<string, GuestStay>; rooms: Record<string, ReceptionRoom> }>({ stays: {}, rooms: {} });
+	const [receptionLoading, setReceptionLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState('');
 	const [notice, setNotice] = useState('');
@@ -94,6 +99,7 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 	const [extras, setExtras] = useState<Record<string, ReservationExtra>>({});
 	const [checkoutReservation, setCheckoutReservation] = useState<Reservation | null>(null);
 	const [extraReservation, setExtraReservation] = useState<Reservation | null>(null);
+	const [editingReceptionStay, setEditingReceptionStay] = useState<GuestStay | null>(null);
 
 	useEffect(() => subscribeHousekeeping((next) => {
 		setData(next);
@@ -102,6 +108,15 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 	}, (cause) => {
 		setLoading(false);
 		setError(`Não foi possível carregar as reservas: ${cause.message}`);
+	}), []);
+
+	useEffect(() => subscribeReceptionStayDirectory((next) => {
+		setReceptionDirectory(next);
+		setReceptionLoading(false);
+		setError((current) => current.startsWith('Não foi possível carregar as hospedagens da recepção:') ? '' : current);
+	}, (cause) => {
+		setReceptionLoading(false);
+		setError(`Não foi possível carregar as hospedagens da recepção: ${cause.message}`);
 	}), []);
 
 	useEffect(() => {
@@ -124,7 +139,7 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 
 	const rooms = useMemo(() => Object.values(data.rooms).sort((a, b) => a.number.localeCompare(b.number, 'pt-BR', { numeric: true })), [data.rooms]);
 	const reservations = useMemo(() => Object.values(data.reservations).sort((a, b) => a.checkInDate.localeCompare(b.checkInDate) || a.guestName.localeCompare(b.guestName, 'pt-BR')), [data.reservations]);
-	const occupancy = hotelOccupancySummary(data);
+	const occupancy = hotelOccupancySummary(data, new Date(), receptionDirectory);
 	const visibleReservations = reservations.filter((reservation) => {
 		const term = search.trim().toLocaleLowerCase('pt-BR');
 		const matchesSearch = !term || reservation.guestName.toLocaleLowerCase('pt-BR').includes(term)
@@ -138,6 +153,27 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 			|| (filter === 'proximas' && ['confirmada', 'hospedado'].includes(reservation.status));
 		return matchesSearch && matchesFilter;
 	});
+	const receptionStays = Object.values(receptionDirectory.stays).sort((a, b) => (b.checkInDate ?? '').localeCompare(a.checkInDate ?? '') || (b.createdAt ?? '').localeCompare(a.createdAt ?? ''));
+	const visibleReceptionStays = receptionStays.filter((stay) => {
+		const term = search.trim().toLocaleLowerCase('pt-BR');
+		const matchesSearch = !term || (stay.guestName ?? '').toLocaleLowerCase('pt-BR').includes(term)
+			|| (stay.roomNumber ?? '').toLocaleLowerCase('pt-BR').includes(term)
+			|| (stay.attendant ?? '').toLocaleLowerCase('pt-BR').includes(term)
+			|| (stay.note ?? '').toLocaleLowerCase('pt-BR').includes(term);
+		const checkoutDate = stayCheckOutDate(stay);
+		const matchesFilter = filter === 'todas'
+			|| (filter === 'hospedados' && guestStayOccupiesToday(stay, today, Date.now()))
+			|| (filter === 'chegadas' && stay.status === 'hospedado' && (stay.checkInDate === today || stay.checkInDate === tomorrow))
+			|| (filter === 'proximas' && stay.status === 'hospedado' && (stay.kind === 'periodo' ? guestStayOccupiesToday(stay, today, Date.now()) : checkoutDate >= today));
+		return matchesSearch && matchesFilter;
+	});
+	const receptionEntryContext = useMemo<ReceptionEntryContext>(() => ({
+		stays: receptionDirectory.stays,
+		rooms: receptionDirectory.rooms,
+		roomDirectory: data.rooms,
+		reservations: data.reservations,
+		attendant: 'Gerência',
+	}), [receptionDirectory, data.rooms, data.reservations]);
 	const selected = data.reservations[editingId];
 	const amountDue = (reservation: Reservation) => Math.round(Math.max(0, (reservation.balanceDue ?? reservationTotal(reservation) + storedExtrasTotal(reservation) - reservationPaymentsTotal(reservation.id, financeData)) + reservationExtrasTotal(reservation.id, extras) - pendingCollectionsTotal(reservation.id, collections)) * 100) / 100;
 
@@ -436,6 +472,21 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 		setModalOpen(true);
 	}
 
+	async function removeReceptionStay(stay: GuestStay) {
+		if (!isAdmin || !window.confirm(`Excluir a hospedagem de ${stay.guestName || `quarto ${stay.roomNumber}`}? Eventuais hospedagens convertidas, cobranças, valores recebidos e lançamentos da OYO vinculados também serão removidos e recalculados.`)) return;
+		setSaving(true);
+		setError('');
+		setNotice('');
+		try {
+			await deleteStay(stay);
+			setNotice('Hospedagem excluída. Cobranças e valores financeiros vinculados foram atualizados.');
+		} catch (cause) {
+			setError(cause instanceof Error ? cause.message : 'Não foi possível excluir a hospedagem.');
+		} finally {
+			setSaving(false);
+		}
+	}
+
 	function openEdit(reservation: Reservation) {
 		setEditingId(reservation.id);
 		setError('');
@@ -459,7 +510,7 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 					</section>
 					<section className="reservation-panel">
 						<div className="reservation-toolbar"><div className="reservation-tabs" role="tablist" aria-label="Filtrar reservas">{([['proximas', 'Ativas'], ['chegadas', 'Chegadas'], ['hospedados', 'Hospedados'], ['todas', 'Todas']] as [ReservationFilter, string][]).map(([id, label]) => <button key={id} role="tab" aria-selected={filter === id} className={filter === id ? 'selected' : ''} onClick={() => setFilter(id)}>{label}</button>)}</div><label className="schedule-field reservation-search"><span>Buscar hóspede ou quarto</span><input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Nome, telefone ou quarto" /></label></div>
-						{loading ? <div className="loading-state">Carregando reservas...</div> : !rooms.length ? <div className="reservation-empty"><strong>Cadastre os quartos antes de criar reservas</strong><p>O mapa de reservas usa os mesmos quartos e status do serviço de quarto.</p>{isAdmin && <Link className="button button-primary" to="/quartos">Cadastrar quartos</Link>}</div> : !visibleReservations.length ? <div className="reservation-empty"><strong>Nenhuma reserva nesta visão</strong><p>Crie uma reserva para atualizar automaticamente ocupação e chegadas.</p><button className="button button-primary" onClick={openCreate}>+ Nova reserva</button></div> : <div className="reservation-list">{visibleReservations.map((reservation) => {
+						{loading || receptionLoading ? <div className="loading-state">Carregando reservas e hospedagens...</div> : !rooms.length ? <div className="reservation-empty"><strong>Cadastre os quartos antes de criar reservas</strong><p>O mapa de reservas usa os mesmos quartos e status do serviço de quarto.</p>{isAdmin && <Link className="button button-primary" to="/quartos">Cadastrar quartos</Link>}</div> : !visibleReservations.length ? <div className="reservation-empty"><strong>Nenhuma reserva nesta visão</strong><p>Hospedagens registradas pela recepção aparecem na seção abaixo.</p><button className="button button-primary" onClick={openCreate}>+ Nova reserva</button></div> : <div className="reservation-list">{visibleReservations.map((reservation) => {
 							const room = data.rooms[reservation.roomId];
 							const checkInAt = new Date(`${reservation.checkInDate}T${reservation.channel === 'rotativo' ? reservation.checkInTime : '00:00'}:00`);
 							const canCheckIn = reservation.status === 'confirmada' && checkInAt <= new Date() && room?.cleaningStatus === 'limpo' && room.maintenanceStatus !== 'em_manutencao';
@@ -473,12 +524,33 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 								<div className="reservation-row-actions">{reservation.status === 'confirmada' && <>{isAdmin && <button onClick={() => openEdit(reservation)}>Editar</button>}<button className="reservation-action-primary" onClick={() => void checkIn(reservation)} disabled={!canCheckIn || saving} title={!canCheckIn ? room?.cleaningStatus !== 'limpo' ? 'O quarto precisa estar limpo' : room?.maintenanceStatus === 'em_manutencao' ? 'Quarto em manutenção' : 'Check-in disponível a partir do horário previsto' : undefined}>Check-in</button>{isAdmin && <button className="danger" onClick={() => void cancelReservation(reservation)}>Cancelar</button>}</>}{reservation.status === 'hospedado' && <><button onClick={() => setExtraReservation(reservation)}>Lançar extra</button><button className="reservation-action-primary" onClick={() => checkOut(reservation)}>Checkout</button></>}{isAdmin && <button className="danger" disabled={saving} onClick={() => void removeReservation(reservation)}>Excluir</button>}</div>
 							</article>;
 						})}</div>}
+						{!loading && !receptionLoading && <section className="reception-stays-section" aria-labelledby="reception-stays-title">
+							<div className="reception-stays-heading"><div><h2 id="reception-stays-title">Hospedagens cadastradas pela recepção</h2><p>Registros feitos em “Adicionar hóspede”.</p></div><span>{visibleReceptionStays.length} {visibleReceptionStays.length === 1 ? 'registro' : 'registros'}</span></div>
+							{visibleReceptionStays.length ? <div className="reservation-list">{visibleReceptionStays.map((stay) => {
+								const checkoutDate = stayCheckOutDate(stay);
+								const currentlyHosted = guestStayOccupiesToday(stay, today, Date.now());
+								const statusLabel = stay.status === 'encerrado' ? 'Encerrado'
+									: stay.checkInDate > today ? 'Programado'
+										: currentlyHosted ? 'Hospedado' : 'Período encerrado';
+								const statusClass = statusLabel === 'Hospedado' ? 'reservation-hospedado'
+									: statusLabel === 'Programado' ? 'reservation-confirmada' : 'reservation-encerrada';
+								return <article className="reservation-card reception-stay-card" key={stay.id}>
+									<div className="rc-main"><div className="rc-title"><strong>{stay.guestName || 'Hóspede sem nome'}</strong><span className={`reservation-status ${statusClass}`}>{statusLabel}</span></div><small className="reservation-channel channel-balcao">{stay.kind === 'periodo' ? 'Rotativo · 4 horas' : 'Balcão · diária'}</small>{stay.attendant && <small>Atendente: {stay.attendant}</small>}{stay.note && <small>{stay.note}</small>}</div>
+									<div className="rc-field"><span className="rc-label">Quarto</span><strong>{stay.roomNumber || '—'}</strong></div>
+									<div className="rc-field"><span className="rc-label">Check-in</span><strong>{formatDate(stay.checkInDate)}</strong></div>
+									<div className="rc-field"><span className="rc-label">Checkout</span><strong>{checkoutDate ? formatDate(checkoutDate) : '—'}</strong></div>
+									<div className="rc-field"><span className="rc-label">Pessoas</span><strong>{Math.max(1, stay.guestCount ?? (stay.hasAdditionalGuests ? 2 : 1))}</strong></div>
+									{isAdmin && <div className="reservation-row-actions reception-stay-actions"><button disabled={saving} onClick={() => { setError(''); setNotice(''); setEditingReceptionStay(stay); }}>Editar</button><button className="danger" disabled={saving} onClick={() => void removeReceptionStay(stay)}>Excluir</button></div>}
+								</article>;
+							})}</div> : <div className="reservation-empty"><strong>Nenhuma hospedagem da recepção nesta visão</strong><p>Altere o filtro ou a busca para localizar outros registros.</p></div>}
+						</section>}
 					</section>
 					<footer className="finance-page-footer"><span>Armazenamento: {housekeepingStorageMode}</span><span>Ocupação vinculada aos quartos e ao check-in</span></footer>
 					{isAdmin && <ReservationAudit events={Object.values(data.auditLog ?? {}).filter((event) => event.entity === 'reservation').sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0, 20)} />}
 				</div>
 			</main>
 			{modalOpen && <ReservationEditor key={editingId || 'new-reservation'} rooms={rooms} reservation={selected} data={data} payments={selected ? reservationPayments(selected.id, financeData) : []} isAdmin={isAdmin} saving={saving} error={error} onClose={() => setModalOpen(false)} onSubmit={saveReservation} />}
+			{isAdmin && editingReceptionStay && <CaixaRecepcao userRole={userRole} modalOnly editingStay={editingReceptionStay} entryContext={receptionEntryContext} onModalClose={(message) => { setEditingReceptionStay(null); if (message) { setError(''); setNotice(message); } }} />}
 			{checkoutReservation && <CheckoutEditor key={`${checkoutReservation.id}-${amountDue(checkoutReservation)}`} reservation={checkoutReservation} due={amountDue(checkoutReservation)} saving={saving} error={error} onClose={() => setCheckoutReservation(null)} onSubmit={(event) => void submitCheckOut(event, checkoutReservation)} />}
 			{extraReservation && <ExtraEditor key={extraReservation.id} reservation={extraReservation} saving={saving} error={error} onClose={() => setExtraReservation(null)} onSubmit={(event) => void submitExtra(event, extraReservation)} />}
 		</div>
