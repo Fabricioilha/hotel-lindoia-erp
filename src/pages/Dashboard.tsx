@@ -69,8 +69,9 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
     return guestCounts.flatMap((guestCount) => {
       const rates = receptionRates.roomRatesByGuests?.[category.id]?.[guestCount];
       const legacyRates = guestCount === maximumGuests ? receptionRates.roomRates[category.id] : undefined;
+      const holidayRateKey = boardWeekday === 'friday' || boardWeekday === 'saturday' ? 'holidayWeekend' : 'holidayWeekday';
       const amount = todayHoliday
-        ? rates?.holiday ?? rates?.[boardWeekday] ?? legacyRates?.holiday ?? legacyRates?.[boardWeekday]
+        ? rates?.[holidayRateKey] ?? rates?.holiday ?? rates?.[boardWeekday] ?? legacyRates?.[holidayRateKey] ?? legacyRates?.holiday ?? legacyRates?.[boardWeekday]
         : rates?.[boardWeekday] ?? legacyRates?.[boardWeekday];
       return amount === undefined ? [] : [{ category: `${category.name} · ${guestCount} ${guestCount === 1 ? 'hóspede' : 'hóspedes'}`, amount }];
     });

@@ -21,8 +21,8 @@ export const WEEKDAYS: { key: WeekdayKey; label: string }[] = [
 ];
 
 export interface ReceptionRateSettings {
-  roomRates: Record<string, Partial<Record<WeekdayKey | 'holiday', number>>>;
-  roomRatesByGuests?: Record<string, Record<number, Partial<Record<WeekdayKey | 'holiday', number>>>>;
+  roomRates: Record<string, Partial<Record<WeekdayKey | 'holiday' | 'holidayWeekday' | 'holidayWeekend', number>>>;
+  roomRatesByGuests?: Record<string, Record<number, Partial<Record<WeekdayKey | 'holiday' | 'holidayWeekday' | 'holidayWeekend', number>>>>;
   addOnRates: Partial<Record<'breakfast' | ExtraType, number>>;
   holidays: Record<string, string>;
 }

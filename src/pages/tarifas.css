@@ -16,7 +16,7 @@
 .rates-page input { box-sizing: border-box; width: 100%; min-width: 0 !important; min-height: 38px; padding: 8px 10px !important; border: 1px solid #cbd5e1; border-radius: 6px; color: #172d47; background: #fff; font: inherit; }
 .rates-page button { min-height: 38px; padding: 8px 12px; border: 1px solid #bccadc; border-radius: 6px; color: #24476b; background: #fff; cursor: pointer; }
 .rates-presets button { white-space: nowrap; }
-.rates-week-grid { display: grid; grid-template-columns: repeat(8, minmax(95px, 1fr)); gap: 8px; overflow-x: auto; padding-bottom: 2px; }
+.rates-week-grid { display: grid; grid-template-columns: repeat(9, minmax(95px, 1fr)); gap: 8px; overflow-x: auto; padding-bottom: 2px; }
 .rates-week-grid label { min-width: 95px; }
 .rates-money-input { display: flex; align-items: center; border: 1px solid #cbd5e1; border-radius: 6px; background: #fff; }
 .rates-money-input > span { padding-left: 9px; color: #718096; font-size: .8125rem; }
