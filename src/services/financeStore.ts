@@ -1,4 +1,4 @@
-import { endAt, get, limitToLast, onValue, orderByChild, query, ref, startAt, update as updateDatabase } from 'firebase/database';
+import { endAt, get, limitToLast, onValue, orderByChild, orderByKey, query, ref, startAt, update as updateDatabase } from 'firebase/database';
 import { db } from '../config/firebase';
 import { buildAuditEvents } from '../types/audit';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, type FinanceData } from '../types/finance';
@@ -140,6 +140,36 @@ export function subscribeFinance(
           sales, reservationCollections: values.reservationCollections,
         } as OperationalFinanceSources));
       }
+    }, onError);
+  });
+  return () => stops.forEach((stop) => stop());
+}
+
+export function subscribeReservationPaymentIncomes(
+  reservationIds: string[],
+  onChange: (data: FinanceData) => void,
+  onError: (error: Error) => void,
+): () => void {
+  const ids = [...new Set(reservationIds)];
+  if (ids.length === 0) {
+    onChange(normalizeFinance({}));
+    return () => undefined;
+  }
+  const groups = new Map<string, FinanceData['incomes']>();
+  const loaded = new Set<string>();
+  onChange(normalizeFinance({}));
+  const stops = ids.map((reservationId) => {
+    const prefix = `reservation-${reservationId}-`;
+    const incomeQuery = query(
+      ref(db, 'erp_geral/financeiro/incomes'),
+      orderByKey(),
+      startAt(prefix),
+      endAt(`${prefix}\uf8ff`),
+    );
+    return onValue(incomeQuery, (snapshot) => {
+      groups.set(reservationId, (snapshot.val() ?? {}) as FinanceData['incomes']);
+      loaded.add(reservationId);
+      if (loaded.size === ids.length) onChange(normalizeFinance({ incomes: Object.assign({}, ...groups.values()) }));
     }, onError);
   });
   return () => stops.forEach((stop) => stop());

@@ -1,4 +1,4 @@
-import { equalTo, get, limitToLast, onValue, orderByChild, orderByKey, query, ref, runTransaction, set, startAt, update } from 'firebase/database';
+import { endAt, equalTo, get, limitToLast, onValue, orderByChild, orderByKey, query, ref, runTransaction, set, startAt, update } from 'firebase/database';
 import { db } from '../config/firebase';
 import { buildAuditEvents } from '../types/audit';
 import { recordOperationalIncome } from './operationalIncome';
@@ -97,6 +97,31 @@ export function subscribeHousekeeping(
             : path;
     return onValue(listener, (snapshot) => {
       values[key] = snapshot.val() ?? (key === 'attendantsConfigured' || key === 'categoriesConfigured' ? false : {});
+      loaded.add(key);
+      if (loaded.size === keys.length) onChange(normalizeHousekeeping(values));
+    }, onError);
+  });
+  return () => stops.forEach((stop) => stop());
+}
+
+export function subscribeReservationWorkspace(
+  dateRange: { from: string; to: string },
+  onChange: (data: HousekeepingData) => void,
+  onError: (error: Error) => void,
+  includeAudit = true,
+): () => void {
+  const keys = includeAudit ? ['rooms', 'reservations', 'auditLog'] as const : ['rooms', 'reservations'] as const;
+  const loaded = new Set<string>();
+  const values: Record<string, unknown> = {};
+  const stops = keys.map((key) => {
+    const path = ref(db, `erp_geral/quartos/${key}`);
+    const listener = key === 'reservations'
+      ? query(path, orderByChild('checkInDate'), startAt(dateRange.from), endAt(dateRange.to))
+      : key === 'auditLog'
+        ? query(path, orderByChild('occurredAt'), limitToLast(100))
+        : path;
+    return onValue(listener, (snapshot) => {
+      values[key] = snapshot.val() ?? {};
       loaded.add(key);
       if (loaded.size === keys.length) onChange(normalizeHousekeeping(values));
     }, onError);
@@ -388,40 +413,37 @@ export function subscribeCurrentReservationDirectory(
   }, onError);
 }
 
-let lastReservationDirectoryFingerprint = '';
-
-function stableDirectoryJson(index: Record<string, ReservationDirectoryEntry>): string {
-  return JSON.stringify(Object.fromEntries(Object.entries(index).sort(([left], [right]) => left.localeCompare(right))));
-}
+const reservationDirectoryFingerprints = new Map<string, string>();
 
 export async function syncReservationDirectory(reservations: Record<string, Reservation>): Promise<void> {
-  const entries: [string, ReservationDirectoryEntry][] = Object.values(reservations)
-    .filter((reservation) => reservation.status === 'confirmada' || reservation.status === 'hospedado')
-    .map((reservation): [string, ReservationDirectoryEntry] => [reservation.id, {
-      id: reservation.id,
-      roomId: reservation.roomId,
-      roomNumber: reservation.roomNumber,
-      guestName: reservation.guestName,
-      adults: reservation.adults,
-      children: reservation.children,
-      breakfastIncluded: Boolean(reservation.breakfastIncluded),
-      checkInDate: reservation.checkInDate,
-      checkOutDate: reservation.checkOutDate,
-      checkInTime: reservation.checkInTime,
-      checkOutTime: reservation.checkOutTime,
-      channel: reservation.channel,
-      status: reservation.status,
-    }]);
-  const index = Object.fromEntries(entries);
-  const fingerprint = stableDirectoryJson(index);
-  if (fingerprint === lastReservationDirectoryFingerprint) return;
-  const existing = await get(ref(db, 'erp_geral/quartos/reservationIndex'));
-  if (stableDirectoryJson(existing.val() ?? {}) === fingerprint) {
-    lastReservationDirectoryFingerprint = fingerprint;
-    return;
-  }
-  await set(ref(db, 'erp_geral/quartos/reservationIndex'), index);
-  lastReservationDirectoryFingerprint = fingerprint;
+  const updates: Record<string, ReservationDirectoryEntry | null> = {};
+  const fingerprints = new Map<string, string>();
+  Object.values(reservations).forEach((reservation) => {
+    const entry: ReservationDirectoryEntry | null = reservation.status === 'confirmada' || reservation.status === 'hospedado'
+      ? {
+        id: reservation.id,
+        roomId: reservation.roomId,
+        roomNumber: reservation.roomNumber,
+        guestName: reservation.guestName,
+        adults: reservation.adults,
+        children: reservation.children,
+        breakfastIncluded: Boolean(reservation.breakfastIncluded),
+        checkInDate: reservation.checkInDate,
+        checkOutDate: reservation.checkOutDate,
+        checkInTime: reservation.checkInTime,
+        checkOutTime: reservation.checkOutTime,
+        channel: reservation.channel,
+        status: reservation.status,
+      }
+      : null;
+    const fingerprint = JSON.stringify(entry);
+    if (reservationDirectoryFingerprints.get(reservation.id) === fingerprint) return;
+    updates[`erp_geral/quartos/reservationIndex/${reservation.id}`] = entry;
+    fingerprints.set(reservation.id, fingerprint);
+  });
+  if (Object.keys(updates).length === 0) return;
+  await update(ref(db), updates);
+  fingerprints.forEach((fingerprint, id) => reservationDirectoryFingerprints.set(id, fingerprint));
 }
 
 export async function createReservation(reservation: Reservation, current: HousekeepingData): Promise<void> {
@@ -564,10 +586,32 @@ function reservationSlotPaths(reservation: Reservation): string[] {
   return Array.from({ length: nights }, (_, offset) => new Date(firstDate + offset * 86_400_000).toISOString().slice(0, 10));
 }
 
+function subscribeReservationScopedRecords<T>(
+  collectionPath: string,
+  reservationIds: string[],
+  onChange: (records: Record<string, T>) => void,
+  onError: (error: Error) => void,
+): () => void {
+  const ids = [...new Set(reservationIds)];
+  onChange({});
+  if (ids.length === 0) return () => undefined;
+  const loaded = new Set<string>();
+  const groups = new Map<string, Record<string, T>>();
+  const publish = () => onChange(Object.assign({}, ...groups.values()));
+  const stops = ids.map((reservationId) => onValue(ref(db, `${collectionPath}/${reservationId}`), (snapshot) => {
+    groups.set(reservationId, (snapshot.val() ?? {}) as Record<string, T>);
+    loaded.add(reservationId);
+    if (loaded.size === ids.length) publish();
+  }, onError));
+  return () => stops.forEach((stop) => stop());
+}
+
 export function subscribeReservationCollections(
   onChange: (collections: Record<string, ReservationCollection>) => void,
   onError: (error: Error) => void,
+  reservationIds?: string[],
 ): () => void {
+  if (reservationIds) return subscribeReservationScopedRecords('erp_geral/reservationCollections', reservationIds, onChange, onError);
   return onValue(ref(db, 'erp_geral/reservationCollections'), (snapshot) => {
     const byReservation = snapshot.val() as Record<string, Record<string, ReservationCollection>> | null;
     onChange(Object.values(byReservation ?? {}).reduce<Record<string, ReservationCollection>>((all, collection) => ({ ...all, ...collection }), {}));
@@ -588,7 +632,9 @@ export async function recordReservationCollection(collection: ReservationCollect
 export function subscribeReservationExtras(
   onChange: (extras: Record<string, ReservationExtra>) => void,
   onError: (error: Error) => void,
+  reservationIds?: string[],
 ): () => void {
+  if (reservationIds) return subscribeReservationScopedRecords('erp_geral/reservationExtras', reservationIds, onChange, onError);
   return onValue(ref(db, 'erp_geral/reservationExtras'), (snapshot) => {
     const byReservation = snapshot.val() as Record<string, Record<string, ReservationExtra>> | null;
     onChange(Object.values(byReservation ?? {}).reduce<Record<string, ReservationExtra>>((all, extras) => ({ ...all, ...extras }), {}));
@@ -649,9 +695,13 @@ export async function transitionReservation(
   await update(ref(db), updates);
 }
 
-export async function syncReservationCollections(): Promise<void> {
-  const collectionsSnapshot = await get(ref(db, 'erp_geral/reservationCollections'));
-  const collectionsByReservation = collectionsSnapshot.val() as Record<string, Record<string, ReservationCollection>> | null;
+export async function syncReservationCollections(reservationIds?: string[]): Promise<void> {
+  const collectionsByReservation = reservationIds
+    ? Object.fromEntries(await Promise.all([...new Set(reservationIds)].map(async (reservationId) => {
+      const snapshot = await get(ref(db, `erp_geral/reservationCollections/${reservationId}`));
+      return [reservationId, snapshot.val() ?? {}];
+    }))) as Record<string, Record<string, ReservationCollection>>
+    : (await get(ref(db, 'erp_geral/reservationCollections'))).val() as Record<string, Record<string, ReservationCollection>> | null;
 
   for (const collection of Object.values(collectionsByReservation ?? {}).flatMap((group) => Object.values(group))) {
     const reservationSnapshot = await get(ref(db, `erp_geral/quartos/reservations/${collection.reservationId}`));

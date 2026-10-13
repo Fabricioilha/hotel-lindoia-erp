@@ -51,13 +51,17 @@ export interface ReceptionStayDirectoryData {
 export function subscribeReceptionStayDirectory(
   onChange: (data: ReceptionStayDirectoryData) => void,
   onError: (error: Error) => void,
+  dateRange?: { from: string; to: string },
 ): () => void {
   let stays: Record<string, GuestStay> | undefined;
   let rooms: Record<string, ReceptionRoom> | undefined;
   const publish = () => {
     if (stays !== undefined && rooms !== undefined) onChange({ stays, rooms });
   };
-  const staysQuery = query(ref(db, PATH + '/stays'), orderByChild('checkInDate'), startAt(fiveYearsAgoDateKey()));
+  const staysRef = ref(db, PATH + '/stays');
+  const staysQuery = dateRange
+    ? query(staysRef, orderByChild('checkInDate'), startAt(dateRange.from), endAt(dateRange.to))
+    : query(staysRef, orderByChild('checkInDate'), startAt(fiveYearsAgoDateKey()));
   const stopStays = onValue(staysQuery, (snapshot) => {
     stays = snapshot.val() ?? {};
     publish();
