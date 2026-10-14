@@ -157,9 +157,17 @@ export function subscribeReservationPaymentIncomes(
     return () => undefined;
   }
   const groups = new Map<string, FinanceData['incomes']>();
+  const suppressedGroups = new Map<string, FinanceData['suppressed']>();
   const loaded = new Set<string>();
   onChange(normalizeFinance({}));
-  const stops = ids.map((reservationId) => {
+  const publish = () => {
+    if (loaded.size !== ids.length * 2) return;
+    const suppressed = Object.assign({}, ...suppressedGroups.values()) as FinanceData['suppressed'];
+    const incomes = Object.fromEntries(Object.entries(Object.assign({}, ...groups.values()) as FinanceData['incomes'])
+      .filter(([id]) => !suppressed[id]));
+    onChange(normalizeFinance({ incomes, suppressed }));
+  };
+  const stops = ids.flatMap((reservationId) => {
     const prefix = `reservation-${reservationId}-`;
     const incomeQuery = query(
       ref(db, 'erp_geral/financeiro/incomes'),
@@ -167,11 +175,21 @@ export function subscribeReservationPaymentIncomes(
       startAt(prefix),
       endAt(`${prefix}\uf8ff`),
     );
-    return onValue(incomeQuery, (snapshot) => {
+    const suppressedQuery = query(
+      ref(db, 'erp_geral/financeiro/suppressed'),
+      orderByKey(), startAt(prefix), endAt(`${prefix}\uf8ff`),
+    );
+    const stopIncomes = onValue(incomeQuery, (snapshot) => {
       groups.set(reservationId, (snapshot.val() ?? {}) as FinanceData['incomes']);
-      loaded.add(reservationId);
-      if (loaded.size === ids.length) onChange(normalizeFinance({ incomes: Object.assign({}, ...groups.values()) }));
+      loaded.add(`incomes:${reservationId}`);
+      publish();
     }, onError);
+    const stopSuppressed = onValue(suppressedQuery, (snapshot) => {
+      suppressedGroups.set(reservationId, (snapshot.val() ?? {}) as FinanceData['suppressed']);
+      loaded.add(`suppressed:${reservationId}`);
+      publish();
+    }, onError);
+    return [stopIncomes, stopSuppressed];
   });
   return () => stops.forEach((stop) => stop());
 }

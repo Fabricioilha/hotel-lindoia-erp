@@ -1,6 +1,6 @@
 import { deleteHotelRoom } from '../../services/hospitalityDeletion';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import type { UserRole } from '../../types';
 import { roomCategoriesOf, roomCategoryDescription, type DailyCleaningRequest, type HousekeepingAttendant, type RoomCategoryRecord } from '../../types/housekeeping';
 import type {
@@ -23,9 +23,11 @@ import {
   saveRoomDayPlan,
 	subscribeHousekeeping,
   updateHousekeepingSettings,
-  updateRoomCleaningStatus,
 } from '../../services/housekeepingStore';
-import { activeReservationForRoom } from '../../services/reservationAnalytics';
+import { guestStayOccupiesToday, reservationOccupiesToday, stayCheckOutDate } from '../../services/reservationAnalytics';
+import { subscribeActiveCleaningTasks } from '../../services/cleaningStore';
+import { subscribeReceptionStayDirectory, type ReceptionStayDirectoryData } from '../../services/receptionStore';
+import type { CleaningTask } from '../../types/cleaning';
 import './quartos.css';
 
 type ModalState =
@@ -53,8 +55,7 @@ const cleaningRequestLabels: Record<DailyCleaningRequest, string> = {
 	dispensada: 'Limpeza dispensada',
 };
 
-function todayKey() {
-	const today = new Date();
+function todayKey(today = new Date()) {
 	return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
 }
 
@@ -81,11 +82,16 @@ function shortDate(date: string) {
 }
 
 export function ListaQuartos({ userRole }: { userRole: UserRole }) {
+	const [searchParams] = useSearchParams();
+	const focusedRoom = searchParams.get('room')?.trim() ?? '';
 	const { data: staff } = useStaff();
 	const attendants = staffMembers(staff, 'housekeeping');
-	const today = todayKey();
+	const [clock, setClock] = useState(() => Date.now());
+	const today = todayKey(new Date(clock));
 	const isAdmin = userRole === 'admin';
 	const [data, setData] = useState<HousekeepingData>(emptyHousekeeping());
+	const [cleaningTasks, setCleaningTasks] = useState<Record<string, CleaningTask>>({});
+	const [reception, setReception] = useState<ReceptionStayDirectoryData>({ stays: {}, rooms: {} });
 	const [loading, setLoading] = useState(true);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState('');
@@ -105,20 +111,38 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 		setLoading(false);
 		setError(`Não foi possível carregar os quartos: ${storageError.message}`);
 	}), []);
+	useEffect(() => {
+		const timer = window.setInterval(() => setClock(Date.now()), 60_000);
+		return () => window.clearInterval(timer);
+	}, []);
+	useEffect(() => {
+		const onError = (cause: Error) => setError(`Não foi possível carregar a operação dos quartos: ${cause.message}`);
+		const stopTasks = subscribeActiveCleaningTasks(setCleaningTasks, onError);
+		const stopReception = subscribeReceptionStayDirectory(setReception, onError);
+		return () => { stopTasks(); stopReception(); };
+	}, []);
 
 	const rooms = useMemo(() => Object.values(data.rooms).sort((a, b) =>
 		a.number.localeCompare(b.number, 'pt-BR', { numeric: true }),
 	), [data.rooms]);
 	const categories = useMemo(() => roomCategoriesOf({ categories: data.categories, categoriesConfigured: data.categoriesConfigured }), [data.categories, data.categoriesConfigured]);
+	function occupancyOf(room: HousekeepingRoom) {
+		const reservation = Object.values(data.reservations).find((item) => item.roomId === room.id && reservationOccupiesToday(item, today, clock));
+		const stay = Object.values(reception.stays).find((item) => item.roomNumber === room.number && guestStayOccupiesToday(item, today, clock));
+		return { reservation, stay, guestName: reservation?.guestName ?? stay?.guestName ?? '', checkOutDate: reservation?.checkOutDate ?? (stay ? stayCheckOutDate(stay) : '') };
+	}
+	function taskOf(room: HousekeepingRoom) {
+		return Object.values(cleaningTasks).find((task) => task.roomId === room.id || task.roomNumber === room.number);
+	}
 	const filteredRooms = rooms.filter((room) => {
-		const currentGuest = activeReservationForRoom(data, room.id)?.guestName ?? '';
+		const currentGuest = occupancyOf(room).guestName;
 		const matchesSearch = room.number.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR'))
 			|| currentGuest.toLocaleLowerCase('pt-BR').includes(search.toLocaleLowerCase('pt-BR'));
 		const matchesStatus = statusFilter === 'todos'
 			|| room.cleaningStatus === statusFilter
-			|| (activeReservationForRoom(data, room.id) ? 'ocupado' : 'livre') === statusFilter
+			|| (currentGuest ? 'ocupado' : 'livre') === statusFilter
 			|| room.maintenanceStatus === statusFilter;
-		return matchesSearch && matchesStatus;
+		return matchesSearch && matchesStatus && (!focusedRoom || focusedRoom === room.number);
 	});
 	const todayLogs = Object.values(data.cleaningLogs).map((log) => ({ ...log, attendant: findStaff(staff, log.attendant, log.employeeId)?.name ?? log.attendant })).filter((log) => log.date === logDate);
 	const attendantTotals = new Map<string, Set<string>>();
@@ -127,7 +151,7 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 		roomsCleaned.add(log.roomId);
 		attendantTotals.set(log.attendant, roomsCleaned);
 	});
-	const occupiedRooms = rooms.filter((room) => activeReservationForRoom(data, room.id)).length;
+	const occupiedRooms = rooms.filter((room) => occupancyOf(room).guestName).length;
 	const dirtyRooms = rooms.filter((room) => room.cleaningStatus === 'sujo').length;
 	const cleaningRooms = rooms.filter((room) => room.cleaningStatus === 'em_limpeza').length;
 	const maintenanceRooms = rooms.filter((room) => room.maintenanceStatus !== 'normal').length;
@@ -173,20 +197,15 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
     void changeData(() => deleteRoomCleaningLog(log), 'Registro excluído; indicadores de limpeza atualizados.');
   }
 
-	function saveRoom(room: HousekeepingRoom) {
-		void changeData(() => saveHousekeepingRoom(room), 'Quarto salvo.');
-		setModal(null);
-	}
-
-	function setCleaningStatus(room: HousekeepingRoom, status: HousekeepingRoom['cleaningStatus']) {
-		void changeData(() => updateRoomCleaningStatus(room.id, status), status === 'em_limpeza' ? `Limpeza do quarto ${room.number} iniciada.` : 'Status do quarto atualizado.');
+	async function saveRoom(room: HousekeepingRoom) {
+		if (await changeData(() => saveHousekeepingRoom(room), 'Quarto salvo.')) setModal(null);
 	}
 
 	function updateDailyPlan(roomId: string, plan: Partial<RoomDayPlan>) {
 		void changeData(() => saveRoomDayPlan(roomId, today, plan), 'Informação diária atualizada.');
 	}
 
-	function completeCleaning(room: HousekeepingRoom, form: { attendant: string; doorsAndWindows: boolean; note: string }) {
+	async function completeCleaning(room: HousekeepingRoom, form: { attendant: string; doorsAndWindows: boolean; note: string }) {
 		const log: RoomCleaningLog = {
 			id: newId(),
 			roomId: room.id,
@@ -198,8 +217,7 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 			doorsAndWindows: form.doorsAndWindows,
 			note: form.note.trim(),
 		};
-		void changeData(() => completeRoomCleaning(room.id, log), `Limpeza do quarto ${room.number} registrada.`);
-		setModal(null);
+		if (await changeData(() => completeRoomCleaning(room.id, log), `Limpeza do quarto ${room.number} registrada.`)) setModal(null);
 	}
 
 	function saveInterval(event: FormEvent<HTMLFormElement>) {
@@ -241,6 +259,8 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 
 					{error && <div className="notice notice-error" role="alert">{error}<button onClick={() => setError('')} aria-label="Fechar aviso">×</button></div>}
 					{notice && <div className="notice notice-success" role="status">{notice}</div>}
+					{focusedRoom && <section className="housekeeping-context"><strong>Quarto {focusedRoom}</strong><nav><Link to={`/limpeza?room=${encodeURIComponent(focusedRoom)}`}>Limpeza por camareiras</Link><Link to={`/reservas?room=${encodeURIComponent(focusedRoom)}`}>Reservas e hospedagens</Link><Link to="/quartos">Todos os quartos</Link></nav></section>}
+					{isAdmin && !focusedRoom && <nav className="housekeeping-module-links"><Link to="/limpeza">Limpeza por camareiras</Link><Link to="/reservas">Reservas e hospedagens</Link></nav>}
 
 					<section className="housekeeping-summary" aria-label="Resumo dos quartos">
 						<Metric label="Quartos cadastrados" value={rooms.length} tone="neutral" />
@@ -268,13 +288,16 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 							const due = dueDays(room.id);
 							const lastDoorsLog = lastDoorsAndWindowsClean(room.id);
 							const unavailable = room.maintenanceStatus === 'em_manutencao';
-							const reservation = activeReservationForRoom(data, room.id);
+							const occupancy = occupancyOf(room);
+							const task = taskOf(room);
 							return <article className={`room-card room-cleaning-${room.cleaningStatus}`} key={room.id}>
 								<header className="room-card-header"><div><span className="room-number-label">QUARTO</span><h3>{room.number}</h3>{room.category && <small className="room-number-label">{roomCategoryDescription(room)}</small>}<small className={`room-bed-count${defaultBedCount(room) === '' ? ' is-missing' : ''}`}>{defaultBedCount(room) === '' ? 'Camas não informadas' : `${defaultBedCount(room)} ${defaultBedCount(room) === 1 ? 'cama' : 'camas'}`}</small></div>{isAdmin && <div><button className="room-edit-button" onClick={() => setModal({ type: 'room', room })}>Editar quarto</button><button className="room-edit-button" disabled={saving} onClick={() => void removeRoom(room)}>Excluir</button></div>}</header>
-								<div className="room-status-badges"><span className={`room-badge badge-cleaning-${room.cleaningStatus}`}>{cleaningLabels[room.cleaningStatus]}</span><span className={`room-badge badge-occupancy-${reservation ? 'ocupado' : 'livre'}`}>{reservation ? 'Ocupado' : 'Livre'}</span><span className={`room-badge badge-maintenance-${room.maintenanceStatus}`}>{maintenanceLabels[room.maintenanceStatus]}</span></div>
-								{reservation && <div className="room-stayover">
-									<div className="room-guest-name">Hóspede <strong>{reservation.guestName}</strong></div>
-									<small className="room-plan-status">Checkout previsto: {shortDate(reservation.checkOutDate)}</small>
+								<div className="room-status-badges"><span className={`room-badge badge-cleaning-${room.cleaningStatus}`}>{cleaningLabels[room.cleaningStatus]}</span><span className={`room-badge badge-occupancy-${occupancy.guestName ? 'ocupado' : 'livre'}`}>{occupancy.guestName ? 'Ocupado' : 'Livre'}</span><span className={`room-badge badge-maintenance-${room.maintenanceStatus}`}>{maintenanceLabels[room.maintenanceStatus]}</span></div>
+								{task && <p className="room-assignment">Camareira responsável: <strong>{findStaff(staff, task.camareira, task.employeeId)?.name ?? task.camareira}</strong><Link to={`/limpeza?room=${encodeURIComponent(room.number)}`}>Acompanhar limpeza</Link></p>}
+								{occupancy.guestName && <div className="room-stayover">
+									<div className="room-guest-name">Hóspede <strong>{occupancy.guestName}</strong></div>
+									<small className="room-plan-status">Checkout previsto: {shortDate(occupancy.checkOutDate)}</small>
+									{isAdmin && <Link className="room-reservation-link" to={`/reservas?room=${encodeURIComponent(room.number)}${occupancy.reservation ? `&reservation=${encodeURIComponent(occupancy.reservation.id)}` : ''}`}>Ver reserva e hospedagem</Link>}
 									<div className="cleaning-request-row"><span>Limpeza de hoje</span>{isAdmin && <div className="choice-buttons"><button className={plan.cleaningRequest === 'solicitada' ? 'is-selected' : ''} onClick={() => updateDailyPlan(room.id, { cleaningRequest: 'solicitada' })}>Sim</button><button className={plan.cleaningRequest === 'dispensada' ? 'is-selected' : ''} onClick={() => updateDailyPlan(room.id, { cleaningRequest: 'dispensada' })}>Não</button></div>}</div>
 									<small className="room-plan-status">{cleaningRequestLabels[plan.cleaningRequest]}</small>
 								</div>}
@@ -283,13 +306,13 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 								</div>
 								{room.note && <p className="room-note">{room.note}</p>}
 								{isAdmin && <div className="room-card-actions">
-									{room.cleaningStatus === 'em_limpeza' ? <button className="button button-primary" onClick={() => setModal({ type: 'cleaning', room })} disabled={unavailable}>Concluir limpeza</button> : <button className="button button-primary" onClick={() => setCleaningStatus(room, 'em_limpeza')} disabled={unavailable}>{room.cleaningStatus === 'limpo' ? 'Iniciar nova limpeza' : 'Iniciar limpeza'}</button>}
+									{room.cleaningStatus === 'em_limpeza' ? <><button className="button button-primary" onClick={() => setModal({ type: 'cleaning', room })} disabled={unavailable || saving}>Concluir limpeza</button><Link className="button button-plain" to={`/limpeza?room=${encodeURIComponent(room.number)}`}>{task ? 'Ver tarefa da camareira' : 'Designar camareira'}</Link></> : unavailable ? <span className="room-plan-status">Libere o quarto antes de designar a limpeza.</span> : <Link className="button button-primary" to={`/limpeza?room=${encodeURIComponent(room.number)}`}>{room.cleaningStatus === 'limpo' ? 'Designar nova limpeza' : 'Designar limpeza'}</Link>}
 								</div>}
 							</article>;
 						})}</div>}
 
 						<aside className="attendant-panel">
-							<div className="room-list-heading"><div><label className="eyebrow">Dia<input type="date" value={logDate} onChange={(event) => setLogDate(event.target.value || today)} /></label><h2>Limpezas por camareira</h2></div><span>{todayLogs.length} registros</span></div>
+							<div className="room-list-heading"><div><label className="eyebrow">Dia<input type="date" value={logDate} onChange={(event) => setLogDate(event.target.value || today)} /></label><h2>Limpezas por camareira</h2><Link to={focusedRoom ? `/limpeza?room=${encodeURIComponent(focusedRoom)}` : '/limpeza'}>Acompanhar designações</Link></div><span>{todayLogs.length} registros</span></div>
 							{attendantTotals.size === 0 ? <p className="attendant-empty">Nenhuma limpeza registrada neste dia.</p> : <div className="attendant-table-wrap"><table className="attendant-table"><thead><tr><th>Camareira</th><th>Quartos limpos</th></tr></thead><tbody>{[...attendantTotals.entries()].sort(([a], [b]) => a.localeCompare(b, 'pt-BR')).map(([attendant, cleanedRooms]) => <tr key={attendant}><th scope="row">{attendant}</th><td>{cleanedRooms.size}</td></tr>)}</tbody></table></div>}
 							{todayLogs.length > 0 && <div className="attendant-log"><strong>Últimas limpezas</strong>{todayLogs.slice().sort((a, b) => b.completedAt.localeCompare(a.completedAt)).map((log) => <div key={log.id}><span>Quarto {log.roomNumber}</span><span>{log.attendant}{log.doorsAndWindows ? ' · portas/janelas' : ''}</span>{isAdmin && <button disabled={saving} onClick={() => removeCleaningLog(log)}>Excluir</button>}</div>)}</div>}
 						</aside>
@@ -302,7 +325,7 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 
 			{isAdmin && modal?.type === 'categories' && <RoomCategoriesEditor categories={categories} rooms={rooms} saving={saving} error={error} onCancel={() => setModal(null)} onSave={saveCategory} onDelete={removeCategory} />}
 
-			{isAdmin && modal?.type === 'cleaning' && <CleaningEditor room={modal.room} attendants={attendants} due={dueDays(modal.room.id) === null || dueDays(modal.room.id) === 0} onCancel={() => setModal(null)} onSave={(form) => completeCleaning(modal.room, form)} />}
+			{isAdmin && modal?.type === 'cleaning' && <CleaningEditor key={modal.room.id} room={modal.room} attendants={attendants} assignedTask={taskOf(modal.room)} due={dueDays(modal.room.id) === null || dueDays(modal.room.id) === 0} onCancel={() => setModal(null)} onSave={(form) => completeCleaning(modal.room, form)} />}
 		</div>
 	);
 }
@@ -401,8 +424,8 @@ function RoomCategoriesEditor({ categories, rooms, saving, error, onCancel, onSa
 	</div>;
 }
 
-function CleaningEditor({ room, attendants, due, onCancel, onSave }: { room: HousekeepingRoom; attendants: HousekeepingAttendant[]; due: boolean; onCancel: () => void; onSave: (form: { attendant: string; doorsAndWindows: boolean; note: string }) => void }) {
-	const [attendant, setAttendant] = useState('');
+function CleaningEditor({ room, attendants, assignedTask, due, onCancel, onSave }: { room: HousekeepingRoom; attendants: HousekeepingAttendant[]; assignedTask?: CleaningTask; due: boolean; onCancel: () => void; onSave: (form: { attendant: string; doorsAndWindows: boolean; note: string }) => void }) {
+	const [attendant, setAttendant] = useState(() => attendants.find((item) => item.id === assignedTask?.employeeId || item.name === assignedTask?.camareira)?.name ?? '');
 	const [doorsAndWindows, setDoorsAndWindows] = useState(due);
 	const [note, setNote] = useState('');
 

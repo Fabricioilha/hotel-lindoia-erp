@@ -14,6 +14,12 @@ Aplicação web para apoiar a operação do Hotel Lindoia: reservas e quartos, r
 
 As telas `/reservas` e `/quartos` usam os dados de `erp_geral/quartos` e são destinadas à gerência. O atendimento lançado em `/recepcao` é armazenado separadamente em `erp_geral/recepcao/stays`.
 
+A grade do painel da gerência reúne reservas e hospedagens da recepção. Ao clicar no quarto, o gerente consulta o hóspede, período, valores e limpeza responsável, abre a edição do registro correspondente, faz o checkout ou remove um bloqueio de manutenção. O checkout conserva os recebimentos e deixa o quarto aguardando limpeza. Quartos ocupados precisam ter a hospedagem encerrada antes de serem bloqueados.
+
+Os links entre o painel, **Gerenciar quartos**, **Reservas e hospedagens** e **Controle de Limpeza de Quartos** conservam o contexto do quarto. A edição também está disponível para reservas já hospedadas; nome, quarto, datas e correções de recebimentos atualizam o índice de ocupação e o Fluxo de Caixa. Recebimentos de checkout mantêm seus identificadores, e pagamentos anulados não voltam a aparecer ao editar.
+
+As tarefas das camareiras e o estado de limpeza do quarto são relacionados: designar uma limpeza marca o quarto em limpeza; concluir registra a camareira no histórico e marca o quarto limpo; cancelar deixa o quarto sujo. Conclusões pela gerência também atualizam a tarefa correspondente. As regras locais em `database.rules.json` precisam acompanhar a publicação do aplicativo para permitir essa sincronização pela equipe.
+
 A busca de `/reservas` abre, por padrão, com os check-ins de hoje. Os campos **Check-in de** e **Até** permitem escolher o período. A tela consulta reservas e hospedagens da recepção pela data de check-in selecionada e busca recebimentos, cobranças e adicionais relacionados às reservas exibidas. O resumo de ocupação usa o índice operacional de reservas; a ocupação do painel administrativo também considera os quartos cadastrados.
 
 ## Dados e permissões
@@ -55,3 +61,5 @@ npm run dev
 ```
 
 Os scripts disponíveis incluem `npm run build`, `npm run lint` e `npm run preview`.
+
+Os testes `npm run test:operations` e `npm run test:cleaning` verificam saldos, conciliação financeira, tarefas de limpeza, concorrência e permissões usando dados locais, sem conectar ao Firebase.

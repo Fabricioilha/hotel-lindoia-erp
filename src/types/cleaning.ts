@@ -7,6 +7,8 @@ export type CleaningStatus = 'em_limpeza' | 'concluido' | 'cancelado';
 
 export interface CleaningTask {
   employeeId?: string;
+  roomId?: string;
+  cleaningLogId?: string;
   id: string;
   roomNumber: string;
   camareira: string;

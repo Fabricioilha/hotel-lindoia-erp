@@ -59,8 +59,9 @@ async function removeHospitality(target: { reservationId: string } | { room: Hou
   if (room) {
     locks.push(`room-${room.id}`);
     updates[`erp_geral/quartos/rooms/${room.id}`] = null;
+    updates[`erp_geral/limpeza/activeRooms/${room.id}`] = null;
     (Object.values(snapshots[6].val() ?? {}) as ReceptionRoom[]).filter((item) => item.number === room.number).forEach((item) => { updates[`erp_geral/recepcao/rooms/${item.id}`] = null; });
-    (Object.values(snapshots[7].val() ?? {}) as CleaningTask[]).filter((item) => item.roomNumber === room.number).forEach((item) => { updates[`erp_geral/limpeza/tasks/${item.id}`] = null; });
+    (Object.values(snapshots[7].val() ?? {}) as CleaningTask[]).filter((item) => item.roomId === room.id || item.roomNumber === room.number).forEach((item) => { updates[`erp_geral/limpeza/tasks/${item.id}`] = null; });
     Object.values(housekeeping.cleaningLogs ?? {}).filter((item) => item.roomId === room.id).forEach((item) => { updates[`erp_geral/quartos/cleaningLogs/${item.id}`] = null; });
     Object.entries(housekeeping.dailyPlans ?? {}).forEach(([date, plans]) => { if (plans[room.id]) updates[`erp_geral/quartos/dailyPlans/${date}/${room.id}`] = null; });
   }

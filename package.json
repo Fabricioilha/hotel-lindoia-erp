@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "test:operations": "node tests/operations.test.mjs",
+    "preview": "vite preview",
+    "test:cleaning": "node tests/cleaning.test.cjs"
   },
   "dependencies": {
     "firebase": "^12.19.0",

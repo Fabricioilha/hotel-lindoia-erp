@@ -63,9 +63,13 @@
         }
       },
       "quartos": {
+        "dailyPlans": {
+          ".read": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')"
+        },
         ".read": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
         ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
         "reservations": {
+          ".indexOn": ["checkInDate"],
           "$reservationId": {
             ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
             ".validate": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin' && !newData.child('payments').exists()",
@@ -82,7 +86,7 @@
           ".read": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')",
           "$roomId": {
             "cleaningStatus": {
-              ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && newData.val() === 'sujo'))"
+              ".write": "(auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin') || (auth != null && root.child('roles').child(auth.uid).child('role').val() === 'viewer' && (newData.val() === 'sujo' || (newData.parent().child('maintenanceStatus').val() !== 'em_manutencao' && newData.parent().parent().parent().parent().child('limpeza/tasks').child(root.child('erp_geral/limpeza/activeRooms').child($roomId).child('taskId').val()).child('roomId').val() === $roomId && ((newData.val() === 'em_limpeza' && root.child('erp_geral/limpeza/activeRooms').child($roomId).child('phase').val() === 'assigning' && newData.parent().parent().parent().parent().child('limpeza/tasks').child(root.child('erp_geral/limpeza/activeRooms').child($roomId).child('taskId').val()).child('status').val() === 'em_limpeza') || (newData.val() === 'limpo' && root.child('erp_geral/limpeza/activeRooms').child($roomId).child('phase').val() === 'finishing' && newData.parent().parent().parent().parent().child('limpeza/tasks').child(root.child('erp_geral/limpeza/activeRooms').child($roomId).child('taskId').val()).child('status').val() === 'concluido' && newData.parent().parent().parent().parent().child('quartos/cleaningLogs').child(newData.parent().parent().parent().parent().child('limpeza/tasks').child(root.child('erp_geral/limpeza/activeRooms').child($roomId).child('taskId').val()).child('cleaningLogId').val()).child('roomId').val() === $roomId)))))"
             }
           }
         },
@@ -117,11 +121,12 @@
             ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"
           }
         },
-        "reservations": {
-          ".indexOn": ["checkInDate"]
-        },
         "cleaningLogs": {
-          ".indexOn": ["date", "roomId"]
+          ".indexOn": ["date", "roomId"],
+          "$logId": {
+            ".write": "(auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin') || (auth != null && root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists() && root.child('erp_geral/limpeza/activeRooms').child(newData.child('roomId').val()).child('phase').val() === 'finishing' && root.child('erp_geral/limpeza/tasks').child(root.child('erp_geral/limpeza/activeRooms').child(newData.child('roomId').val()).child('taskId').val()).child('status').val() === 'em_limpeza' && newData.child('id').val() === 'task-' + root.child('erp_geral/limpeza/activeRooms').child(newData.child('roomId').val()).child('taskId').val() && root.child('erp_geral/limpeza/tasks').child(root.child('erp_geral/limpeza/activeRooms').child(newData.child('roomId').val()).child('taskId').val()).child('camareira').val() === newData.child('attendant').val() && root.child('erp_geral/limpeza/tasks').child(root.child('erp_geral/limpeza/activeRooms').child(newData.child('roomId').val()).child('taskId').val()).child('roomNumber').val() === newData.child('roomNumber').val() && newData.parent().parent().parent().child('limpeza/tasks').child(root.child('erp_geral/limpeza/activeRooms').child(newData.child('roomId').val()).child('taskId').val()).child('status').val() === 'concluido')",
+            ".validate": "newData.child('id').val() === $logId && newData.child('roomId').isString() && newData.child('roomNumber').isString() && newData.child('attendant').isString() && newData.child('date').isString() && newData.child('completedAt').isString() && newData.child('doorsAndWindows').isBoolean() && newData.child('note').isString()"
+          }
         }
       },
       "financeiro": {
@@ -189,7 +194,7 @@
           }
         },
         "stays": {
-          ".indexOn": ["checkInDate"],
+          ".indexOn": ["checkInDate", "status"],
           "$stayId": {
             ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists()))",
             ".validate": "newData.child('id').val() === $stayId && newData.child('roomNumber').isString() && newData.child('guestName').isString() && newData.child('checkInDate').isString() && newData.child('nights').isNumber() && newData.child('nights').val() >= 1 && newData.child('dailyRate').isNumber() && newData.child('dailyRate').val() > 0 && newData.child('taxAmount').isNumber() && newData.child('taxAmount').val() >= 0 && newData.child('attendant').isString() && (newData.child('status').val() === 'hospedado' || newData.child('status').val() === 'encerrado')",
@@ -221,6 +226,12 @@
         }
       },
       "limpeza": {
+        "activeRooms": {
+          "$roomId": {
+            ".write": "(auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin') || (auth != null && root.child('roles').child(auth.uid).child('role').val() === 'viewer' && (!newData.exists() || (root.child('erp_geral/quartos/rooms').child($roomId).exists() && (((!data.exists() || (data.child('expiresAt').val() < now && root.child('erp_geral/limpeza/tasks').child(data.child('taskId').val()).child('status').val() !== 'em_limpeza')) && newData.child('phase').val() === 'assigning' && root.child('erp_geral/quartos/rooms').child($roomId).child('maintenanceStatus').val() !== 'em_manutencao') || (newData.child('phase').val() === 'finishing' && root.child('erp_geral/limpeza/tasks').child(newData.child('taskId').val()).child('status').val() === 'em_limpeza' && root.child('erp_geral/limpeza/tasks').child(newData.child('taskId').val()).child('roomNumber').val() === root.child('erp_geral/quartos/rooms').child($roomId).child('number').val() && (!data.exists() || data.child('taskId').val() === newData.child('taskId').val())) || (data.child('phase').val() === 'finishing' && newData.child('phase').val() === 'assigning' && data.child('taskId').val() === newData.child('taskId').val() && root.child('erp_geral/limpeza/tasks').child(newData.child('taskId').val()).child('status').val() === 'em_limpeza')))))",
+            ".validate": "newData.hasChildren(['taskId', 'phase', 'expiresAt']) && newData.child('expiresAt').isNumber() && newData.child('taskId').isString() && (newData.child('phase').val() === 'assigning' || newData.child('phase').val() === 'finishing')"
+          }
+        },
         ".read": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')",
         "camareiras": {
           ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"
@@ -229,10 +240,10 @@
           ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"
         },
         "tasks": {
-          ".indexOn": ["status", "completedAt"],
+          ".indexOn": ["status", "completedAt", "cleaningLogId", "roomId", "roomNumber"],
           "$taskId": {
             ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && ((!data.exists() && newData.exists() && newData.child('status').val() === 'em_limpeza') || (data.child('status').val() === 'em_limpeza' && (newData.child('status').val() === 'concluido' || newData.child('status').val() === 'cancelado') && data.child('id').val() === newData.child('id').val() && data.child('roomNumber').val() === newData.child('roomNumber').val() && data.child('camareira').val() === newData.child('camareira').val() && data.child('assignedBy').val() === newData.child('assignedBy').val() && data.child('assignedAt').val() === newData.child('assignedAt').val() && data.child('date').val() === newData.child('date').val()))))",
-            ".validate": "newData.child('id').val() === $taskId && newData.child('roomNumber').isString() && newData.child('roomNumber').val().length > 0 && newData.child('camareira').isString() && newData.child('assignedBy').isString() && newData.child('assignedAt').isString() && newData.child('date').isString() && (newData.child('status').val() === 'em_limpeza' || ((newData.child('status').val() === 'concluido' || newData.child('status').val() === 'cancelado') && newData.child('completedAt').isString() && newData.child('completedBy').isString()))"
+            ".validate": "((newData.child('id').val() === $taskId && newData.child('roomNumber').isString() && newData.child('roomNumber').val().length > 0 && newData.child('camareira').isString() && newData.child('assignedBy').isString() && newData.child('assignedAt').isString() && newData.child('date').isString() && (newData.child('status').val() === 'em_limpeza' || ((newData.child('status').val() === 'concluido' || newData.child('status').val() === 'cancelado') && newData.child('completedAt').isString() && newData.child('completedBy').isString()))) && (data.exists() || (newData.child('roomId').isString() && root.child('erp_geral/limpeza/activeRooms').child(newData.child('roomId').val()).child('taskId').val() === $taskId && root.child('erp_geral/limpeza/activeRooms').child(newData.child('roomId').val()).child('phase').val() === 'assigning' && newData.parent().parent().parent().child('quartos/rooms').child(newData.child('roomId').val()).exists() && newData.parent().parent().parent().child('quartos/rooms').child(newData.child('roomId').val()).child('number').val() === newData.child('roomNumber').val() && newData.parent().parent().parent().child('quartos/rooms').child(newData.child('roomId').val()).child('maintenanceStatus').val() !== 'em_manutencao'))) && (!data.exists() || data.child('status').val() === 'em_limpeza' || (newData.child('status').val() === data.child('status').val() && newData.child('completedAt').val() === data.child('completedAt').val() && newData.child('completedBy').val() === data.child('completedBy').val() && newData.child('cleaningLogId').val() === data.child('cleaningLogId').val()))"
           }
         }
       },

@@ -114,15 +114,16 @@ export function withOperationalFinance(data: FinanceData, sources: OperationalFi
     if (data.suppressed[entry.id]) return;
     const saved = incomes[entry.id];
     if (!saved) incomes[entry.id] = entry;
-    else if (!saved.operationalOverride && saved.category === 'Diária' && entry.category !== 'Diária') {
-      incomes[entry.id] = { ...saved, category: entry.category };
-    }
+    else if (!saved.operationalOverride) incomes[entry.id] = { ...entry, createdAt: saved.createdAt, updatedAt: saved.updatedAt };
   };
   const addExpense = (entry: FinanceExpense) => {
     if (data.suppressed[entry.id]) return;
-    if (!expenses[entry.id]) expenses[entry.id] = entry;
+    const saved = expenses[entry.id];
+    if (!saved) expenses[entry.id] = entry;
+    else if (!saved.operationalOverride) expenses[entry.id] = { ...entry, createdAt: saved.createdAt, updatedAt: saved.updatedAt };
   };
   Object.values(sources.stays).forEach((stay) => {
+    Object.entries(stay.voidedPayments ?? {}).forEach(([id, voided]) => { if (voided) delete incomes[id]; });
     Object.values(stayFinanceEntries(stay)).forEach(addIncome);
     stayTaxPayments(stay).filter((payment) => payment.method === 'prepaid').forEach((payment) => {
       delete incomes[`recepcao-${stay.id}-${payment.id}`];
@@ -130,7 +131,10 @@ export function withOperationalFinance(data: FinanceData, sources: OperationalFi
     const oyoFee = stayOyoFeeExpense(stay);
     if (oyoFee) addExpense(oyoFee);
   });
-  Object.values(sources.roomCharges).forEach((charge) => Object.values(roomChargeFinanceEntries(charge)).forEach(addIncome));
+  Object.values(sources.roomCharges).forEach((charge) => {
+    Object.entries(charge.voidedPayments ?? {}).forEach(([id, voided]) => { if (voided) delete incomes[id]; });
+    Object.values(roomChargeFinanceEntries(charge)).forEach(addIncome);
+  });
   Object.values(sources.sales).forEach((sale) => { const entry = frigobarFinanceEntry(sale); if (entry) addIncome(entry); });
   Object.values(sources.reservationCollections ?? {}).forEach((collections) => Object.values(collections).forEach((collection) => {
     addIncome(income(`reservation-${collection.reservationId}-checkout-${collection.id}`, collection.date, 'Diária', 'Recebimento de hospedagem no checkout', collection.amount, collection.paymentMethod, `Reserva ${collection.reservationId} · ${collection.actor}`, collection.createdAt));

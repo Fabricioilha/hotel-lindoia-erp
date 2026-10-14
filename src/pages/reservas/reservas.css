@@ -60,6 +60,7 @@
 }
 
 .reservation-room-tile {
+  display: block;
   min-width: 0;
   min-height: 82px;
   padding: 11px 12px;
@@ -67,6 +68,82 @@
   border-left: 4px solid #39845d;
   border-radius: 5px;
   background: #fbfcfe;
+  text-decoration: none;
+}
+
+.reservation-room-tile:hover,
+.reservation-room-tile:focus-visible {
+  border-color: #386aaa;
+  outline: 2px solid #a4c5ef;
+  outline-offset: 2px;
+}
+
+.reservation-room-context {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 12px 15px;
+  margin-bottom: 14px;
+  color: #243954;
+  border: 1px solid #cdd6e3;
+  border-radius: 4px;
+  background: #edf4fd;
+}
+
+.reservation-room-context > div {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.reservation-room-context a,
+.reservation-room-context button {
+  color: #315f94;
+  font: inherit;
+  font-size: 0.8125rem;
+}
+
+.reservation-room-context button {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.reservation-existing-payment {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #d4deea;
+  border-radius: 4px;
+  background: #f6f9fd;
+}
+
+.reservation-existing-payment > strong {
+  grid-column: 1 / -1;
+}
+
+.reservation-payment-edit-history {
+  display: grid;
+  gap: 10px;
+}
+
+.reservation-check-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #243954;
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 640px) {
+  .reservation-existing-payment {
+    grid-template-columns: 1fr;
+  }
 }
 
 .reservation-room-tile.is-occupied {

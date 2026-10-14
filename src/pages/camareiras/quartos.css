@@ -972,3 +972,9 @@
   .room-category-item { align-items: flex-start; flex-direction: column; }
   .room-category-item > div:last-child { align-self: flex-end; }
 }
+
+.housekeeping-context { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 14px; padding: 14px 18px; border: 1px solid #cbdced; border-radius: 10px; background: #eef5fb; }
+.housekeeping-context nav, .housekeeping-module-links { display: flex; flex-wrap: wrap; gap: 12px 20px; font-size: .875rem; }
+.room-assignment { display: grid; gap: 5px; margin: 0; padding: 10px 12px; border-radius: 8px; color: #315f87; background: #eef5fb; font-size: .8125rem; }
+.room-assignment a, .room-reservation-link { font-weight: 700; font-size: .8125rem; }
+.room-card-actions { flex-wrap: wrap; }

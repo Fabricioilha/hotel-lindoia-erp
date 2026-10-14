@@ -89,6 +89,19 @@ export function reservationOverlaps(
   });
 }
 
+export function reservationOverlapsStay(
+  reservation: Pick<Reservation, 'roomNumber' | 'checkInDate' | 'checkOutDate' | 'channel' | 'checkInTime' | 'checkOutTime'>,
+  stay: GuestStay,
+): boolean {
+  if (stay.status !== 'hospedado' || stay.roomNumber.trim() !== reservation.roomNumber.trim()) return false;
+  const start = Date.parse(`${reservation.checkInDate}T${reservation.channel === 'rotativo' ? reservation.checkInTime : '00:00'}:00`);
+  const end = Date.parse(`${reservation.checkOutDate}T${reservation.channel === 'rotativo' ? reservation.checkOutTime : '00:00'}:00`);
+  const stayStart = stay.kind === 'periodo' ? rotativoStart(stay) : Date.parse(`${stay.checkInDate}T00:00:00`);
+  const stayEnd = stay.kind === 'periodo' ? stayStart + (stay.hours ?? 4) * 3_600_000 : Date.parse(`${stayCheckOutDate(stay)}T00:00:00`);
+  return Number.isFinite(start) && Number.isFinite(end) && Number.isFinite(stayStart) && Number.isFinite(stayEnd)
+    && start < stayEnd && end > stayStart;
+}
+
 function countGuests(entries: { roomNumber: string; guests: number }[]): ReservationDayCounts {
   return {
     reservations: entries.length,
