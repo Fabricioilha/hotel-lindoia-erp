@@ -1,10 +1,11 @@
-import type {
-  InventoryData,
-  MinibarPaymentMethod,
-  MinibarSettlement,
-  StockMovement,
+import { STOCK_QUANTITY_EPSILON, normalizedStockQuantity,
+  type InventoryData,
+  type MinibarPaymentMethod,
+  type MinibarSettlement,
+  type StockMovement,
 } from '../types/inventory';
 import { recordOperationalIncome } from './operationalIncome';
+import { minibarMovementFinanceEntry } from './operationalLedger';
 
 export interface MinibarSaleInput {
   id?: string;
@@ -19,32 +20,41 @@ export interface MinibarSaleInput {
 const RECEPTION_LOCATION = 'Geladeira - Recepção';
 
 export function applyMinibarSale(current: InventoryData, sale: MinibarSaleInput): InventoryData {
+  if (sale.settlement !== 'pago_na_recepcao' && sale.settlement !== 'cobrar_no_checkout') throw new Error('Selecione a forma de cobrança da venda.');
   if (sale.items.length === 0) throw new Error('Adicione pelo menos um produto à venda.');
   if (sale.settlement === 'cobrar_no_checkout' && !sale.roomNumber.trim()) {
     throw new Error('Informe o quarto para lançar a venda no checkout.');
   }
-  if (sale.settlement === 'pago_na_recepcao' && !sale.paymentMethod) {
+  if (sale.settlement === 'pago_na_recepcao' && !['dinheiro', 'pix', 'cartao_debito', 'cartao_credito'].includes(sale.paymentMethod)) {
     throw new Error('Selecione a forma de pagamento recebida na recepção.');
   }
 
   const createdAt = new Date().toISOString();
   const saleId = sale.id ?? crypto.randomUUID();
+  if (sale.items.every((item) => current.movements[`${saleId}-${item.productId}`])) return current;
+  if (sale.items.some((item) => current.movements[`${saleId}-${item.productId}`])) throw new Error('Esta venda está parcialmente registrada. Atualize os dados antes de tentar novamente.');
   const products = { ...current.products };
   const movements = { ...current.movements };
 
-  for (const item of sale.items) {
+  const grouped = new Map<string, number>();
+  sale.items.forEach((item) => {
+    if (!Number.isFinite(item.quantity) || item.quantity <= 0) throw new Error('A quantidade da venda deve ser maior que zero.');
+    grouped.set(item.productId, (grouped.get(item.productId) ?? 0) + item.quantity);
+  });
+  for (const [productId, quantity] of grouped) {
+    const item = { productId, quantity };
     if (!Number.isFinite(item.quantity) || item.quantity <= 0) {
       throw new Error('A quantidade da venda deve ser maior que zero.');
     }
 
     const product = products[item.productId];
-    if (!product || product.category !== 'frigobar') {
+    if (!product || product.category !== 'frigobar' || product.active === false) {
       throw new Error('Um dos produtos não pertence à Geladeira - Recepção.');
     }
-    if (product.salePrice <= 0) throw new Error(`Defina o preço de venda de ${product.name} antes de vender.`);
+    if (!Number.isFinite(product.salePrice) || product.salePrice <= 0) throw new Error(`Defina o preço de venda de ${product.name} antes de vender.`);
 
     const available = Number(product.locationQuantities[RECEPTION_LOCATION] ?? 0);
-    if (available < item.quantity) {
+    if (available + STOCK_QUANTITY_EPSILON < item.quantity) {
       throw new Error(`Saldo insuficiente de ${product.name}. Disponível: ${available} ${product.unit}.`);
     }
 
@@ -52,7 +62,7 @@ export function applyMinibarSale(current: InventoryData, sale: MinibarSaleInput)
       ...product,
       locationQuantities: {
         ...product.locationQuantities,
-        [RECEPTION_LOCATION]: available - item.quantity,
+        [RECEPTION_LOCATION]: normalizedStockQuantity(available - item.quantity),
       },
       updatedAt: createdAt,
     };
@@ -86,20 +96,11 @@ export function applyMinibarSale(current: InventoryData, sale: MinibarSaleInput)
 }
 
 export async function recordMinibarIncome(movement: StockMovement): Promise<void> {
-  if (movement.type !== 'consumo_frigobar' || !movement.paymentMethod || (movement.settlement !== 'pago_na_recepcao' && movement.settlement !== 'pago_no_checkout')) return;
-  const paymentMethods = {
-    dinheiro: 'cash',
-    pix: 'pix',
-    cartao_debito: 'debit',
-    cartao_credito: 'credit',
-  } as const;
+  const entry = minibarMovementFinanceEntry(movement);
+  const item = entry?.items?.[0];
+  if (!entry || !item) return;
   await recordOperationalIncome({
-    id: `minibar-${movement.id}`,
-    date: (movement.settledAt ?? movement.createdAt).slice(0, 10),
-    category: 'Consumo',
-    description: `${movement.productName} · ${movement.quantity} ${movement.unit}`,
-    amount: movement.quantity * movement.unitPrice,
-    paymentMethod: paymentMethods[movement.paymentMethod],
-    note: ['Frigobar', movement.roomNumber ? `Quarto ${movement.roomNumber}` : '', movement.guestName].filter(Boolean).join(' · '),
+    id: entry.id, date: entry.date, category: entry.category, description: item.description,
+    amount: item.amount, paymentMethod: item.paymentMethod, note: entry.note,
   });
 }

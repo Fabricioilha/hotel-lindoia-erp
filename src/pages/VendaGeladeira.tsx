@@ -5,6 +5,8 @@ import type { MinibarPaymentMethod, MinibarSettlement } from '../types/inventory
 import type { FrigobarData, FrigobarProduct } from '../types/frigobar';
 import { subscribeReservationDirectory } from '../services/housekeepingStore';
 import type { ReservationDirectoryEntry } from '../types/housekeeping';
+import { subscribeReceptionBoard } from '../services/receptionStore';
+import type { GuestStay } from '../types/reception';
 import { PanelHomeLink } from '../components/ui/PanelModalContext';
 import './venda-geladeira.css';
 
@@ -13,6 +15,7 @@ const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currenc
 export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: string; isAdmin: boolean; modalOnly?: boolean }) {
   const [data, setData] = useState<FrigobarData>(emptyFrigobar());
   const [occupiedReservations, setOccupiedReservations] = useState<Record<string, ReservationDirectoryEntry>>({});
+  const [activeStays, setActiveStays] = useState<Record<string, GuestStay>>({});
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [saveError, setSaveError] = useState('');
@@ -38,6 +41,7 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
   }), []);
 
   useEffect(() => subscribeReservationDirectory(setOccupiedReservations, () => setOccupiedReservations({})), []);
+  useEffect(() => subscribeReceptionBoard((next) => setActiveStays(next.stays), (cause) => setLoadError(`Não foi possível carregar as hospedagens: ${cause.message}`), { includeRoomCharges: false }), []);
 
 
   const products = Object.values(data.products)
@@ -52,9 +56,10 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
   const productTotal = cartItems.reduce((amount, item) => amount + item.product.salePrice * item.quantity, 0);
   const total = productTotal;
   const pendingSales = Object.values(data.sales).filter((sale) => sale.settlement === 'cobrar_no_checkout').sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  const activeReservations = Object.values(occupiedReservations)
-    .filter((reservation) => reservation.status === 'hospedado')
-    .sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, 'pt-BR', { numeric: true }));
+  const activeReservations = [...new Map<string, Pick<ReservationDirectoryEntry, 'id' | 'roomNumber' | 'guestName'>>([
+    ...Object.values(activeStays).filter((stay) => stay.status === 'hospedado').map((stay) => [stay.roomNumber, { id: `stay-${stay.id}`, roomNumber: stay.roomNumber, guestName: stay.guestName }] as const),
+    ...Object.values(occupiedReservations).filter((reservation) => reservation.status === 'hospedado').map((reservation) => [reservation.roomNumber, reservation] as const),
+  ]).values()].sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, 'pt-BR', { numeric: true }));
 
   function changeQuantity(product: FrigobarProduct, change: number) {
     const available = Number(data.stock[product.id] ?? 0);
@@ -69,6 +74,7 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
 
   async function finishSale(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving || cartItems.length === 0) return;
     setSaveError('');
     setNotice('');
     const sale = {
@@ -99,13 +105,17 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
   }
 
   async function settlePendingSale(saleId: string) {
+    if (saving) return;
     setSaveError('');
+    setSaving(true);
     try {
       await settleFrigobarSale(saleId, settlementMethods[saleId] ?? 'dinheiro', actor);
       setNotice('Cobrança do frigobar recebida e registrada.');
       window.setTimeout(() => setNotice(''), 4500);
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : 'Não foi possível registrar o recebimento.');
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -119,7 +129,7 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
       <main className="sales-content">
         <PanelHomeLink className="sales-home-button" title="Voltar à página principal">← Voltar para a página principal</PanelHomeLink>
         <div className="sales-title-row">
-          <div><p className="sales-eyebrow">PONTO DE VENDA <span>/</span> RECEPÇÃO</p><h1>Lançar Venda</h1><p>Selecione produtos e adicionais da hospedagem.</p></div>
+          <div><p className="sales-eyebrow">PONTO DE VENDA <span>/</span> RECEPÇÃO</p><h1>Lançar Venda</h1><p>Selecione os produtos da geladeira e escolha como receber.</p></div>
           <span className="sales-operator">Atendente <strong>{actor}</strong></span>
         </div>
 
@@ -141,7 +151,7 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
                   <div className="sales-product-top"><span className="sales-product-kind">BEBIDA</span><span className={available > 0 ? 'sales-stock-ok' : 'sales-stock-empty'}>{available > 0 ? `${available} ${product.unit}` : 'Sem saldo'}</span></div>
                   <strong className="sales-product-name">{product.name}</strong>
                   {product.salePrice > 0 ? <span className="sales-product-price">{money(product.salePrice)}</span> : <span className="sales-product-no-price">Preço não cadastrado</span>}
-                  {available <= 0 || product.salePrice <= 0 ? <span className="sales-product-no-price">Consulte a gerência</span> : <button className="sales-add-button" disabled={inCart >= available} onClick={() => changeQuantity(product, 1)}>{inCart >= available ? `Limite · ${inCart} no pedido` : inCart ? `Adicionar · ${inCart} no pedido` : 'Adicionar ao pedido'} <span aria-hidden="true">+</span></button>}
+                  {available <= 0 || product.salePrice <= 0 ? <span className="sales-product-no-price">Consulte a gerência</span> : <button className="sales-add-button" disabled={saving || inCart >= available} onClick={() => changeQuantity(product, 1)}>{inCart >= available ? `Limite · ${inCart} no pedido` : inCart ? `Adicionar · ${inCart} no pedido` : 'Adicionar ao pedido'} <span aria-hidden="true">+</span></button>}
                 </article>;
               })}
             </div>}
@@ -167,14 +177,14 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
             </fieldset>}
 
             {cartItems.length > 0 && settlement === 'pago_na_recepcao' && <label className="sales-field"><span>Forma de pagamento *</span><select required value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as MinibarPaymentMethod | '')}><option value="">Selecione</option><option value="dinheiro">Dinheiro</option><option value="pix">Pix</option><option value="cartao_debito">Cartão de débito</option><option value="cartao_credito">Cartão de crédito</option></select></label>}
-            {cartItems.length > 0 && settlement === 'cobrar_no_checkout' ? <div className="room-fields"><label className="sales-field"><span>Quarto ocupado *</span><select required value={selectedReservationId} onChange={(event) => { const reservation = activeReservations.find((item) => item.id === event.target.value); setSelectedReservationId(event.target.value); setRoomNumber(reservation?.roomNumber ?? ''); setGuestName(''); }}><option value="">Selecione a hospedagem</option>{activeReservations.map((reservation) => <option key={reservation.id} value={reservation.id}>Quarto {reservation.roomNumber}</option>)}</select>{activeReservations.length === 0 && <small>Nenhuma hospedagem ativa. Faça check-in em Reservas antes de lançar no quarto.</small>}</label><label className="sales-field"><span>Hóspede vinculado</span><input value={guestName} readOnly placeholder="O nome não é exibido neste perfil" /></label></div> : null}
+            {cartItems.length > 0 && settlement === 'cobrar_no_checkout' ? <div className="room-fields"><label className="sales-field"><span>Quarto ocupado *</span><select required value={selectedReservationId} onChange={(event) => { const reservation = activeReservations.find((item) => item.id === event.target.value); setSelectedReservationId(event.target.value); setRoomNumber(reservation?.roomNumber ?? ''); setGuestName(reservation?.guestName ?? ''); }}><option value="">Selecione a hospedagem</option>{activeReservations.map((reservation) => <option key={reservation.id} value={reservation.id}>Quarto {reservation.roomNumber}</option>)}</select>{activeReservations.length === 0 && <small>Nenhuma hospedagem ativa. Faça check-in em Reservas antes de lançar no quarto.</small>}</label><label className="sales-field"><span>Hóspede vinculado</span><input value={guestName} readOnly placeholder="Hóspede da hospedagem selecionada" /></label></div> : null}
 
             <div className="order-total"><span>Total</span><strong>{money(total)}</strong></div>
             <button className="sale-submit" type="submit" disabled={saving || loading || cartItems.length === 0}>{saving ? 'Registrando venda...' : settlement === 'pago_na_recepcao' ? 'Confirmar venda' : 'Lançar para checkout'}</button>
             <p className="sale-note">Bebidas atualizam o estoque. Extras da hospedagem são resolvidos pelo quarto.</p>
           </form>
         </div>
-        {pendingSales.length > 0 && <section className="pending-minibar-panel"><div><h2>Cobranças no checkout</h2><p>{pendingSales.length} venda(s) aguardando pagamento</p></div>{pendingSales.map((sale) => <div className="pending-minibar-sale" key={sale.id}><span>Quarto {sale.roomNumber} · {sale.guestName}</span><strong>{money(sale.amount)}</strong><label><span className="sr-only">Forma de pagamento</span><select value={settlementMethods[sale.id] ?? 'dinheiro'} onChange={(event) => setSettlementMethods((current) => ({ ...current, [sale.id]: event.target.value as MinibarPaymentMethod }))}><option value="dinheiro">Dinheiro</option><option value="pix">Pix</option><option value="cartao_debito">Cartão de débito</option><option value="cartao_credito">Cartão de crédito</option></select></label><button type="button" onClick={() => void settlePendingSale(sale.id)}>Receber no checkout</button></div>)}</section>}
+        {pendingSales.length > 0 && <section className="pending-minibar-panel"><div><h2>Cobranças no checkout</h2><p>{pendingSales.length} venda(s) aguardando pagamento</p></div>{pendingSales.map((sale) => <div className="pending-minibar-sale" key={sale.id}><span>Quarto {sale.roomNumber} · {sale.guestName}</span><strong>{money(sale.amount)}</strong><label><span className="sr-only">Forma de pagamento</span><select value={settlementMethods[sale.id] ?? 'dinheiro'} onChange={(event) => setSettlementMethods((current) => ({ ...current, [sale.id]: event.target.value as MinibarPaymentMethod }))}><option value="dinheiro">Dinheiro</option><option value="pix">Pix</option><option value="cartao_debito">Cartão de débito</option><option value="cartao_credito">Cartão de crédito</option></select></label><button type="button" disabled={saving} onClick={() => void settlePendingSale(sale.id)}>Receber no checkout</button></div>)}</section>}
       </main>
     </div>
   );

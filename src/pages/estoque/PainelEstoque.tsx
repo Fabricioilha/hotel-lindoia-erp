@@ -4,7 +4,7 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { SidebarSlotContext } from '../../components/layout/sidebarSlot';
 import { subscribeInventory, updateInventory } from '../../services/inventoryStore';
-import { updateFinance } from '../../services/financeStore';
+import { mergeProductRegistration, recordInventoryMovement } from '../../services/inventoryOperations';
 import { DateInput } from '../../components/ui/DateInput';
 import { useMinibarFinanceSync } from '../../services/minibarFinanceSync';
 import { createFrigobarSale, deleteFrigobarSale, emptyFrigobar, subscribeFrigobar, syncFrigobarCatalog } from '../../services/frigobarStore';
@@ -92,23 +92,6 @@ function exportCsv(filename: string, rows: (string | number)[][]) {
   window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
-// A compra de estoque é despesa do hotel; o id fixo evita duplicar o lançamento.
-async function recordEntryExpense(movementId: string, description: string, total: number, payment: string) {
-  const today = new Date();
-  const dueDate = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
-  const stamp = today.toISOString();
-  await updateFinance((current) => {
-    const id = `stock-entry-${movementId}`;
-    if (current.expenses[id] || current.suppressed[id]) return current;
-    const hasCategory = current.expenseCategories.some((item) => item.toLocaleLowerCase('pt-BR') === 'estoque');
-    return {
-      ...current,
-      expenseCategories: hasCategory ? current.expenseCategories : [...current.expenseCategories, 'Estoque'],
-      expenses: { ...current.expenses, [id]: { id, dueDate, category: 'Estoque', plannedAmount: total, paidCash: payment === 'caixa' ? total : 0, paidBank: payment === 'banco' ? total : 0, note: description, createdAt: stamp, updatedAt: stamp } },
-    };
-  });
-}
-
 function StockStatus({ product }: { product: StockProduct }) {
   const quantity = quantityOf(product);
     if (quantity <= 0) return <span className="stock-status status-out">Sem estoque</span>;
@@ -132,8 +115,10 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
   const [stockFilter, setStockFilter] = useState<'todos' | 'baixo' | 'zerado'>('todos');
   const [modal, setModal] = useState<Modal>(null);
   const [editingId, setEditingId] = useState('');
+  const [registrationId, setRegistrationId] = useState<string>(newId);
   const [movementProductId, setMovementProductId] = useState('');
   const [movementType, setMovementType] = useState<MovementType>('entrada');
+  const [movementOperationId, setMovementOperationId] = useState(newId);
   const [minibarStartDate, setMinibarStartDate] = useState(currentMonthStart);
   const [minibarEndDate, setMinibarEndDate] = useState(() => localDateValue(new Date()));
   const [saving, setSaving] = useState(false);
@@ -220,24 +205,32 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
   });
 
   function openProduct(product?: StockProduct) {
+    setStorageError('');
     setEditingId(product?.id ?? '');
+    setRegistrationId(product?.id ?? newId());
     setModal('produto');
   }
 
   function openSupplier(supplier?: StockSupplier) {
+    setStorageError('');
     setEditingId(supplier?.id ?? '');
+    setRegistrationId(supplier?.id ?? newId());
     setModal('fornecedor');
   }
 
   function openAsset(asset?: TrackedAsset) {
+    setStorageError('');
     setEditingId(asset?.id ?? '');
+    setRegistrationId(asset?.id ?? newId());
     setModal('patrimonio');
   }
 
   function openMovement(product?: StockProduct, type: MovementType = 'entrada') {
+    setStorageError('');
     const fallbackProduct = product ?? products[0];
     setMovementProductId(fallbackProduct?.id ?? '');
     setMovementType(type);
+    setMovementOperationId(newId());
     setModal('movimento');
   }
 
@@ -260,6 +253,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
 
   function saveProduct(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
     const form = new FormData(event.currentTarget);
     const existing = data.products[editingId];
     const timestamp = new Date().toISOString();
@@ -269,11 +263,11 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
     if (chosenCategory === NEW_CATEGORY) {
       if (!newCategoryName) { setStorageError('Informe o nome da nova categoria.'); return; }
       const sameName = categories.find((item) => item.name.toLocaleLowerCase('pt-BR') === newCategoryName.toLocaleLowerCase('pt-BR'));
-      newCategory = sameName ?? { id: newId(), name: newCategoryName };
+      newCategory = sameName ?? { id: `categoria-${registrationId}`, name: newCategoryName };
     }
     const categoryId = newCategory?.id ?? chosenCategory;
     const product: StockProduct = {
-      id: existing?.id ?? newId(),
+      id: existing?.id ?? registrationId,
       name: String(form.get('name')).trim(),
       sku: String(form.get('sku')).trim(),
       category: categoryId,
@@ -294,10 +288,11 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
       return;
     }
     void commit((current) => {
-      const base = newCategory && !customCategoriesOf(current).some((item) => item.id === newCategory.id)
-        ? withCategories(current, [...customCategoriesOf(current), newCategory])
+      const chosen = newCategory ? stockCategoriesOf(current).find((item) => item.name.toLocaleLowerCase('pt-BR') === newCategory.name.toLocaleLowerCase('pt-BR')) ?? newCategory : undefined;
+      const base = chosen && chosen.id !== SALES_CATEGORY_ID && !customCategoriesOf(current).some((item) => item.id === chosen.id)
+        ? withCategories(current, [...customCategoriesOf(current), chosen])
         : current;
-      return { ...base, products: { ...base.products, [product.id]: product } };
+      return mergeProductRegistration(base, { ...product, category: chosen?.id ?? product.category });
     }, existing ? 'Produto atualizado.' : 'Produto cadastrado. Registre uma entrada para informar o saldo inicial.');
   }
 
@@ -368,10 +363,11 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
 
   function saveSupplier(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
     const form = new FormData(event.currentTarget);
     const existing = data.suppliers[editingId];
     const supplier: StockSupplier = {
-      id: existing?.id ?? newId(),
+      id: existing?.id ?? registrationId,
       name: String(form.get('name')).trim(),
       contact: String(form.get('contact') ?? '').trim(),
       phone: String(form.get('phone') ?? '').trim(),
@@ -379,16 +375,18 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
       notes: String(form.get('notes') ?? '').trim(),
       createdAt: existing?.createdAt ?? new Date().toISOString(),
     };
+    if (!supplier.name) { setStorageError('Informe o nome do fornecedor.'); return; }
     void commit((current) => ({ ...current, suppliers: { ...current.suppliers, [supplier.id]: supplier } }), 'Fornecedor salvo.');
   }
 
   function saveAsset(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
     const form = new FormData(event.currentTarget);
     const existing = data.assets[editingId];
     const timestamp = new Date().toISOString();
     const asset: TrackedAsset = {
-      id: existing?.id ?? newId(),
+      id: existing?.id ?? registrationId,
       name: String(form.get('name')).trim(),
       tag: String(form.get('tag') ?? '').trim(),
       serialNumber: String(form.get('serialNumber') ?? '').trim(),
@@ -400,11 +398,14 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
       createdAt: existing?.createdAt ?? timestamp,
       updatedAt: timestamp,
     };
+    if (!asset.name || !asset.location) { setStorageError('Informe nome e localização do bem.'); return; }
+    if (!Number.isFinite(asset.cost) || asset.cost < 0) { setStorageError('Confira o valor de aquisição.'); return; }
     void commit((current) => ({ ...current, assets: { ...current.assets, [asset.id]: asset } }), existing ? 'Patrimônio atualizado.' : 'Bem patrimonial cadastrado.');
   }
 
   function saveMovement(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (saving) return;
     if (!selectedProduct) return;
     const form = new FormData(event.currentTarget);
     const quantity = Number(form.get('quantity'));
@@ -441,7 +442,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
       setSaving(true);
       setStorageError('');
       void createFrigobarSale({
-        id: newId(),
+        id: movementOperationId,
         items: [{ productId: movementProductId, quantity }],
         settlement,
         paymentMethod,
@@ -459,86 +460,19 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
       return;
     }
 
-    const movementId = newId();
-    const timestamp = new Date().toISOString();
     const entryUnitPrice = movementType === 'entrada' && canViewFinancials ? Number(form.get('entryUnitPrice') || 0) : selectedProduct.cost;
-    const entryPayment = String(form.get('entryPayment') ?? 'pendente');
-    if (!Number.isFinite(entryUnitPrice) || entryUnitPrice < 0) {
-      setStorageError('Informe um preço de entrada válido.');
-      return;
-    }
-    const unitPrice = entryUnitPrice;
-    const committed = commit((current) => {
-      const product = current.products[movementProductId];
-      if (!product) throw new Error('Este produto não está mais disponível.');
-      const locations = { ...product.locationQuantities };
-      const storedQuantity = Number(locations[fromLocation] ?? 0);
-      const usesSeparateReceptionStock = product.category === SALES_CATEGORY_ID && fromLocation === RECEPTION_LOCATION;
-      // Vendas da geladeira reduzem o saldo operacional sem alterar a quantidade-base do catálogo.
-      const available = usesSeparateReceptionStock
-        ? Number(frigobar.stock[product.id] ?? storedQuantity)
-        : storedQuantity;
-      let recordedQuantity = quantity;
-      let finalFromLocation = fromLocation;
-      let finalToLocation = toLocation;
-
-      if (movementType === 'entrada') {
-        locations[toLocation] = Number(locations[toLocation] ?? 0) + quantity;
-        finalFromLocation = '';
-      } else if (movementType === 'transferencia') {
-        if (available < quantity) throw new Error(`Saldo insuficiente em ${fromLocation}. Disponível: ${available} ${product.unit}.`);
-        locations[fromLocation] = usesSeparateReceptionStock ? storedQuantity - quantity : available - quantity;
-        locations[toLocation] = Number(locations[toLocation] ?? 0) + quantity;
-      } else if (movementType === 'ajuste') {
-        const delta = quantity - available;
-        recordedQuantity = Math.abs(delta);
-        // Converte a contagem física em uma diferença sobre a quantidade-base sincronizada.
-        locations[fromLocation] = usesSeparateReceptionStock ? storedQuantity + delta : quantity;
-        finalToLocation = delta > 0 ? fromLocation : '';
-        finalFromLocation = delta < 0 ? fromLocation : '';
-      } else {
-        if (available < quantity) throw new Error(`Saldo insuficiente em ${fromLocation}. Disponível: ${available} ${product.unit}.`);
-        locations[fromLocation] = usesSeparateReceptionStock ? storedQuantity - quantity : available - quantity;
-        finalToLocation = '';
-      }
-
-      const updatedProduct = { ...product, locationQuantities: locations, ...(movementType === 'entrada' && canViewFinancials ? { cost: entryUnitPrice } : {}), updatedAt: timestamp };
-      const movement: StockMovement = {
-        id: movementId,
-        productId: product.id,
-        productName: product.name,
-        category: product.category,
-        type: movementType,
-        quantity: recordedQuantity,
-        unit: product.unit,
-        fromLocation: finalFromLocation,
-        toLocation: finalToLocation,
-        note: movementType === 'ajuste' ? `${note}${note ? ' · ' : ''}Contagem informada: ${quantity} ${product.unit}.` : note,
-        actor,
-        unitPrice,
-        ...(movementType === 'entrada' && canViewFinancials
-          ? { previousUnitCost: Number.isFinite(Number(product.cost)) ? Number(product.cost) : 0 }
-          : {}),
-        reference,
-        createdAt: timestamp,
-      };
-      return {
-        ...current,
-        products: { ...current.products, [product.id]: updatedProduct },
-        movements: { ...current.movements, [movement.id]: movement },
-      };
-    }, 'Movimentação registrada.');
-    if (movementType === 'entrada' && canViewFinancials && quantity * unitPrice > 0) {
-      void committed.then(async (ok) => {
-        if (!ok) return;
-        try {
-          await recordEntryExpense(movementId, `Entrada de estoque: ${quantity} ${selectedProduct.unit} de ${selectedProduct.name}`, Math.round(quantity * unitPrice * 100) / 100, entryPayment);
-          setNotice('Entrada registrada e lançada como despesa no Financeiro.');
-        } catch (error) {
-          setStorageError(`Entrada registrada, mas a despesa não foi lançada no Financeiro: ${error instanceof Error ? error.message : 'erro desconhecido'}`);
-        }
-      });
-    }
+    const entryPayment = String(form.get('entryPayment') ?? 'pendente') as 'pendente' | 'caixa' | 'banco';
+    setSaving(true); setStorageError('');
+    void recordInventoryMovement({
+      id: movementOperationId, productId: movementProductId, type: movementType, quantity, fromLocation, toLocation,
+      unitPrice: entryUnitPrice, reference, note, actor, createdAt: new Date().toISOString(),
+      ...(movementType === 'entrada' ? { entryPayment, ...(entryPayment !== 'pendente' ? { paidDate: localDateValue(new Date()) } : {}) } : {}),
+    }).then(() => {
+      setModal(null); setMovementOperationId(newId());
+      setNotice(movementType === 'entrada' ? entryUnitPrice * quantity > 0 ? 'Entrada registrada. A compra será conciliada no Financeiro.' : 'Entrada registrada.' : 'Movimentação registrada.');
+    }).catch((cause: unknown) => {
+      setStorageError(cause instanceof Error ? cause.message : 'Não foi possível registrar a movimentação.');
+    }).finally(() => setSaving(false));
   }
 
   function settleCheckout(event: FormEvent<HTMLFormElement>) {
@@ -707,6 +641,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
       {modal && (
         <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setModal(null); }}>
           <section className="stock-modal" role="dialog" aria-modal="true" aria-labelledby="stock-modal-title">
+            {storageError && modal !== 'categorias' && <div className="notice notice-error stock-modal-error" role="alert">{storageError}</div>}
             {modal === 'produto' && <ProductForm product={data.products[editingId]} suppliers={suppliers} saving={saving} canViewFinancials={canViewFinancials} onClose={() => setModal(null)} onSubmit={saveProduct} />}
             {modal === 'categorias' && <CategoriesManager categories={customCategoriesOf(data)} usage={products.reduce<Record<string, number>>((all, product) => ({ ...all, [product.category]: (all[product.category] ?? 0) + 1 }), {})} saving={saving} error={storageError} onClose={() => setModal(null)} onAdd={(name) => void changeCategories((list) => [...list, { id: newId(), name }], 'Categoria criada.')} onRename={(id, name) => void changeCategories((list) => list.map((item) => item.id === id ? { ...item, name } : item), 'Categoria atualizada.')} onRemove={removeCategory} />}
             {modal === 'fornecedor' && <SupplierForm supplier={data.suppliers[editingId]} saving={saving} onClose={() => setModal(null)} onSubmit={saveSupplier} />}
@@ -1025,8 +960,8 @@ function MovementForm({
   return <form onSubmit={onSubmit}><ModalHeader title="Registrar movimentação" onClose={onClose} /><div className="modal-body">
     <label className="form-field form-wide"><span>Produto *</span><select required value={selectedProductId} onChange={(event) => onProductChange(event.target.value)}>{products.length === 0 && <option value="">Cadastre um produto primeiro</option>}{products.map((item) => <option key={item.id} value={item.id}>{item.name} · saldo {quantityOf(item)} {item.unit}</option>)}</select></label>
     <label className="form-field form-wide"><span>Tipo de movimento *</span><select value={movementType} onChange={(event) => onTypeChange(event.target.value as MovementType)}>{options.map(([type, label]) => <option key={type} value={type}>{label}</option>)}</select></label>
-    {isTransfer || isOutbound || isCount ? <label className="form-field form-wide"><span>{isCount ? 'Local conferido *' : 'Origem *'}</span><input name="fromLocation" required list="stock-locations" defaultValue={source} /></label> : null}
-    {isInbound || isTransfer ? <label className="form-field form-wide"><span>{isInbound ? 'Local de destino *' : 'Destino *'}</span><input name="toLocation" required list="stock-locations" defaultValue={isInbound && product?.category === 'frigobar' ? 'Geladeira - Recepção' : isInbound ? 'Almoxarifado central' : ''} placeholder="Informe o local" /></label> : null}
+    {isTransfer || isOutbound || isCount ? <label className="form-field form-wide"><span>{isCount ? 'Local conferido *' : 'Origem *'}</span><input key={`from-${product?.id}-${movementType}`} name="fromLocation" required list="stock-locations" defaultValue={source} /></label> : null}
+    {isInbound || isTransfer ? <label className="form-field form-wide"><span>{isInbound ? 'Local de destino *' : 'Destino *'}</span><input key={`to-${product?.id}-${movementType}`} name="toLocation" required list="stock-locations" defaultValue={isInbound && product?.category === 'frigobar' ? 'Geladeira - Recepção' : isInbound ? 'Almoxarifado central' : ''} placeholder="Informe o local" /></label> : null}
     <label className="form-field"><span>{isCount ? 'Quantidade contada *' : 'Quantidade *'} {product && `(${product.unit})`}</span><input name="quantity" type="number" min="0" step="any" required defaultValue="" placeholder={isCount ? 'Saldo físico' : '0'} /></label>
     {isInbound && canViewFinancials && <>
       <label className="form-field"><span>Preço de entrada / unidade (R$)</span><input key={product?.id} name="entryUnitPrice" type="number" min="0" step="0.01" defaultValue={product?.cost ?? 0} /></label>

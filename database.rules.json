@@ -9,6 +9,13 @@
       }
     },
     "erp_geral": {
+      "stockProductLocks": {
+        ".read": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')",
+        "$productId": {
+          ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')",
+          ".validate": "newData.child('token').isString() && newData.child('expiresAt').isNumber()"
+        }
+      },
       "escala": {
         ".read": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')",
         ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'"
@@ -16,7 +23,24 @@
       "estoque": {
         ".read": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
         ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin'",
-        "movements": { ".indexOn": ["createdAt"] }
+        "movements": {
+          ".indexOn": [
+            "createdAt"
+          ]
+        },
+        "products": {
+          "$productId": {
+            ".validate": "newData.child('id').val() === $productId && newData.child('name').isString() && newData.child('name').val().length > 0 && newData.child('category').isString() && newData.child('unit').isString() && (!newData.child('cost').exists() || (newData.child('cost').isNumber() && newData.child('cost').val() >= 0)) && (!newData.child('salePrice').exists() || (newData.child('salePrice').isNumber() && newData.child('salePrice').val() >= 0)) && (!newData.child('minimumQuantity').exists() || (newData.child('minimumQuantity').isNumber() && newData.child('minimumQuantity').val() >= 0))",
+            "locationQuantities": {
+              "$location": {
+                ".validate": "newData.isNumber() && newData.val() >= 0"
+              }
+            }
+          }
+        },
+        "revision": {
+          ".validate": "newData.isNumber() && newData.val() >= 0"
+        }
       },
       "frigobar": {
         "catalog": {
@@ -29,15 +53,28 @@
           "stock": {
             ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')",
             "$productId": {
-              ".validate": "$productId === '_catalogVersion' ? newData.isString() : newData.isNumber() && newData.val() >= 0"
+              ".validate": "$productId === '_catalogVersion' ? newData.isString() : $productId === '_inventoryRevision' ? newData.isNumber() && newData.val() >= 0 : ($productId === '_catalogBases' || $productId === '_saleDebits') ? newData.hasChildren() : newData.isNumber() && newData.val() >= 0"
+            },
+            "_catalogBases": {
+              "$productId": {
+                ".validate": "newData.isNumber() && newData.val() >= 0"
+              }
+            },
+            "_saleDebits": {
+              "$saleId": {
+                ".validate": "newData.child('sale/id').val() === $saleId && newData.child('sale/items').hasChildren() && newData.child('sale/amount').isNumber() && newData.child('sale/amount').val() > 0 && (newData.child('state').val() === 'pending' || newData.child('state').val() === 'recorded' || newData.child('state').val() === 'deleted')"
+              }
             }
           },
           "sales": {
-            ".indexOn": ["createdAt", "settledAt"],
+            ".indexOn": [
+              "createdAt",
+              "settledAt"
+            ],
             ".write": false,
             "$saleId": {
               ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists()))",
-              ".validate": "newData.child('id').val() === $saleId && newData.child('items').hasChildren() && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && (newData.child('settlement').val() === 'pago_na_recepcao' || newData.child('settlement').val() === 'cobrar_no_checkout' || newData.child('settlement').val() === 'pago_no_checkout') && (newData.child('paymentMethod').val() === '' || newData.child('paymentMethod').val() === 'dinheiro' || newData.child('paymentMethod').val() === 'pix' || newData.child('paymentMethod').val() === 'cartao_debito' || newData.child('paymentMethod').val() === 'cartao_credito') && newData.child('roomNumber').isString() && newData.child('guestName').isString() && newData.child('actor').isString() && newData.child('createdAt').isString()",
+              ".validate": "newData.child('id').val() === $saleId && newData.child('items').hasChildren() && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && (newData.child('settlement').val() === 'pago_na_recepcao' || newData.child('settlement').val() === 'cobrar_no_checkout' || newData.child('settlement').val() === 'pago_no_checkout') && (newData.child('paymentMethod').val() === '' || newData.child('paymentMethod').val() === 'dinheiro' || newData.child('paymentMethod').val() === 'pix' || newData.child('paymentMethod').val() === 'cartao_debito' || newData.child('paymentMethod').val() === 'cartao_credito') && newData.child('roomNumber').isString() && newData.child('guestName').isString() && newData.child('actor').isString() && newData.child('createdAt').isString() && (data.exists() || !root.child('erp_geral/financeiro/deletions').child('sale-' + $saleId).exists())",
               "settlement": {
                 ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && data.val() === 'cobrar_no_checkout' && newData.val() === 'pago_no_checkout'))"
               },
@@ -210,7 +247,7 @@
           ".indexOn": ["date"],
           "$chargeId": {
             ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists()))",
-            ".validate": "newData.child('id').val() === $chargeId && newData.child('roomNumber').isString() && newData.child('roomNumber').val().length > 0 && (newData.child('sourceType').val() === 'stay' || newData.child('sourceType').val() === 'reservation') && newData.child('sourceId').isString() && newData.child('sourceId').val().length > 0 && (newData.child('kind').val() === 'hospede_extra' || newData.child('kind').val() === 'cafe_avulso' || newData.child('kind').val() === 'cama_extra' || newData.child('kind').val() === 'bebida') && newData.child('guestName').isString() && newData.child('guestName').val().length > 0 && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && newData.child('days').isNumber() && newData.child('days').val() >= 1 && newData.child('date').isString() && newData.child('attendant').isString() && newData.child('createdAt').isString() && newData.child('payments').hasChildren(['part1']) && ((newData.child('payments').child('part2').exists() && newData.child('payments').child('part1').child('amount').val() + newData.child('payments').child('part2').child('amount').val() > newData.child('amount').val() - 0.001 && newData.child('payments').child('part1').child('amount').val() + newData.child('payments').child('part2').child('amount').val() < newData.child('amount').val() + 0.001 && newData.child('payments').child('part1').child('method').val() !== newData.child('payments').child('part2').child('method').val()) || (!newData.child('payments').child('part2').exists() && newData.child('payments').child('part1').child('amount').val() === newData.child('amount').val())) && (newData.child('kind').val() === 'bebida' ? (newData.child('productId').isString() && newData.child('productName').isString() && newData.child('quantity').isNumber() && newData.child('quantity').val() >= 1) : (newData.child('validFrom').isString() && newData.child('validThrough').isString()))",
+            ".validate": "newData.child('id').val() === $chargeId && newData.child('roomNumber').isString() && newData.child('roomNumber').val().length > 0 && (newData.child('sourceType').val() === 'stay' || newData.child('sourceType').val() === 'reservation') && newData.child('sourceId').isString() && newData.child('sourceId').val().length > 0 && (newData.child('kind').val() === 'hospede_extra' || newData.child('kind').val() === 'cafe_avulso' || newData.child('kind').val() === 'cama_extra' || newData.child('kind').val() === 'bebida') && newData.child('guestName').isString() && newData.child('guestName').val().length > 0 && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && newData.child('days').isNumber() && newData.child('days').val() >= 1 && newData.child('date').isString() && newData.child('attendant').isString() && newData.child('createdAt').isString() && newData.child('payments').hasChildren(['part1']) && ((newData.child('payments').child('part2').exists() && newData.child('payments').child('part1').child('amount').val() + newData.child('payments').child('part2').child('amount').val() > newData.child('amount').val() - 0.001 && newData.child('payments').child('part1').child('amount').val() + newData.child('payments').child('part2').child('amount').val() < newData.child('amount').val() + 0.001 && newData.child('payments').child('part1').child('method').val() !== newData.child('payments').child('part2').child('method').val()) || (!newData.child('payments').child('part2').exists() && newData.child('payments').child('part1').child('amount').val() === newData.child('amount').val())) && (newData.child('kind').val() === 'bebida' ? (newData.child('productId').isString() && newData.child('productName').isString() && newData.child('quantity').isNumber() && newData.child('quantity').val() >= 1) : (newData.child('validFrom').isString() && newData.child('validThrough').isString())) && (data.exists() || (newData.child('sourceType').val() === 'stay' ? (root.child('erp_geral/recepcao/stays').child(newData.child('sourceId').val()).child('status').val() === 'hospedado' && root.child('erp_geral/recepcao/stays').child(newData.child('sourceId').val()).child('roomNumber').val() === newData.child('roomNumber').val()) : (root.child('erp_geral/quartos/reservationIndex').child(newData.child('sourceId').val()).child('status').val() === 'hospedado' && root.child('erp_geral/quartos/reservationIndex').child(newData.child('sourceId').val()).child('roomNumber').val() === newData.child('roomNumber').val())))",
             "payments": {
               "part1": {
                 ".validate": "newData.child('amount').isNumber() && newData.child('amount').val() > 0 && (newData.child('method').val() === 'cash' || newData.child('method').val() === 'pix' || newData.child('method').val() === 'debit' || newData.child('method').val() === 'credit' || newData.child('method').val() === 'bank_transfer' || newData.child('method').val() === 'prepaid')"
@@ -255,7 +292,12 @@
         "records": {
           "$recordId": {
             ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists()))",
-            ".validate": "newData.child('id').val() === $recordId && newData.child('actor').isString() && newData.child('createdAt').isString() && newData.child('items').exists()"
+            ".validate": "newData.child('id').val() === $recordId && newData.child('actor').isString() && newData.child('createdAt').isString() && newData.child('items').exists() && (data.exists() || !root.child('erp_geral/estoque/deletedOutputs').child($recordId).exists()) && newData.child('destination').isString() && newData.child('note').isString()",
+            "items": {
+              "$itemId": {
+                ".validate": "newData.child('productId').isString() && newData.child('productName').isString() && newData.child('unit').isString() && newData.child('quantity').isNumber() && newData.child('quantity').val() > 0"
+              }
+            }
           }
         }
       },

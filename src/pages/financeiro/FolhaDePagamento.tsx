@@ -4,7 +4,8 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { emptyFinance, financeStorageMode, subscribeFinance, updateFinance } from '../../services/financeStore';
 import { DateInput } from '../../components/ui/DateInput';
-import { payrollNet, type FinanceData, type PayrollEntry } from '../../types/finance';
+import { payrollNet, WALLET_LABELS, type FinanceData, type PayrollEntry } from '../../types/finance';
+import { financeDateKeyFromTimestamp, financeMonthRange, isFinanceDateKey, patchPaymentDates, payrollPaymentEvents, withPayrollPaymentTotals } from '../../services/financePayments';
 import './financeiro.css';
 
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -37,6 +38,7 @@ export function FolhaDePagamento() {
 	const [loading, setLoading] = useState(true);
 	const [modal, setModal] = useState(false);
 	const [editingId, setEditingId] = useState('');
+	const [editingRecord, setEditingRecord] = useState<PayrollEntry | null>(null);
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState('');
 	const [notice, setNotice] = useState('');
@@ -46,8 +48,9 @@ export function FolhaDePagamento() {
 	const entries = useMemo(() => Object.values(data.payroll).map((entry) => ({ ...entry, employee: findStaff(staff, entry.employee, entry.employeeId)?.name ?? entry.employee })).filter((item) => item.month === month).sort((a, b) => a.employee.localeCompare(b.employee, 'pt-BR')), [data.payroll, month, staff]);
 	const planned = entries.reduce((sum, item) => sum + payrollNet(item), 0);
 	const paid = entries.reduce((sum, item) => sum + item.paidCash + item.paidBank, 0);
-	const pending = Math.max(0, planned - paid);
-	const selected = entries.find((entry) => entry.id === editingId);
+	const pending = entries.reduce((sum, entry) => sum + Math.max(0, payrollNet(entry) - entry.paidCash - entry.paidBank), 0);
+	const selected = editingRecord ?? undefined;
+	const selectedPayments = selected ? payrollPaymentEvents(selected) : [];
 
 	async function commit(update: (current: FinanceData) => FinanceData, message: string) {
 		setSaving(true);
@@ -56,6 +59,7 @@ export function FolhaDePagamento() {
 			await updateFinance(update);
 			setModal(false);
 			setEditingId('');
+			setEditingRecord(null);
 			setNotice(message);
 			window.setTimeout(() => setNotice(''), 4000);
 		} catch (cause) {
@@ -76,12 +80,18 @@ export function FolhaDePagamento() {
 		const paidBank = Number(form.get('paidBank')) || 0;
 		if (!employee || [basePay, additions, deductions, paidCash, paidBank].some((value) => !Number.isFinite(value) || value < 0)) { setError('Informe o funcionário e valores válidos, iguais ou maiores que zero.'); return; }
 		if (deductions > basePay + additions) { setError('Os descontos não podem superar o salário-base somado aos acréscimos.'); return; }
-		const current = data.payroll[editingId];
+		if (Math.round((paidCash + paidBank) * 100) > Math.round((basePay + additions - deductions) * 100)) { setError('O total pago não pode ultrapassar o valor líquido da folha.'); return; }
+		const current = selected;
 		const timestamp = new Date().toISOString();
-		const item: PayrollEntry = {
-			id: current?.id ?? createId(),
-			month: String(form.get('dueDate')).slice(0, 7),
-			dueDate: String(form.get('dueDate')),
+		const competence = String(form.get('competence') ?? '');
+		const dueDate = String(form.get('dueDate') ?? '');
+		const paymentDate = String(form.get('paidDate') ?? '');
+		if (!isFinanceDateKey(dueDate) || !isFinanceDateKey(paymentDate)) { setError('Confira o vencimento e a data do pagamento ou correção.'); return; }
+		try { financeMonthRange(competence); } catch { setError('Informe a competência da folha.'); return; }
+		const next: PayrollEntry = {
+			id: current?.id ?? editingId,
+			month: competence,
+			dueDate,
 			employee,
 			...(findStaff(staff, employee) ? { employeeId: findStaff(staff, employee)!.id } : {}),
 			position: String(form.get('position') ?? '').trim(),
@@ -94,7 +104,23 @@ export function FolhaDePagamento() {
 			createdAt: current?.createdAt ?? timestamp,
 			updatedAt: timestamp,
 		};
-		void commit((latest) => ({ ...latest, payroll: { ...latest.payroll, [item.id]: item } }), current ? 'Lançamento da folha atualizado.' : 'Lançamento da folha registrado.');
+		let item: PayrollEntry;
+		try {
+			item = withPayrollPaymentTotals(current, next, paymentDate, createId());
+			const dates: Record<string, string> = {};
+			for (const payment of selectedPayments) {
+				const date = String(form.get(`paymentDate-${payment.id}`) ?? payment.date);
+				if (!isFinanceDateKey(date)) throw new Error('Confira a data de cada pagamento registrado.');
+				if (date !== payment.date || form.get(`confirmDate-${payment.id}`) === 'on') dates[payment.id] = date;
+			}
+			item = { ...item, payments: patchPaymentDates(item.payments ?? {}, dates) };
+		} catch (cause) { setError(cause instanceof Error ? cause.message : 'Confira os pagamentos da folha.'); return; }
+		void commit((latest) => {
+			const latestRecord = latest.payroll[item.id];
+			if (current && (!latestRecord || latestRecord.updatedAt !== current.updatedAt)) throw new Error('A folha mudou enquanto você editava. Reabra o lançamento para consultar os valores atuais.');
+			if (!current && latestRecord) throw new Error('Este lançamento já foi salvo. Reabra a folha para consultar o registro.');
+			return { ...latest, payroll: { ...latest.payroll, [item.id]: item } };
+		}, current ? 'Lançamento da folha atualizado.' : 'Lançamento da folha registrado.');
 	}
 
 	async function removeEntry(entry: PayrollEntry) {
@@ -107,7 +133,8 @@ export function FolhaDePagamento() {
 	}
 
 	function openEntry(entryId = '') {
-		setEditingId(entryId);
+		setEditingId(entryId || createId());
+		setEditingRecord(entries.find((entry) => entry.id === entryId) ?? null);
 		setError('');
 		setModal(true);
 	}
@@ -133,7 +160,7 @@ export function FolhaDePagamento() {
 			<main className="finance-content">
 				<div className="finance-page-heading">
 					<div><p className="finance-eyebrow">FINANCEIRO <span>/</span> PESSOAL</p><h1>Folha de pagamento</h1><p>Valores e pagamentos por funcionário e competência.</p></div>
-					<div className="finance-heading-actions"><label className="finance-month"><span>Competência</span><input type="month" value={month} onChange={(event) => setMonth(event.target.value)} /></label><button className="finance-button finance-button-soft" onClick={exportPayroll}>Exportar CSV</button><button className="finance-button finance-button-primary" onClick={() => openEntry()}>+ Lançar folha</button></div>
+					<div className="finance-heading-actions"><label className="finance-month"><span>Competência</span><input type="month" value={month} onChange={(event) => { if (event.target.value) setMonth(event.target.value); }} /></label><button className="finance-button finance-button-soft" onClick={exportPayroll} disabled={loading}>Exportar CSV</button><button className="finance-button finance-button-primary" onClick={() => openEntry()} disabled={loading}>+ Lançar folha</button></div>
 				</div>
 
 				{error && <div className="finance-alert" role="alert">{error}<button onClick={() => setError('')} aria-label="Fechar aviso">×</button></div>}
@@ -160,21 +187,26 @@ export function FolhaDePagamento() {
 				<footer className="finance-page-footer"><span>Armazenamento: {financeStorageMode}</span><span>Folha · valores informados manualmente</span></footer>
 			</main>
 
-			{modal && <div className="finance-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setModal(false); }}><section className="finance-modal" role="dialog" aria-modal="true" aria-labelledby="finance-modal-title"><form onSubmit={saveEntry}>
-				<div className="finance-modal-header"><div><p className="finance-eyebrow">FOLHA DE PAGAMENTO</p><h2 id="finance-modal-title">{selected ? 'Editar lançamento' : 'Novo lançamento'}</h2></div><button type="button" className="finance-close" onClick={() => setModal(false)} aria-label="Fechar">×</button></div>
-				<div className="finance-modal-body">
+			{modal && <div className="finance-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setModal(false); }}><section className="finance-modal" role="dialog" aria-modal="true" aria-labelledby="finance-modal-title"><form onSubmit={saveEntry}>
+				<div className="finance-modal-header"><div><p className="finance-eyebrow">FOLHA DE PAGAMENTO</p><h2 id="finance-modal-title">{selected ? 'Editar lançamento' : 'Novo lançamento'}</h2></div><button type="button" className="finance-close" onClick={() => setModal(false)} aria-label="Fechar" disabled={saving}>×</button></div>
+				{error && <p className="finance-alert" role="alert">{error}</p>}
+				<fieldset className="finance-modal-body" disabled={saving} style={{ border: 0, margin: 0, minWidth: 0 }}>
 					<label className="finance-field"><span>Funcionário *</span><select name="employee" required defaultValue={selected?.employee ?? ''}><option value="">Selecione...</option>{[...new Set([...staffMembers(staff).map((member) => member.name), ...(selected ? [selected.employee] : [])])].map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
 					<label className="finance-field"><span>Função</span><input name="position" defaultValue={selected?.position} placeholder="Cargo / setor" /></label>
+					<label className="finance-field"><span>Competência da folha *</span><input name="competence" type="month" required defaultValue={selected?.month ?? month} /></label>
 					<label className="finance-field"><span>Vencimento *</span><DateInput name="dueDate" required defaultValue={selected?.dueDate ?? monthDueDate(month)} /></label>
 					<label className="finance-field"><span>Salário-base *</span><input name="basePay" type="number" min="0" step="0.01" required defaultValue={selected?.basePay ?? 0} /></label>
 					<label className="finance-field"><span>Acréscimos</span><input name="additions" type="number" min="0" step="0.01" defaultValue={selected?.additions ?? 0} /></label>
 					<label className="finance-field"><span>Descontos</span><input name="deductions" type="number" min="0" step="0.01" defaultValue={selected?.deductions ?? 0} /></label>
 					<label className="finance-field"><span>Pago em dinheiro</span><input name="paidCash" type="number" min="0" step="0.01" defaultValue={selected?.paidCash ?? 0} /></label>
 					<label className="finance-field"><span>Pago pelo banco</span><input name="paidBank" type="number" min="0" step="0.01" defaultValue={selected?.paidBank ?? 0} /></label>
+					<label className="finance-field finance-field-wide"><span>Data do novo pagamento ou correção *</span><DateInput name="paidDate" required defaultValue={financeDateKeyFromTimestamp(new Date().toISOString())} /></label>
+					<p className="finance-form-hint finance-field-wide">Informe os totais já pagos. A diferença em relação ao valor salvo é registrada na data acima, preservando os pagamentos anteriores.</p>
+					{selectedPayments.length > 0 && <fieldset className="finance-field-wide finance-payment-history"><legend>Pagamentos registrados</legend><p className="finance-form-hint">Corrija a data de uma parcela somente quando necessário. Os outros pagamentos mantêm suas datas.</p>{selectedPayments.map((payment, index) => <div key={payment.id} className="finance-payment-event"><div><strong>Parcela {index + 1} · {money(payment.amount)}</strong><small>{WALLET_LABELS[payment.wallet]}{payment.dateSource === 'legacy_due_date' ? ' · registro antigo sem data de pagamento' : ''}</small></div><label className="finance-field"><span>Data da parcela {index + 1}</span><DateInput name={`paymentDate-${payment.id}`} required defaultValue={payment.date} /></label>{payment.dateSource === 'legacy_due_date' && <label className="finance-confirm-date"><input type="checkbox" name={`confirmDate-${payment.id}`} />Confirmar esta data de pagamento</label>}</div>)}</fieldset>}
 					<label className="finance-field finance-field-wide"><span>Observação</span><textarea name="note" rows={2} defaultValue={selected?.note} /></label>
 					<p className="finance-form-hint finance-field-wide">Líquido = salário-base + acréscimos - descontos. Informe manualmente encargos e descontos conforme a folha oficial.</p>
-				</div>
-				<div className="finance-modal-footer"><button type="button" className="finance-button finance-button-soft" onClick={() => setModal(false)}>Cancelar</button><button className="finance-button finance-button-primary" type="submit" disabled={saving}>{saving ? 'Salvando...' : selected ? 'Salvar alterações' : 'Registrar folha'}</button></div>
+				</fieldset>
+				<div className="finance-modal-footer"><button type="button" className="finance-button finance-button-soft" onClick={() => setModal(false)} disabled={saving}>Cancelar</button><button className="finance-button finance-button-primary" type="submit" disabled={saving}>{saving ? 'Salvando...' : selected ? 'Salvar alterações' : 'Registrar folha'}</button></div>
 			</form></section></div>}
 		</div>
 	);

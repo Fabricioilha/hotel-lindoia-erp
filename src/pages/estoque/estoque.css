@@ -1266,3 +1266,4 @@
 
 .sidebar-section-toggle { display: flex; width: 100%; justify-content: space-between; border: 0; background: none; text-align: left; cursor: pointer; }
 .stock-sidebar-context { display: grid; gap: 4px; }
+.stock-modal-error { margin: 18px 22px 0; }

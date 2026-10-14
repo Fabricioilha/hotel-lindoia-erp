@@ -2,6 +2,9 @@ import { incomePaymentWallet, type FinanceData, type FinanceExpense, type Financ
 import { extraTotal, stayBreakfastDays, stayBreakfastTotal, stayDailyAmount, stayTaxPayments, type CashOut, type GuestStay, type RoomCharge, type StayExtra } from '../types/reception';
 import type { FrigobarSale } from '../types/frigobar';
 import type { ReservationCollection } from '../types/housekeeping';
+import type { Reservation } from '../types/housekeeping';
+import type { StockMovement } from '../types/inventory';
+import { financeDateKeyFromTimestamp, withExpensePaymentTotals } from './financePayments';
 
 export interface OperationalFinanceSources {
   stays: Record<string, GuestStay>;
@@ -9,6 +12,8 @@ export interface OperationalFinanceSources {
   cashOuts: Record<string, CashOut>;
   sales: Record<string, FrigobarSale>;
   reservationCollections?: Record<string, Record<string, ReservationCollection>>;
+  movements?: Record<string, StockMovement>;
+  reservations?: Record<string, Reservation>;
 }
 
 const cents = (value: number) => Math.round(value * 100) / 100;
@@ -64,7 +69,8 @@ export function stayFinanceEntryIds(stay: GuestStay): string[] {
 }
 
 export function stayOyoFeeExpense(stay: GuestStay): FinanceExpense | undefined {
-  const amount = cents(stayTaxPayments(stay).filter((payment) => payment.method !== 'prepaid').reduce((total, payment) => total + payment.amount, 0));
+  const amount = cents(stayTaxPayments(stay).filter((payment) => payment.method !== 'prepaid'
+    && !stay.voidedPayments?.[`recepcao-${stay.id}-${payment.id}`]).reduce((total, payment) => total + payment.amount, 0));
   if (!Number.isFinite(amount) || amount <= 0) return undefined;
   const id = `recepcao-${stay.id}-oyo-fee`;
   return {
@@ -75,6 +81,8 @@ export function stayOyoFeeExpense(stay: GuestStay): FinanceExpense | undefined {
     paidCash: 0,
     paidBank: 0,
     paidOyo: amount,
+    paidDate: stay.checkInDate,
+    payments: { [`${id}-oyo`]: { id: `${id}-oyo`, date: stay.checkInDate, wallet: 'oyo', amount, dateSource: 'informed' } },
     note: [`Taxa cobrada no balcão e compensada com valores retidos pela OYO`, `Quarto ${stay.roomNumber}`, stay.guestName].filter(Boolean).join(' · '),
     createdAt: stay.createdAt,
     updatedAt: stay.createdAt,
@@ -93,6 +101,8 @@ export function roomChargeFinanceEntries(charge: RoomCharge): Record<string, Fin
 export function cashOutFinanceEntry(cashOut: CashOut): FinanceExpense {
   return { id: `caixa-${cashOut.id}`, dueDate: cashOut.date, category: cashOut.reason,
     plannedAmount: cashOut.amount, paidCash: cashOut.amount, paidBank: 0,
+    paidDate: cashOut.date,
+    payments: { [`caixa-${cashOut.id}-cash`]: { id: `caixa-${cashOut.id}-cash`, date: cashOut.date, wallet: 'cash', amount: cents(cashOut.amount), dateSource: 'informed' } },
     note: ['Saída de caixa', cashOut.reason, cashOut.note, `Plantão ${cashOut.attendant}`].filter(Boolean).join(' · '),
     createdAt: cashOut.createdAt, updatedAt: cashOut.createdAt };
 }
@@ -100,9 +110,37 @@ export function cashOutFinanceEntry(cashOut: CashOut): FinanceExpense {
 export function frigobarFinanceEntry(sale: FrigobarSale): FinanceIncome | undefined {
   if (sale.settlement === 'cobrar_no_checkout' || !sale.paymentMethod) return undefined;
   const methods = { dinheiro: 'cash', pix: 'pix', cartao_debito: 'debit', cartao_credito: 'credit' } as const;
-  const at = new Date(sale.settledAt ?? sale.createdAt);
-  const date = `${at.getFullYear()}-${String(at.getMonth() + 1).padStart(2, '0')}-${String(at.getDate()).padStart(2, '0')}`;
+  const date = financeDateKeyFromTimestamp(sale.settledAt ?? sale.createdAt);
+  if (!date || !methods[sale.paymentMethod]) return undefined;
   return income(`frigobar-${sale.id}`, date, 'Consumo', sale.items.map((item) => `${item.productName} × ${item.quantity}`).join(', '), sale.amount, methods[sale.paymentMethod], ['Geladeira - Recepção', sale.roomNumber ? `Quarto ${sale.roomNumber}` : '', sale.guestName].filter(Boolean).join(' · '), sale.settledAt ?? sale.createdAt);
+}
+
+export function minibarMovementFinanceEntry(movement: StockMovement): FinanceIncome | undefined {
+  if (movement.type !== 'consumo_frigobar' || !movement.paymentMethod
+    || !['pago_na_recepcao', 'pago_no_checkout'].includes(movement.settlement ?? '')) return undefined;
+  const methods = { dinheiro: 'cash', pix: 'pix', cartao_debito: 'debit', cartao_credito: 'credit' } as const;
+  const date = financeDateKeyFromTimestamp(movement.settledAt ?? movement.createdAt);
+  const amount = cents(movement.quantity * movement.unitPrice);
+  if (!date || !methods[movement.paymentMethod] || !Number.isFinite(amount) || amount <= 0) return undefined;
+  return income(`minibar-${movement.id}`, date, 'Consumo', `${movement.productName} · ${movement.quantity} ${movement.unit}`,
+    amount, methods[movement.paymentMethod], ['Frigobar', movement.roomNumber ? `Quarto ${movement.roomNumber}` : '', movement.guestName].filter(Boolean).join(' · '), movement.settledAt ?? movement.createdAt);
+}
+
+export function stockPurchaseExpense(movement: StockMovement): FinanceExpense | undefined {
+  if (movement.type !== 'entrada') return undefined;
+  const amount = cents(movement.quantity * movement.unitPrice);
+  const dueDate = financeDateKeyFromTimestamp(movement.createdAt);
+  if (!dueDate || !Number.isFinite(amount) || amount <= 0) return undefined;
+  const id = `stock-entry-${movement.id}`;
+  const base: FinanceExpense = {
+    id, dueDate, category: 'Estoque', plannedAmount: amount,
+    paidCash: movement.entryPayment === 'caixa' ? amount : 0,
+    paidBank: movement.entryPayment === 'banco' ? amount : 0,
+    note: [`Entrada de estoque: ${movement.quantity} ${movement.unit} de ${movement.productName}`, movement.reference, movement.note,
+      movement.entryPayment ? '' : 'Pagamento não informado no movimento histórico; confira a compra.'].filter(Boolean).join(' · '),
+    createdAt: movement.createdAt, updatedAt: movement.createdAt,
+  };
+  return withExpensePaymentTotals(undefined, base, movement.paidDate || dueDate, id);
 }
 
 // Uma única visão do financeiro: operações entram diretamente, sem cópias gravadas
@@ -116,11 +154,11 @@ export function withOperationalFinance(data: FinanceData, sources: OperationalFi
     if (!saved) incomes[entry.id] = entry;
     else if (!saved.operationalOverride) incomes[entry.id] = { ...entry, createdAt: saved.createdAt, updatedAt: saved.updatedAt };
   };
-  const addExpense = (entry: FinanceExpense) => {
+  const addExpense = (entry: FinanceExpense, preserveSaved = false) => {
     if (data.suppressed[entry.id]) return;
     const saved = expenses[entry.id];
     if (!saved) expenses[entry.id] = entry;
-    else if (!saved.operationalOverride) expenses[entry.id] = { ...entry, createdAt: saved.createdAt, updatedAt: saved.updatedAt };
+    else if (!saved.operationalOverride && !preserveSaved) expenses[entry.id] = { ...entry, createdAt: saved.createdAt, updatedAt: saved.updatedAt };
   };
   Object.values(sources.stays).forEach((stay) => {
     Object.entries(stay.voidedPayments ?? {}).forEach(([id, voided]) => { if (voided) delete incomes[id]; });
@@ -130,21 +168,32 @@ export function withOperationalFinance(data: FinanceData, sources: OperationalFi
     });
     const oyoFee = stayOyoFeeExpense(stay);
     if (oyoFee) addExpense(oyoFee);
+    else if (!expenses[`recepcao-${stay.id}-oyo-fee`]?.operationalOverride) delete expenses[`recepcao-${stay.id}-oyo-fee`];
   });
   Object.values(sources.roomCharges).forEach((charge) => {
     Object.entries(charge.voidedPayments ?? {}).forEach(([id, voided]) => { if (voided) delete incomes[id]; });
     Object.values(roomChargeFinanceEntries(charge)).forEach(addIncome);
   });
   Object.values(sources.sales).forEach((sale) => { const entry = frigobarFinanceEntry(sale); if (entry) addIncome(entry); });
+  Object.values(sources.movements ?? {}).forEach((movement) => {
+    const sale = minibarMovementFinanceEntry(movement);
+    if (sale) addIncome(sale);
+    const purchase = stockPurchaseExpense(movement);
+    if (purchase) addExpense(purchase, !movement.entryPayment);
+  });
   Object.values(sources.reservationCollections ?? {}).forEach((collections) => Object.values(collections).forEach((collection) => {
-    addIncome(income(`reservation-${collection.reservationId}-checkout-${collection.id}`, collection.date, 'Diária', 'Recebimento de hospedagem no checkout', collection.amount, collection.paymentMethod, `Reserva ${collection.reservationId} · ${collection.actor}`, collection.createdAt));
+    const reservation = sources.reservations?.[collection.reservationId];
+    addIncome(income(`reservation-${collection.reservationId}-checkout-${collection.id}`, collection.date,
+      reservation?.channel === 'rotativo' ? 'Rotativo' : 'Diária',
+      reservation ? `Hospedagem · quarto ${reservation.roomNumber}` : 'Recebimento de hospedagem no checkout',
+      collection.amount, collection.paymentMethod, [`Reserva ${collection.reservationId}`, collection.actor, reservation?.guestName].filter(Boolean).join(' · '), collection.createdAt));
   }));
   Object.values(sources.cashOuts).forEach((cashOut) => {
     const entry = cashOutFinanceEntry(cashOut);
     if (data.suppressed[entry.id]) return;
     const saved = expenses[entry.id];
     if (!saved) expenses[entry.id] = entry;
-    else if (!saved.operationalOverride && saved.category === 'Saída de caixa') expenses[entry.id] = { ...saved, category: entry.category };
+    else if (!saved.operationalOverride) expenses[entry.id] = { ...entry, createdAt: saved.createdAt, updatedAt: saved.updatedAt };
   });
   Object.keys(data.suppressed).filter((id) => data.suppressed[id]).forEach((id) => { delete incomes[id]; delete expenses[id]; });
   Object.values(incomes).forEach((entry) => {

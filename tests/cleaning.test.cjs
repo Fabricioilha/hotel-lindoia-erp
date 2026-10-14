@@ -85,7 +85,7 @@ vm.runInNewContext(`(function(exports){${analyticsSource}\n})`, { Date, Map, Set
 const exportsObject = {};
 const source = ts.transpileModule(fs.readFileSync(path.join(projectRoot, 'src/services/cleaningStore.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 vm.runInNewContext(`(function(require,exports){${source}\n})`, { crypto: { randomUUID: () => `task-${++sequence}` }, Date, Map, Set, Promise })(
-  (name) => name === 'firebase/database' ? database : name === '../config/firebase' ? { db: {} } : name === './reservationAnalytics' ? analytics : (() => { throw new Error('Unexpected import '+name); })(), exportsObject);
+  (name) => name === 'firebase/database' ? database : name === '../config/firebase' ? { db: {} } : name === './reservationAnalytics' ? analytics : name === './firebaseTransactions' ? { withTransactionData: async (path, action) => action(database.ref({}, path)) } : (() => { throw new Error('Unexpected import '+name); })(), exportsObject);
 const service = exportsObject;
 function reset() {
   sequence = 0; failUpdate = false;

@@ -1,6 +1,7 @@
 import { ref, runTransaction, update } from 'firebase/database';
 import { db } from '../config/firebase';
 import type { RoomCharge } from '../types/reception';
+import { withTransactionData } from './firebaseTransactions';
 
 const FINANCE = 'erp_geral/financeiro';
 
@@ -19,8 +20,11 @@ export function removeChargeUpdates(updates: Record<string, unknown>, charge: Ro
 // Claims prevent two manager sessions from returning the same stock twice.
 // The source, stock and linked financial records are then changed in one atomic update.
 export async function commitDeletion(ids: string[], updates: Record<string, unknown>): Promise<void> {
+  return withTransactionData(`${FINANCE}/deletions`, (locks) => commitClaimedDeletion(ids, updates, locks));
+}
+
+async function commitClaimedDeletion(ids: string[], updates: Record<string, unknown>, locks: ReturnType<typeof ref>): Promise<void> {
   const token = crypto.randomUUID();
-  const locks = ref(db, `${FINANCE}/deletions`);
   const result = await runTransaction(locks, (value) => {
     const current = value ?? {};
     if (ids.some((id) => current[id])) return;

@@ -3,6 +3,9 @@ import { db } from '../config/firebase';
 import { buildAuditEvents } from '../types/audit';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, type FinanceData } from '../types/finance';
 import { withOperationalFinance, type OperationalFinanceSources } from './operationalLedger';
+import { financeDateKeyFromTimestamp, financeMonthRange, withExpensePaymentTotals, withPayrollPaymentTotals } from './financePayments';
+import { validateFinanceRecords } from './financeValidation';
+import { withFinanceWriteLock } from './financeTransactions';
 
 const DEPRECATED_INCOME_CATEGORIES = ['Rotativo cartão', 'Consumo Cartão', 'Diária Cartão', 'Café da manhã', 'Café da manhã cartão', 'Outros'];
 
@@ -18,19 +21,6 @@ export function emptyFinance(): FinanceData {
     auditLog: {},
     suppressed: {},
   };
-}
-
-function fiveYearsAgoDateKey(): string {
-  const cutoff = new Date();
-  cutoff.setFullYear(cutoff.getFullYear() - 5);
-  const pad = (value: number) => String(value).padStart(2, '0');
-  return `${cutoff.getFullYear()}-${pad(cutoff.getMonth() + 1)}-${pad(cutoff.getDate())}`;
-}
-
-function fiveYearsAgoTimestamp(): string {
-  const cutoff = new Date();
-  cutoff.setFullYear(cutoff.getFullYear() - 5);
-  return cutoff.toISOString();
 }
 
 function normalizeCategories(value: unknown, defaults: string[]) {
@@ -50,10 +40,11 @@ function normalizeFinance(value: unknown): FinanceData {
   const data = value && typeof value === 'object' ? value as Partial<FinanceData> : {};
   const incomes = { ...data.incomes };
   const expenses = { ...data.expenses };
+  Object.entries(data.suppressed ?? {}).forEach(([id, suppressed]) => { if (suppressed) { delete incomes[id]; delete expenses[id]; } });
   const categoryAliases = { income: data.categoryAliases?.income ?? {}, expense: data.categoryAliases?.expense ?? {} };
   Object.values(expenses).forEach((entry) => { if (categoryAliases.expense[entry.category]) expenses[entry.id] = { ...entry, category: categoryAliases.expense[entry.category] }; });
   Object.values(incomes).forEach((income) => {
-    if (income.category.trim().toLocaleLowerCase('pt-BR') === 'oyo') {
+    if (typeof income.category === 'string' && income.category.trim().toLocaleLowerCase('pt-BR') === 'oyo') {
       incomes[income.id] = { ...income, category: 'OYO (histórico)' };
     }
     const entry = incomes[income.id];
@@ -79,67 +70,46 @@ function normalizeFinance(value: unknown): FinanceData {
 
 export const financeStorageMode = 'Firebase';
 
+const FINANCE_KEYS = ['incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'auditLog', 'suppressed', 'categoryAliases'] as const;
+const OPERATIONAL_PATHS = {
+  stays: 'erp_geral/recepcao/stays', roomCharges: 'erp_geral/recepcao/roomCharges', cashOuts: 'erp_geral/recepcao/cashOuts',
+  sales: 'erp_geral/frigobar/operations/sales', reservationCollections: 'erp_geral/reservationCollections',
+  movements: 'erp_geral/estoque/movements', reservations: 'erp_geral/quartos/reservations',
+};
+
+function financeView(values: Record<string, unknown>, includeOperations: boolean): FinanceData {
+  const data = normalizeFinance(values);
+  return includeOperations ? withOperationalFinance(data, {
+    stays: values.stays ?? {}, roomCharges: values.roomCharges ?? {}, cashOuts: values.cashOuts ?? {}, sales: values.sales ?? {},
+    reservationCollections: values.reservationCollections ?? {}, movements: values.movements ?? {}, reservations: values.reservations ?? {},
+  } as OperationalFinanceSources) : data;
+}
+
+export async function loadFinanceForMonth(month: string): Promise<FinanceData> {
+  financeMonthRange(month);
+  // Opening and closing balances require the complete history, including payments on bills due in other months.
+  const paths = [...FINANCE_KEYS.filter((key) => key !== 'auditLog').map((key) => [key, `erp_geral/financeiro/${key}`]), ...Object.entries(OPERATIONAL_PATHS)];
+  const snapshots = await Promise.all(paths.map(([, location]) => get(ref(db, location))));
+  return financeView(Object.fromEntries(paths.map(([key], index) => [key, snapshots[index].val() ?? {}])), true);
+}
+
 export function subscribeFinance(
   onChange: (data: FinanceData) => void,
   onError: (error: Error) => void,
   options: { includeOperations?: boolean; transactionRange?: { from: string; to: string } } = {},
 ): () => void {
-  const financeKeys = options.transactionRange
-    ? ['incomes', 'expenses', 'payroll', 'incomeCategories', 'expenseCategories', 'suppressed', 'categoryAliases'] as const
-    : ['incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'auditLog', 'suppressed', 'categoryAliases'] as const;
-  const operationalPaths = {
-    stays: 'erp_geral/recepcao/stays',
-    roomCharges: 'erp_geral/recepcao/roomCharges',
-    cashOuts: 'erp_geral/recepcao/cashOuts',
-    sales: 'erp_geral/frigobar/operations/sales',
-    reservationCollections: 'erp_geral/reservationCollections',
-  };
-  const operationEntries = Object.entries(operationalPaths).flatMap(([key, location]) =>
-    options.transactionRange && key === 'sales'
-      ? [['salesCreatedAt', location], ['salesSettledAt', location]]
-      : [[key, location]],
-  );
-  const paths = [...financeKeys.map((key) => [key, `erp_geral/financeiro/${key}`]), ...(options.includeOperations === false ? [] : operationEntries)];
+  const paths = [...FINANCE_KEYS.map((key) => [key, `erp_geral/financeiro/${key}`]), ...(options.includeOperations === false ? [] : Object.entries(OPERATIONAL_PATHS))];
   const loaded = new Set<string>();
   const values: Record<string, unknown> = {};
   const stops = paths.map(([key, location]) => {
     const path = ref(db, location);
-    const transactionDateField = key === 'incomes' ? 'date'
-      : key === 'expenses' || key === 'payroll' ? 'dueDate'
-        : key === 'transfers' ? 'date' : '';
-    const dateField = key === 'stays' ? 'checkInDate'
-      : key === 'roomCharges' || key === 'cashOuts' ? 'date'
-        : key === 'sales' || key === 'salesCreatedAt' ? 'createdAt'
-          : key === 'salesSettledAt' ? 'settledAt' : '';
-    const rangeField = transactionDateField || dateField;
-    const isTimestampField = key === 'sales' || key === 'salesCreatedAt' || key === 'salesSettledAt';
-    const rangeStart = options.transactionRange
-      ? isTimestampField ? new Date(`${options.transactionRange.from}T00:00:00`).toISOString() : options.transactionRange.from
-      : '';
-    const rangeEnd = options.transactionRange
-      ? isTimestampField ? new Date(`${options.transactionRange.to}T23:59:59.999`).toISOString() : options.transactionRange.to
-      : '';
-    const listener = key === 'auditLog'
-      ? query(path, orderByChild('occurredAt'), limitToLast(100))
-      : options.transactionRange && rangeField
-        ? query(path, orderByChild(rangeField), startAt(rangeStart), endAt(rangeEnd))
-        : transactionDateField
-          ? query(path, orderByChild(transactionDateField), startAt(fiveYearsAgoDateKey()))
-      : dateField
-        ? query(path, orderByChild(dateField), startAt(dateField === 'createdAt' ? fiveYearsAgoTimestamp() : fiveYearsAgoDateKey()))
-        : path;
+    // Filtering only the source due/check-in date omits later installments and corrupts accumulated balances.
+    const listener = key === 'auditLog' ? query(path, orderByChild('occurredAt'), limitToLast(100)) : path;
     return onValue(listener, (snapshot) => {
       values[key] = snapshot.val() ?? {};
       loaded.add(key);
       if (loaded.size === paths.length) {
-        const data = normalizeFinance(values);
-        const sales = options.transactionRange
-          ? { ...((values.salesCreatedAt ?? {}) as Record<string, unknown>), ...((values.salesSettledAt ?? {}) as Record<string, unknown>) }
-          : values.sales;
-        onChange(options.includeOperations === false ? data : withOperationalFinance(data, {
-          stays: values.stays, roomCharges: values.roomCharges, cashOuts: values.cashOuts,
-          sales, reservationCollections: values.reservationCollections,
-        } as OperationalFinanceSources));
+        onChange(financeView(values, options.includeOperations !== false));
       }
     }, onError);
   });
@@ -197,13 +167,45 @@ export function subscribeReservationPaymentIncomes(
 export async function updateFinance(
   update: (current: FinanceData) => FinanceData,
 ): Promise<void> {
+  return withFinanceWriteLock(() => commitFinanceUpdate(update));
+}
+
+async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData): Promise<void> {
   const operationId = crypto.randomUUID();
   const occurredAt = new Date().toISOString();
   const keys = ['incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'suppressed', 'deletions', 'categoryAliases'] as const;
-  const snapshots = await Promise.all(keys.map((key) => get(ref(db, `erp_geral/financeiro/${key}`))));
-  const raw = Object.fromEntries(keys.map((key, index) => [key, snapshots[index].val() ?? {}]));
-  const current = normalizeFinance(raw);
-  const next = update(current);
+  const sourcePaths = Object.entries(OPERATIONAL_PATHS);
+  const [snapshots, sourceSnapshots] = await Promise.all([
+    Promise.all(keys.map((key) => get(ref(db, `erp_geral/financeiro/${key}`)))),
+    Promise.all(sourcePaths.map(([, location]) => get(ref(db, location)))),
+  ]);
+  const raw = { ...Object.fromEntries(keys.map((key, index) => [key, snapshots[index].val() ?? {}])),
+    ...Object.fromEntries(sourcePaths.map(([key], index) => [key, sourceSnapshots[index].val() ?? {}])) };
+  // The editor sees the same source-only entries as the cash-flow screen; unchanged derived entries are never copied.
+  const current = financeView(raw, true);
+  const proposed = update(current);
+  const next = { ...proposed, incomes: { ...proposed.incomes }, expenses: { ...proposed.expenses }, payroll: { ...proposed.payroll } };
+  const paymentDate = financeDateKeyFromTimestamp(occurredAt);
+  Object.entries(next.incomes).forEach(([id, entry]) => {
+    if (/^(recepcao-|room-charge-|frigobar-|minibar-|reservation-)/.test(id)
+      && JSON.stringify(entry) !== JSON.stringify(current.incomes[id])) next.incomes[id] = { ...entry, operationalOverride: true };
+  });
+  Object.entries(next.expenses).forEach(([id, entry]) => {
+    const previous = current.expenses[id];
+    if (JSON.stringify(entry) === JSON.stringify(previous)) return;
+    if (JSON.stringify(entry.payments) === JSON.stringify(previous?.payments)) {
+      next.expenses[id] = withExpensePaymentTotals(previous, entry, entry.paidDate || paymentDate, operationId);
+    }
+    if (/^(stock-entry-|caixa-|recepcao-)/.test(id)) next.expenses[id] = { ...next.expenses[id], operationalOverride: true };
+  });
+  Object.entries(next.payroll).forEach(([id, entry]) => {
+    const previous = current.payroll[id];
+    if (JSON.stringify(entry) === JSON.stringify(previous)) return;
+    if (JSON.stringify(entry.payments) === JSON.stringify(previous?.payments)) {
+      next.payroll[id] = withPayrollPaymentTotals(previous, entry, entry.paidDate || paymentDate, operationId);
+    }
+  });
+  validateFinanceRecords(current, next);
   const updates: Record<string, unknown> = {};
   const changedRecords = (path: string, before: Record<string, unknown> | undefined, after: Record<string, unknown> | undefined) => {
     const ids = new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})]);

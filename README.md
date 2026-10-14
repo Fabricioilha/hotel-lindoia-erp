@@ -43,6 +43,10 @@ O Fluxo de Caixa combina lançamentos financeiros salvos com dados derivados de 
 - O histórico de pré-pagos mostra os valores brutos registrados como pagos à OYO. O cartão **Pré-Pagos (Retidos - OYO)** mostra o saldo da carteira OYO após os lançamentos e compensações registrados; o sistema não calcula comissões nem o acerto líquido com a OYO.
 - Em pagamentos combinados, a parcela recebida pelo hotel aparece nas entradas do hotel e a parcela pré-paga fica no histórico da OYO.
 
+Despesas e folha mantêm cada pagamento com data, carteira e valor. Vencimento, competência e pagamento são informações independentes. Ao corrigir um total pago, a diferença é registrada na data informada, preservando as parcelas anteriores. Datas de pagamentos antigos sem histórico aparecem identificadas e podem ser confirmadas ou corrigidas pela gerência.
+
+Para enviar o movimento mensal ao contador, abra **Fluxo de caixa**, selecione o **Mês do resumo e da planilha** e clique em **Baixar planilha mensal (.xlsx)**. O arquivo inclui resumo, entradas, saídas, pré-pagos OYO, transferências e contas/folha, com conferência de saldo por carteira. A exportação usa o mês completo independentemente dos filtros da consulta. Consulte a [análise do financeiro e do estoque](docs/revisao-financeiro-estoque.md) para conhecer os critérios e as correções aplicadas.
+
 ## Funcionários e exclusões
 
 O menu **Funcionários** mantém o cadastro em `erp_geral/escala/staff`, separado das credenciais do Firebase Authentication. Na primeira sessão da gerência, o sistema inicializa as sete pessoas configuradas para recepção e limpeza e importa nomes históricos não cadastrados como inativos. A marca `configured` evita recriar automaticamente pessoas ou categorias excluídas. Registros de turnos e operações mantêm a referência do funcionário e o nome histórico para preservar o histórico após renomeações ou exclusões.
@@ -62,4 +66,4 @@ npm run dev
 
 Os scripts disponíveis incluem `npm run build`, `npm run lint` e `npm run preview`.
 
-Os testes `npm run test:operations` e `npm run test:cleaning` verificam saldos, conciliação financeira, tarefas de limpeza, concorrência e permissões usando dados locais, sem conectar ao Firebase.
+Os testes `npm run test:operations`, `npm run test:cleaning`, `npm run test:finance`, `npm run test:inventory` e `npm run test:accounting` verificam operações, limpeza, conciliação financeira, concorrência, estoque e geração do Excel usando dados locais, sem conectar ao Firebase.

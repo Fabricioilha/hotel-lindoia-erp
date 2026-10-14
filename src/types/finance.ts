@@ -16,6 +16,16 @@ export interface FinanceBalances {
   oyo: number;
 }
 
+export interface FinancePaymentEvent {
+  id: string;
+  date: string;
+  wallet: FinanceWallet;
+  // Negative amounts record a correction or refund on its own date.
+  amount: number;
+  note?: string;
+  dateSource?: 'informed' | 'legacy_due_date';
+}
+
 export interface FinanceIncome {
   id: string;
   date: string;
@@ -38,6 +48,8 @@ export interface FinanceExpense {
   paidCash: number;
   paidBank: number;
   paidOyo?: number;
+  paidDate?: string;
+  payments?: Record<string, FinancePaymentEvent>;
   note: string;
   createdAt: string;
   updatedAt: string;
@@ -66,6 +78,8 @@ export interface PayrollEntry {
   deductions: number;
   paidCash: number;
   paidBank: number;
+  paidDate?: string;
+  payments?: Record<string, FinancePaymentEvent>;
   note: string;
   createdAt: string;
   updatedAt: string;
@@ -123,11 +137,12 @@ export function incomePaymentWallet(method: FinancePaymentMethod): FinanceWallet
   if (method === 'cash') return 'cash';
   // Preserva a chave dos lançamentos e repasses existentes no Firebase.
   if (method === 'prepaid') return 'oyo';
-  return 'bank';
+  return ['credit', 'debit', 'pix', 'bank_transfer'].includes(method) ? 'bank' : null;
 }
 
 export function incomeItems(entry: FinanceIncome): FinanceIncomeItem[] {
-  if (entry.items?.length) return entry.items;
+  const items = entry.items && typeof entry.items === 'object' ? Object.values(entry.items).filter(Boolean) : [];
+  if (items.length) return items;
   const paymentMethod: FinancePaymentMethod = entry.wallet === 'cash'
     ? 'cash'
     : entry.wallet === 'oyo' ? 'prepaid' : 'bank_transfer';

@@ -8,10 +8,14 @@
     "build": "tsc -b && vite build",
     "lint": "eslint .",
     "test:operations": "node tests/operations.test.mjs",
+    "test:accounting": "node tests/accounting-export.test.mjs",
+    "test:finance": "node tests/finance.test.mjs",
     "preview": "vite preview",
-    "test:cleaning": "node tests/cleaning.test.cjs"
+    "test:cleaning": "node tests/cleaning.test.cjs",
+    "test:inventory": "node tests/inventory.test.mjs"
   },
   "dependencies": {
+    "exceljs": "^4.4.0",
     "firebase": "^12.19.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",

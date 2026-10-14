@@ -15,6 +15,7 @@ export interface OutputItem {
 }
 
 export interface OutputRecord {
+  appliedInventoryRevision?: number;
   id: string;
   items: OutputItem[];
   destination: string;
@@ -25,6 +26,7 @@ export interface OutputRecord {
 }
 
 export interface OutputData {
+  catalogRevision?: number;
   catalog: Record<string, OutputCatalogItem>;
   records: Record<string, OutputRecord>;
 }

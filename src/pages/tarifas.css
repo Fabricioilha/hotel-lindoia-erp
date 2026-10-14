@@ -32,3 +32,4 @@
 .rates-save:disabled { opacity: .55; cursor: wait; }
 @media (max-width: 850px) { .rates-presets { grid-template-columns: 1fr auto; } }
 @media (max-width: 560px) { .rates-page .rates-panel { padding: 14px; } .rates-presets { grid-template-columns: 1fr; } .rates-presets button { justify-self: start; } .rates-holiday-form, .rates-holiday-list li { grid-template-columns: 1fr; } }
+.rates-form-fields { min-width: 0; margin: 0; padding: 0; border: 0; }

@@ -2,6 +2,9 @@
 export type StockCategory = string;
 export const SALES_CATEGORY_ID = 'frigobar';
 
+export const STOCK_QUANTITY_EPSILON = 1e-9;
+export const normalizedStockQuantity = (value: number) => Math.abs(value) < STOCK_QUANTITY_EPSILON ? 0 : Math.round(value * 1e9) / 1e9;
+
 export type MovementType =
   | 'entrada'
   | 'saida'
@@ -43,6 +46,8 @@ export interface StockSupplier {
 }
 
 export interface StockMovement {
+  entryPayment?: 'pendente' | 'caixa' | 'banco';
+  paidDate?: string;
   sourceLocationQuantities?: Record<string, number>;
   id: string;
   productId: string;
@@ -88,6 +93,7 @@ export interface StockCategoryRecord {
 }
 
 export interface InventoryData {
+  revision?: number;
   deletedOutputs?: Record<string, boolean>;
   categories?: Record<string, StockCategoryRecord>;
   categoriesConfigured?: boolean;

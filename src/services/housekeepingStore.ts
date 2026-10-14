@@ -6,6 +6,8 @@ import type { GuestStay, RoomCharge } from '../types/reception';
 import { roomChargeFinanceEntries } from './operationalLedger';
 import { reservationBalanceDue, reservationFinancialTotal, reservationIncomeContext, validateReservationPayments } from './reservationFinance';
 import { deleteCleaningLogTaskUpdates, renameRoomCleaningTasks, roomCleaningTaskUpdates } from './cleaningStore';
+import { withTransactionData } from './firebaseTransactions';
+import { withFinanceWriteLock } from './financeTransactions';
 import { DEFAULT_ROOM_CATEGORIES, roomCategoriesOf, type HousekeepingData, type HousekeepingRoom, type Reservation, type ReservationCollection, type ReservationDirectoryEntry, type ReservationExtra, type ReservationStatus, type RoomCategoryRecord, type RoomCleaningLog, type RoomDayPlan } from '../types/housekeeping';
 import { guestStayOccupiesToday, reservationOverlaps, reservationOverlapsStay } from './reservationAnalytics';
 
@@ -596,7 +598,7 @@ export async function saveReservationRecord(
 ): Promise<void> {
   validateReservationPeriod(reservation);
   validateReservationPayments(reservation.id, paymentUpdates);
-  await withReservationWriteLock(reservation.id, async () => {
+  await withReservationWriteLock(reservation.id, () => withFinanceWriteLock(async () => {
     const [snapshot, finance, roomSnapshot, chargesSnapshot] = await Promise.all([
       get(ref(db, `erp_geral/quartos/reservations/${reservation.id}`)),
       readReservationFinance(reservation.id),
@@ -678,7 +680,7 @@ export async function saveReservationRecord(
       updates[`erp_geral/${event.entity === 'finance-income' ? 'financeiro' : 'quartos'}/auditLog/${id}`] = event;
     });
     await update(ref(db), updates);
-  });
+  }));
 }
 
 export async function saveReservationBalanceDue(reservationId: string, balanceDue: number): Promise<void> {
@@ -1089,11 +1091,11 @@ function removeReservationSlotPaths(roomSlots: Record<string, unknown>, reservat
 }
 
 export async function releaseReservationSlots(reservation: Reservation): Promise<void> {
-  await runTransaction(ref(db, `erp_geral/quartos/reservationSlots/${reservation.roomId}`), (value) => {
+  await withTransactionData(`erp_geral/quartos/reservationSlots/${reservation.roomId}`, (slotsRef) => runTransaction(slotsRef, (value) => {
     if (!value) return;
     const roomSlots = structuredClone(value) as Record<string, unknown>;
     removeReservationSlotPaths(roomSlots, reservation);
     return roomSlots;
-  }, { applyLocally: false });
+  }, { applyLocally: false }));
 }
 

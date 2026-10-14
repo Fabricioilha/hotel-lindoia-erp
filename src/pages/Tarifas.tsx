@@ -1,4 +1,4 @@
-import { useEffect, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useState, type FormEvent, type SetStateAction } from 'react';
 import { BackToPanel } from '../components/ui/BackToPanel';
 import { saveReceptionRates, subscribeReceptionRates } from '../services/receptionStore';
 import { subscribeRoomCategories } from '../services/housekeepingStore';
@@ -31,6 +31,7 @@ const RATE_DAY_KEYS: RateDayKey[] = [...WEEKDAYS.map(({ key }) => key), 'holiday
 type DraftRates = Record<string, Record<number, Record<RateDayKey, string>>>;
 type DraftAddOns = Record<'breakfast' | ExtraType, string>;
 type DraftPresets = Record<string, Record<number, { weekday: string; weekend: string }>>;
+type RatesDraft = { rates: DraftRates; addOns: DraftAddOns; holidays: Record<string, string> };
 
 function settingsToDraft(settings: ReceptionRateSettings, categories: RoomCategoryRecord[]): { rates: DraftRates; addOns: DraftAddOns; holidays: Record<string, string> } {
   const rates = Object.fromEntries(categories.map((category) => {
@@ -157,17 +158,28 @@ export function Tarifas() {
   const [categoriesLoaded, setCategoriesLoaded] = useState(false);
   const [settings, setSettings] = useState<ReceptionRateSettings>(() => emptyReceptionRateSettings());
   const [settingsLoaded, setSettingsLoaded] = useState(false);
-  const [rates, setRates] = useState<DraftRates>({});
-  const [addOns, setAddOns] = useState<DraftAddOns>(() => settingsToDraft(emptyReceptionRateSettings(), []).addOns);
-  const [holidays, setHolidays] = useState<Record<string, string>>({});
+  const [draft, setDraft] = useState<RatesDraft | null>(null);
   const [newHolidayDate, setNewHolidayDate] = useState('');
   const [newHolidayLabel, setNewHolidayLabel] = useState('');
   const [presets, setPresets] = useState<DraftPresets>({});
-  const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [notice, setNotice] = useState('');
   const loaded = categoriesLoaded && settingsLoaded;
+  const savedDraft = useMemo(() => settingsToDraft(settings, categories), [settings, categories]);
+  const { rates, addOns, holidays } = draft ?? savedDraft;
+
+  function updateDraft<K extends keyof RatesDraft>(key: K, change: SetStateAction<RatesDraft[K]>) {
+    setDraft((current) => {
+      const base = current ?? savedDraft;
+      return { ...base, [key]: typeof change === 'function' ? change(base[key]) : change };
+    });
+  }
+
+  function markDirty() { setDraft((current) => current ?? savedDraft); }
+  const setRates = (change: SetStateAction<DraftRates>) => updateDraft('rates', change);
+  const setAddOns = (change: SetStateAction<DraftAddOns>) => updateDraft('addOns', change);
+  const setHolidays = (change: SetStateAction<Record<string, string>>) => updateDraft('holidays', change);
 
   useEffect(() => subscribeRoomCategories((next) => {
     setCategories(next);
@@ -185,14 +197,6 @@ export function Tarifas() {
     setError(`Não foi possível carregar as tarifas: ${cause.message}`);
   }), []);
 
-  useEffect(() => {
-    if (!loaded || dirty) return;
-    const draft = settingsToDraft(settings, categories);
-    setRates(draft.rates);
-    setAddOns(draft.addOns);
-    setHolidays(draft.holidays);
-  }, [loaded, dirty, settings, categories]);
-
   function fillPrintedRates() {
     const result = applyPrintedRates(rates, categories);
     if (result.matched.length === 0) {
@@ -201,14 +205,14 @@ export function Tarifas() {
       return;
     }
     setRates(result.rates);
-    setDirty(true);
+    markDirty();
     setError('');
     const missing = result.missingGroups.length ? ' Categorias não encontradas: ' + result.missingGroups.join(', ') + '.' : '';
     setNotice('Tabela aplicada às categorias: ' + result.matched.join(', ') + '.' + missing + ' Confira os valores e clique em Salvar tarifas.');
   }
 
   function changeRate(categoryId: string, guestCount: number, day: RateDayKey, value: string) {
-    setDirty(true);
+    markDirty();
     setRates((current) => ({
       ...current,
       [categoryId]: {
@@ -219,7 +223,7 @@ export function Tarifas() {
   }
 
   function applyGroup(categoryId: string, guestCount: number, days: WeekdayKey[], value: string) {
-    setDirty(true);
+    markDirty();
     setRates((current) => ({
       ...current,
       [categoryId]: {
@@ -259,11 +263,7 @@ export function Tarifas() {
       const nextSettings = draftToSettings(rates, addOns, holidays, settings, categories);
       await saveReceptionRates(nextSettings);
       setSettings(nextSettings);
-      const draft = settingsToDraft(nextSettings, categories);
-      setRates(draft.rates);
-      setAddOns(draft.addOns);
-      setHolidays(draft.holidays);
-      setDirty(false);
+      setDraft(null);
       setNotice('Tarifas e valores dos adicionais atualizados.');
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível salvar as tarifas.');
@@ -280,6 +280,7 @@ export function Tarifas() {
     {notice && <p role="status" className="rates-notice">{notice}</p>}
     <form onSubmit={(event) => void save(event)}>
       {!loaded && <p role="status">Carregando categorias e tarifas salvas…</p>}
+      <fieldset className="rates-form-fields" disabled={!loaded || saving}>
       <section className="finance-panel rates-panel">
         <h2>Diárias por categoria de quarto</h2>
         <p className="rates-help">As categorias e configurações de camas vêm do cadastro de quartos da gerência. Cada categoria mostra uma opção de preço para cada quantidade de hóspedes comportada. Os atalhos seguem a tabela: domingo a quinta e sexta e sábado. As tarifas especiais de feriado são separadas por esses mesmos períodos.</p>
@@ -297,9 +298,9 @@ export function Tarifas() {
                 return <section className="rates-occupancy-card" key={guestCount} aria-label={`Tarifas para ${categoryLabel}`}>
                   <h4>{guestLabel}</h4>
                   <div className="rates-presets">
-                    <label>Preço de domingo a quinta (R$)<input inputMode="decimal" placeholder="Ex.: 180,00" onChange={(event) => { setDirty(true); setPresets((current) => ({ ...current, [category.id]: { ...current[category.id], [guestCount]: { ...preset, weekday: event.target.value } } })); }} value={preset.weekday} /></label>
+                    <label>Preço de domingo a quinta (R$)<input inputMode="decimal" placeholder="Ex.: 180,00" onChange={(event) => { markDirty(); setPresets((current) => ({ ...current, [category.id]: { ...current[category.id], [guestCount]: { ...preset, weekday: event.target.value } } })); }} value={preset.weekday} /></label>
                     <button type="button" onClick={() => applyGroup(category.id, guestCount, SUNDAY_THROUGH_THURSDAY_DAYS, preset.weekday)}>Aplicar dom. a qui.</button>
-                    <label>Preço de sexta e sábado (R$)<input inputMode="decimal" placeholder="Ex.: 240,00" onChange={(event) => { setDirty(true); setPresets((current) => ({ ...current, [category.id]: { ...current[category.id], [guestCount]: { ...preset, weekend: event.target.value } } })); }} value={preset.weekend} /></label>
+                    <label>Preço de sexta e sábado (R$)<input inputMode="decimal" placeholder="Ex.: 240,00" onChange={(event) => { markDirty(); setPresets((current) => ({ ...current, [category.id]: { ...current[category.id], [guestCount]: { ...preset, weekend: event.target.value } } })); }} value={preset.weekend} /></label>
                     <button type="button" onClick={() => applyGroup(category.id, guestCount, WEEKEND_DAYS, preset.weekend)}>Aplicar sex. e sáb.</button>
                   </div>
                   <div className="rates-week-grid">
@@ -319,18 +320,19 @@ export function Tarifas() {
         <p className="rates-help">Cadastre as datas de feriado que devem usar a tarifa especial. O preço de feriado tem prioridade sobre o dia da semana e o fim de semana.</p>
         <div className="rates-holiday-form"><label>Data<input type="date" value={newHolidayDate} onChange={(event) => setNewHolidayDate(event.target.value)} /></label><label>Nome do feriado<input value={newHolidayLabel} onChange={(event) => setNewHolidayLabel(event.target.value)} maxLength={80} placeholder="Ex.: Independência" /></label><button type="button" onClick={() => {
           if (!newHolidayDate || !newHolidayLabel.trim()) { setError('Informe a data e o nome do feriado.'); return; }
-          setDirty(true);
+          markDirty();
           setHolidays((current) => ({ ...current, [newHolidayDate]: newHolidayLabel.trim() }));
           setNewHolidayDate(''); setNewHolidayLabel(''); setError('');
         }}>Adicionar feriado</button></div>
-        {Object.keys(holidays).length === 0 ? <p className="rates-empty">Nenhuma data de feriado cadastrada.</p> : <ul className="rates-holiday-list">{Object.entries(holidays).sort(([a], [b]) => a.localeCompare(b)).map(([date, label]) => <li key={date}><time dateTime={date}>{new Date(`${date}T12:00:00`).toLocaleDateString('pt-BR')}</time><input aria-label={`Nome do feriado em ${date}`} value={label} onChange={(event) => { setDirty(true); setHolidays((current) => ({ ...current, [date]: event.target.value })); }} /><button type="button" onClick={() => { setDirty(true); setHolidays((current) => { const next = { ...current }; delete next[date]; return next; }); }}>Remover</button></li>)}</ul>}
+        {Object.keys(holidays).length === 0 ? <p className="rates-empty">Nenhuma data de feriado cadastrada.</p> : <ul className="rates-holiday-list">{Object.entries(holidays).sort(([a], [b]) => a.localeCompare(b)).map(([date, label]) => <li key={date}><time dateTime={date}>{new Date(`${date}T12:00:00`).toLocaleDateString('pt-BR')}</time><input aria-label={`Nome do feriado em ${date}`} value={label} onChange={(event) => { markDirty(); setHolidays((current) => ({ ...current, [date]: event.target.value })); }} /><button type="button" onClick={() => { markDirty(); setHolidays((current) => { const next = { ...current }; delete next[date]; return next; }); }}>Remover</button></li>)}</ul>}
       </section>
       <section className="finance-panel rates-panel">
         <h2>Valores padrão dos adicionais</h2>
         <p className="rates-help">A recepção pode alterar esses valores ao cadastrar o hóspede. Campos vazios não sugerem preço.</p>
-        <div className="rates-addons">{ADD_ON_FIELDS.map(({ key, label, unit }) => <label key={key}>{label}<small>{unit}</small><span className="rates-money-input"><span>R$</span><input inputMode="decimal" placeholder="Sem valor padrão" value={addOns[key]} onChange={(event) => { setDirty(true); setAddOns((current) => ({ ...current, [key]: event.target.value })); }} /></span></label>)}</div>
+        <div className="rates-addons">{ADD_ON_FIELDS.map(({ key, label, unit }) => <label key={key}>{label}<small>{unit}</small><span className="rates-money-input"><span>R$</span><input inputMode="decimal" placeholder="Sem valor padrão" value={addOns[key]} onChange={(event) => { markDirty(); setAddOns((current) => ({ ...current, [key]: event.target.value })); }} /></span></label>)}</div>
       </section>
       <button className="rates-save" type="submit" disabled={!loaded || saving}>{saving ? 'Salvando…' : 'Salvar tarifas'}</button>
+      </fieldset>
     </form>
   </div></main>;
 }

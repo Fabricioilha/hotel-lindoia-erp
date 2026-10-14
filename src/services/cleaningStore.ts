@@ -4,6 +4,7 @@ import { type CleaningData, type CleaningTask } from '../types/cleaning';
 import type { HousekeepingRoom, ReservationDirectoryEntry, RoomCleaningLog, RoomDayPlan } from '../types/housekeeping';
 import type { GuestStay } from '../types/reception';
 import { guestStayOccupiesToday, localDateKey, reservationOccupiesToday } from './reservationAnalytics';
+import { withTransactionData } from './firebaseTransactions';
 
 const PATH = 'erp_geral/limpeza';
 const ROOMS_PATH = 'erp_geral/quartos/rooms';
@@ -198,7 +199,7 @@ export async function deleteCleaningLogTaskUpdates(log: RoomCleaningLog): Promis
 }
 
 async function releaseClaim(roomId: string, claim: string): Promise<void> {
-  await runTransaction(ref(db, `${PATH}/activeRooms/${roomId}`), (current: CleaningClaim | null) => current?.taskId === claim && current.phase === 'assigning' ? null : undefined, { applyLocally: false });
+  await withTransactionData(`${PATH}/activeRooms/${roomId}`, (reference) => runTransaction(reference, (current: CleaningClaim | null) => current?.taskId === claim && current.phase === 'assigning' ? null : undefined, { applyLocally: false }));
 }
 
 async function finishTask(task: CleaningTask, actor: string, status: 'concluido' | 'cancelado'): Promise<void> {
@@ -233,8 +234,8 @@ async function finishTask(task: CleaningTask, actor: string, status: 'concluido'
     if (log) updates[`${LOGS_PATH}/${log.id}`] = log;
     await update(ref(db), updates);
   } catch (cause) {
-    await runTransaction(ref(db, `${PATH}/activeRooms/${room.id}`), (current: CleaningClaim | null) => current?.taskId === currentTask.id && current.phase === 'finishing'
-      ? { taskId: currentTask.id, phase: 'assigning', expiresAt: Date.now() + CLAIM_DURATION_MS } satisfies CleaningClaim : undefined, { applyLocally: false });
+    await withTransactionData(`${PATH}/activeRooms/${room.id}`, (reference) => runTransaction(reference, (current: CleaningClaim | null) => current?.taskId === currentTask.id && current.phase === 'finishing'
+      ? { taskId: currentTask.id, phase: 'assigning', expiresAt: Date.now() + CLAIM_DURATION_MS } satisfies CleaningClaim : undefined, { applyLocally: false }));
     throw cause;
   }
 }

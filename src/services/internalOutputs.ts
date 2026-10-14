@@ -1,12 +1,13 @@
-import { get, onValue, ref, remove, set } from 'firebase/database';
+import { get, onValue, ref, remove, runTransaction, set, update } from 'firebase/database';
 import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import { db } from '../config/firebase';
-import { SALES_CATEGORY_ID, stockCategoriesOf, type InventoryData } from '../types/inventory';
+import { SALES_CATEGORY_ID, STOCK_QUANTITY_EPSILON, normalizedStockQuantity, stockCategoriesOf, type InventoryData } from '../types/inventory';
 import type { OutputCatalogItem, OutputData, OutputRecord } from '../types/outputs';
-import { subscribeInventoryCatalog, updateInventory, type InventoryCatalogData } from './inventoryStore';
+import { invalidInventoryKey, subscribeInventoryCatalog, updateInventory, type InventoryCatalogData } from './inventoryStore';
+import { withStockProductLocks } from './frigobarStore';
+import { withTransactionData } from './firebaseTransactions';
 
 const PATH = 'erp_geral/saidas';
-let lastCatalogJson = '';
 
 export function emptyOutputs(): OutputData {
   return { catalog: {}, records: {} };
@@ -15,11 +16,14 @@ export function emptyOutputs(): OutputData {
 export function subscribeOutputs(onChange: (data: OutputData) => void, onError: (error: Error) => void): () => void {
   let catalog: Record<string, OutputCatalogItem> | undefined;
   let records: Record<string, OutputRecord> | undefined;
+  let catalogRevision = 0;
   const publish = () => {
-    if (catalog && records) onChange({ catalog, records });
+    if (catalog && records) onChange({ catalog, records, catalogRevision });
   };
   const stopCatalog = onValue(ref(db, `${PATH}/catalog`), (snapshot) => {
-    catalog = snapshot.val() ?? {};
+    const value = snapshot.val() ?? {};
+    catalogRevision = Number(value._revision) || 0;
+    catalog = Object.fromEntries(Object.entries(value).filter(([key]) => !key.startsWith('_'))) as Record<string, OutputCatalogItem>;
     publish();
   }, onError);
   const stopRecords = onValue(ref(db, `${PATH}/records`), (snapshot) => {
@@ -32,12 +36,37 @@ export function subscribeOutputs(onChange: (data: OutputData) => void, onError: 
   };
 }
 
-export function createOutput(record: OutputRecord): Promise<void> {
-  return set(ref(db, `${PATH}/records/${record.id}`), record);
+export function outputPendingQuantity(records: OutputRecord[], productId: string, catalogRevision = 0): number {
+  return records.filter((record) => !record.applied || (record.appliedInventoryRevision ?? 0) > catalogRevision)
+    .reduce((total, record) => total + record.items.filter((item) => item.productId === productId).reduce((sum, item) => sum + item.quantity, 0), 0);
+}
+
+export async function createOutput(record: OutputRecord): Promise<void> {
+  if (!record.id || invalidInventoryKey(record.id) || !record.items.length) throw new Error('Selecione pelo menos um produto para a saída.');
+  const grouped = new Map<string, number>();
+  record.items.forEach((item) => {
+    if (!Number.isFinite(item.quantity) || item.quantity <= 0) throw new Error('A quantidade da saída deve ser maior que zero.');
+    grouped.set(item.productId, (grouped.get(item.productId) ?? 0) + item.quantity);
+  });
+  await withStockProductLocks([...grouped.keys()], async () => {
+    const target = ref(db, `${PATH}/records/${record.id}`);
+    if ((await get(target)).exists()) return;
+    const [catalogSnapshot, recordsSnapshot] = await Promise.all([get(ref(db, `${PATH}/catalog`)), get(ref(db, `${PATH}/records`))]);
+    const catalog = catalogSnapshot.val() ?? {};
+    const records = Object.values(recordsSnapshot.val() ?? {}) as OutputRecord[];
+    const items = [...grouped].map(([id, quantity]) => {
+      const product = catalog[id] as OutputCatalogItem | undefined;
+      if (!product || product.category === SALES_CATEGORY_ID) throw new Error('Um produto não está mais disponível para uso interno. Atualize a seleção.');
+      const available = Number(product.available) - outputPendingQuantity(records, id, Number(catalog._revision) || 0);
+      if (available + STOCK_QUANTITY_EPSILON < quantity) throw new Error(`Saldo insuficiente de ${product.name}. Disponível: ${Math.max(0, available)} ${product.unit}.`);
+      return { productId: id, productName: product.name, unit: product.unit, quantity };
+    });
+    await set(target, { ...record, items, applied: false });
+  });
 }
 
 // Espelho dos produtos de uso interno, legível pela equipe (o estoque é restrito à gerência).
-async function syncOutputsCatalog(inventory: InventoryCatalogData): Promise<void> {
+export async function syncOutputsCatalog(inventory: InventoryCatalogData): Promise<void> {
   const categoryNames = new Map(stockCategoriesOf(inventory).map((category) => [category.id, category.name]));
   const catalog: Record<string, OutputCatalogItem> = {};
   Object.values(inventory.products)
@@ -52,26 +81,24 @@ async function syncOutputsCatalog(inventory: InventoryCatalogData): Promise<void
         available: Object.values(product.locationQuantities ?? {}).reduce((total, value) => total + Number(value || 0), 0),
       };
     });
-  const json = JSON.stringify(Object.fromEntries(Object.entries(catalog).sort(([left], [right]) => left.localeCompare(right))));
-  if (json === lastCatalogJson) return;
-  const existing = await get(ref(db, `${PATH}/catalog`));
-  const existingCatalog = (existing.val() ?? {}) as Record<string, OutputCatalogItem>;
-  if (JSON.stringify(Object.fromEntries(Object.entries(existingCatalog).sort(([left], [right]) => left.localeCompare(right)))) === json) {
-    lastCatalogJson = json;
-    return;
-  }
-  await set(ref(db, `${PATH}/catalog`), catalog);
-  lastCatalogJson = json;
+  const revision = inventory.revision ?? 0;
+  await withTransactionData(`${PATH}/catalog`, (reference) => runTransaction(reference, (current) => {
+    if (Number(current?._revision ?? -1) > revision) return;
+    const next = { ...catalog, _revision: revision };
+    return JSON.stringify(current) === JSON.stringify(next) ? undefined : next;
+  }, { applyLocally: false }));
 }
 
-function applyOutput(current: InventoryData, record: OutputRecord): InventoryData {
+export function applyOutput(current: InventoryData, record: OutputRecord): InventoryData {
   if (current.deletedOutputs?.[record.id]) return current;
   const products = { ...current.products };
   const movements = { ...current.movements };
   record.items.forEach((item) => {
     const movementId = `saida-${record.id}-${item.productId}`;
     const product = products[item.productId];
-    if (movements[movementId] || !product) return;
+    if (movements[movementId]) return;
+    if (!product || product.active === false || product.category === SALES_CATEGORY_ID) throw new Error(`O produto ${item.productName} não está disponível para esta saída.`);
+    if (!Number.isFinite(item.quantity) || item.quantity <= 0) throw new Error('Confira as quantidades da saída.');
     const locations = { ...(product.locationQuantities ?? {}) };
     const used: string[] = [];
     const sourceLocationQuantities: Record<string, number> = {};
@@ -79,13 +106,13 @@ function applyOutput(current: InventoryData, record: OutputRecord): InventoryDat
     Object.entries(locations).sort((a, b) => Number(b[1]) - Number(a[1])).forEach(([name, quantity]) => {
       const take = Math.min(Number(quantity), remaining);
       if (take <= 0) return;
-      locations[name] = Number(quantity) - take;
-      remaining -= take;
+      locations[name] = normalizedStockQuantity(Number(quantity) - take);
+      remaining = normalizedStockQuantity(remaining - take);
       used.push(name);
       sourceLocationQuantities[name] = take;
     });
-    const taken = item.quantity - remaining;
-    if (taken <= 0) return;
+    if (remaining > 0.000001) throw new Error(`Saldo insuficiente de ${product.name}. A saída não foi aplicada. Confira o estoque e tente novamente.`);
+    const taken = item.quantity;
     products[product.id] = { ...product, locationQuantities: locations, updatedAt: record.createdAt };
     movements[movementId] = {
       id: movementId,
@@ -97,8 +124,8 @@ function applyOutput(current: InventoryData, record: OutputRecord): InventoryDat
       unit: product.unit,
       fromLocation: used.join(', '),
       sourceLocationQuantities,
-      toLocation: record.destination || 'Uso interno',
-      reference: 'Saída para uso interno',
+      toLocation: '',
+      reference: `Saída para uso interno${record.destination ? ` · ${record.destination}` : ''}`,
       note: record.note,
       actor: record.actor,
       unitPrice: 0,
@@ -123,8 +150,12 @@ export function useInternalOutputSync(isAdmin: boolean, setError: Dispatch<SetSt
         void (async () => {
           try {
             let deleted = false;
-            await updateInventory((current) => { deleted = Boolean(current.deletedOutputs?.[record.id]); return applyOutput(current, record); });
-            if (!deleted) await set(ref(db, `${PATH}/records/${record.id}/applied`), true);
+            let revision = 0;
+            await withStockProductLocks(record.items.map((item) => item.productId), () => updateInventory((current) => {
+              deleted = Boolean(current.deletedOutputs?.[record.id]); revision = (current.revision ?? 0) + 1;
+              return applyOutput(current, record);
+            }));
+            if (!deleted) await update(ref(db, `${PATH}/records/${record.id}`), { applied: true, appliedInventoryRevision: revision });
           } catch (cause) {
             try {
               const deleted = await get(ref(db, `erp_geral/estoque/deletedOutputs/${record.id}`));
@@ -144,6 +175,10 @@ export function useInternalOutputSync(isAdmin: boolean, setError: Dispatch<SetSt
 }
 
 export async function deleteOutput(record: OutputRecord): Promise<void> {
+  await withStockProductLocks(record.items.map((item) => item.productId), () => removeOutput(record));
+}
+
+async function removeOutput(record: OutputRecord): Promise<void> {
   await updateInventory((current) => {
     if (current.deletedOutputs?.[record.id]) return current;
     const products = { ...current.products };

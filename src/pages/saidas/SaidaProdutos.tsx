@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import type { UserRole } from '../../types';
 import { OUTPUT_DESTINATIONS, type OutputData, type OutputRecord } from '../../types/outputs';
-import { createOutput, deleteOutput, emptyOutputs, subscribeOutputs, useInternalOutputSync } from '../../services/internalOutputs';
+import { createOutput, deleteOutput, emptyOutputs, outputPendingQuantity, subscribeOutputs, useInternalOutputSync } from '../../services/internalOutputs';
 import { localDateKey } from '../../services/receptionStore';
 import { BackToPanel } from '../../components/ui/BackToPanel';
 import { useAttendant } from '../../services/useAttendant';
@@ -23,6 +23,7 @@ export function SaidaProdutos({ userRole }: { userRole: UserRole }) {
   const [destination, setDestination] = useState('');
   const [note, setNote] = useState('');
   const [saving, setSaving] = useState(false);
+  const [outputId, setOutputId] = useState(() => crypto.randomUUID());
   const [historyDate, setHistoryDate] = useState(localDateKey());
 
   useInternalOutputSync(isAdmin, setError);
@@ -36,9 +37,7 @@ export function SaidaProdutos({ userRole }: { userRole: UserRole }) {
   }), []);
 
   const records = Object.values(data.records);
-  const pending = new Map<string, number>();
-  records.filter((record) => !record.applied).forEach((record) => record.items.forEach((item) => pending.set(item.productId, (pending.get(item.productId) ?? 0) + item.quantity)));
-  const remainingOf = (id: string) => Math.max(0, (data.catalog[id]?.available ?? 0) - (pending.get(id) ?? 0));
+  const remainingOf = (id: string) => Math.max(0, (data.catalog[id]?.available ?? 0) - outputPendingQuantity(records, id, data.catalogRevision));
 
   const products = Object.values(data.catalog).sort((a, b) => a.name.localeCompare(b.name, 'pt-BR'));
   const categories = [...new Map(products.map((product) => [product.category, product.categoryName])).entries()].sort((a, b) => a[1].localeCompare(b[1], 'pt-BR'));
@@ -57,12 +56,12 @@ export function SaidaProdutos({ userRole }: { userRole: UserRole }) {
   }
 
   async function confirm() {
-    if (cartItems.length === 0) return;
+    if (cartItems.length === 0 || saving) return;
     setError('');
     setNotice('');
     setSaving(true);
     const record: OutputRecord = {
-      id: crypto.randomUUID(),
+      id: outputId,
       items: cartItems.map(({ product, quantity }) => ({ productId: product.id, productName: product.name, unit: product.unit, quantity })),
       destination: destination.trim(),
       note: note.trim(),
@@ -71,6 +70,7 @@ export function SaidaProdutos({ userRole }: { userRole: UserRole }) {
     };
     try {
       await createOutput(record);
+      setOutputId(crypto.randomUUID());
       setCart({});
       setDestination('');
       setNote('');
@@ -109,9 +109,9 @@ export function SaidaProdutos({ userRole }: { userRole: UserRole }) {
               return <li key={product.id} className={`out-product ${quantity > 0 ? 'is-in-cart' : ''} ${left === 0 ? 'is-empty' : ''}`}>
                 <div><strong>{product.name}</strong><small>{product.categoryName} · {left === 0 ? 'Sem saldo' : `Disponível: ${left} ${product.unit}`}</small></div>
                 <div className="out-stepper">
-                  <button type="button" onClick={() => change(product.id, -1)} disabled={quantity === 0} aria-label={`Diminuir ${product.name}`}>−</button>
+                  <button type="button" onClick={() => change(product.id, -1)} disabled={saving || quantity === 0} aria-label={`Diminuir ${product.name}`}>−</button>
                   <span aria-live="polite">{quantity}</span>
-                  <button type="button" onClick={() => change(product.id, 1)} disabled={quantity >= left} aria-label={`Aumentar ${product.name}`}>+</button>
+                  <button type="button" onClick={() => change(product.id, 1)} disabled={saving || quantity >= left} aria-label={`Aumentar ${product.name}`}>+</button>
                 </div>
               </li>;
             })}

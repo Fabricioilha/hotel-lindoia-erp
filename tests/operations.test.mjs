@@ -156,7 +156,7 @@ function offlineStore(state) {
       Object.entries(changes).forEach(([path, value]) => write([location.path, path].filter(Boolean).join('/'), value));
     },
     set: async (location, value) => write(location.path, value),
-    onValue: () => () => undefined,
+    onValue: (location, onChange) => { onChange(snapshot(read(location.path))); return () => undefined; },
     orderByKey: () => ({ type: 'key' }), orderByChild: (value) => ({ type: 'child', value }),
     startAt: (value) => ({ type: 'start', value }), endAt: (value) => ({ type: 'end', value }),
     equalTo: (value) => ({ type: 'equal', value }), limitToLast: (value) => ({ type: 'limit', value }),

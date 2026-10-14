@@ -6,7 +6,10 @@ import {
   type FinanceExpense,
   type FinanceIncome,
   type FinancePaymentMethod,
+  type FinancePaymentEvent,
 } from '../types/finance';
+import { expensePaymentEvents, isFinanceDateKey, paymentEventTotals } from './financePayments';
+import { withTransactionData } from './firebaseTransactions';
 
 export interface OperationalIncomeInput {
   id: string;
@@ -26,6 +29,8 @@ export interface OperationalExpenseInput {
   paidCash: number;
   paidBank: number;
   paidOyo?: number;
+  paidDate?: string;
+  payments?: Record<string, FinancePaymentEvent>;
   note: string;
 }
 
@@ -37,7 +42,7 @@ export async function recordOperationalIncomes(inputs: OperationalIncomeInput[])
   const pending = inputs.filter((input) => !ensured.has(input.id));
   if (pending.length === 0) return;
   pending.forEach((input) => {
-    if (!incomePaymentWallet(input.paymentMethod) || !Number.isFinite(input.amount) || input.amount <= 0) {
+    if (!input.id || !isFinanceDateKey(input.date) || !incomePaymentWallet(input.paymentMethod) || !Number.isFinite(input.amount) || input.amount <= 0) {
       throw new Error('O recebimento precisa ter uma forma de pagamento e valor válido.');
     }
   });
@@ -65,14 +70,14 @@ export async function recordOperationalIncomes(inputs: OperationalIncomeInput[])
     };
 
     let created = false;
-    const result = await runTransaction(ref(db, `erp_geral/financeiro/incomes/${input.id}`), (current) => {
+    const result = await withTransactionData(`erp_geral/financeiro/incomes/${input.id}`, (incomeRef) => runTransaction(incomeRef, (current) => {
       if (current !== null) {
         created = false;
         return;
       }
       created = true;
       return income;
-    });
+    }, { applyLocally: false }));
     if (!result.committed && created) throw new Error('O recebimento não foi confirmado no Financeiro.');
 
     if (created) {
@@ -94,10 +99,11 @@ export function recordOperationalIncome(input: OperationalIncomeInput): Promise<
 export async function recordOperationalExpenses(inputs: OperationalExpenseInput[]): Promise<void> {
   const pending = inputs.filter((input) => !ensured.has(input.id));
   pending.forEach((input) => {
-    if (!Number.isFinite(input.plannedAmount) || input.plannedAmount <= 0
+    if (!input.id || !isFinanceDateKey(input.dueDate) || !Number.isFinite(input.plannedAmount) || input.plannedAmount <= 0
       || !Number.isFinite(input.paidCash) || input.paidCash < 0
       || !Number.isFinite(input.paidBank) || input.paidBank < 0
-      || !Number.isFinite(input.paidOyo ?? 0) || (input.paidOyo ?? 0) < 0) {
+      || !Number.isFinite(input.paidOyo ?? 0) || (input.paidOyo ?? 0) < 0
+      || input.paidCash + input.paidBank + (input.paidOyo ?? 0) > input.plannedAmount + 0.001) {
       throw new Error('A despesa precisa ter valores válidos.');
     }
   });
@@ -111,15 +117,19 @@ export async function recordOperationalExpenses(inputs: OperationalExpenseInput[
 
     const timestamp = new Date().toISOString();
     const expense: FinanceExpense = { ...input, createdAt: timestamp, updatedAt: timestamp };
+    const totals = paymentEventTotals(expensePaymentEvents(expense));
+    if (Math.round(totals.cash * 100) !== Math.round(expense.paidCash * 100)
+      || Math.round(totals.bank * 100) !== Math.round(expense.paidBank * 100)
+      || Math.round(totals.oyo * 100) !== Math.round((expense.paidOyo ?? 0) * 100)) throw new Error('Os pagamentos da despesa divergem das parcelas.');
     let created = false;
-    const result = await runTransaction(ref(db, `erp_geral/financeiro/expenses/${input.id}`), (current) => {
+    const result = await withTransactionData(`erp_geral/financeiro/expenses/${input.id}`, (expenseRef) => runTransaction(expenseRef, (current) => {
       if (current !== null) {
         created = false;
         return;
       }
       created = true;
       return expense;
-    });
+    }, { applyLocally: false }));
     if (!result.committed && created) throw new Error('A despesa não foi confirmada no Financeiro.');
 
     if (created) {

@@ -5,6 +5,8 @@ import { stayFinanceEntries, stayFinanceEntryIds, stayOyoFeeExpense } from './op
 import { roomChargeFinanceEntries } from './operationalLedger';
 import { reservationIncomeContext } from './reservationFinance';
 import { roomCleaningTaskUpdates } from './cleaningStore';
+import { withStockProductLocks } from './frigobarStore';
+import { withTransactionData } from './firebaseTransactions';
 import type { FinanceIncome } from '../types/finance';
 import type { HousekeepingRoom } from '../types/housekeeping';
 import { emptyReceptionRateSettings, type CashOut, type FloatCheck, type GuestStay, type ReceptionData, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge } from '../types/reception';
@@ -287,38 +289,49 @@ export async function saveRoomCharge(charge: RoomCharge): Promise<void> {
     throw new Error('Informe o hóspede, o valor e a forma completa de pagamento.');
   }
   const chargeRef = ref(db, `${PATH}/roomCharges/${charge.id}`);
+  if ((await get(chargeRef)).exists()) return;
+  if (charge.sourceType !== 'stay' && charge.sourceType !== 'reservation') throw new Error('Selecione uma hospedagem válida antes de registrar o adicional.');
+  const sourcePath = charge.sourceType === 'stay' ? `${PATH}/stays/${charge.sourceId}` : `erp_geral/quartos/reservationIndex/${charge.sourceId}`;
+  const source = (await get(ref(db, sourcePath))).val() as { roomNumber?: string; guestName?: string; status?: string } | null;
+  if (!source || source.status !== 'hospedado' || source.roomNumber !== charge.roomNumber) throw new Error('Esta hospedagem foi alterada ou encerrada. Atualize o quarto antes de cobrar o adicional.');
   if (charge.kind !== 'bebida') {
-    await set(chargeRef, charge);
+    await withStockProductLocks([`charge-${charge.id}`], async () => {
+      if (!(await get(chargeRef)).exists()) await set(chargeRef, charge);
+    });
     return;
   }
 
-  const stockRef = ref(db, 'erp_geral/frigobar/operations/stock');
-  let availableAtFailure = 0;
-  const stockResult = await runTransaction(stockRef, (value) => {
-    const stock = { ...(value as Record<string, unknown> | null ?? {}) };
-    const available = Number(stock[charge.productId!] ?? 0);
-    availableAtFailure = available;
-    if (available < charge.quantity!) return;
-    stock[charge.productId!] = available - charge.quantity!;
-    return stock;
-  });
-  if (!stockResult.committed) {
-    if (availableAtFailure < (charge.quantity ?? 0)) throw new Error(`Saldo insuficiente da bebida. Disponível: ${availableAtFailure}.`);
-    throw new Error('Não foi possível reservar o saldo da bebida. Atualize a tela e tente novamente.');
-  }
-  try {
-    await set(chargeRef, charge);
-  } catch (cause) {
-    const savedCharge = await get(chargeRef);
-    if (!savedCharge.exists()) {
-      await runTransaction(stockRef, (value) => {
-        const stock = { ...(value as Record<string, unknown> | null ?? {}) };
-        stock[charge.productId!] = Number(stock[charge.productId!] ?? 0) + (charge.quantity ?? 0);
-        return stock;
-      });
+  await withStockProductLocks([charge.productId!, `charge-${charge.id}`], async () => {
+    if ((await get(chargeRef)).exists()) return;
+    let availableAtFailure = 0;
+    const stockResult = await withTransactionData('erp_geral/frigobar/operations/stock', (stockRef) => runTransaction(stockRef, (value) => {
+      const stock = { ...(value as Record<string, unknown> | null ?? {}) };
+      const available = Number(stock[charge.productId!] ?? 0);
+      availableAtFailure = available;
+      if (available < charge.quantity!) return;
+      stock[charge.productId!] = available - charge.quantity!;
+      return stock;
+    }, { applyLocally: false }));
+    if (!stockResult.committed) {
+      if (availableAtFailure < (charge.quantity ?? 0)) throw new Error(`Saldo insuficiente da bebida. Disponível: ${availableAtFailure}.`);
+      throw new Error('Não foi possível reservar o saldo da bebida. Atualize a tela e tente novamente.');
     }
-    throw cause;
-  }
+    try {
+      await set(chargeRef, charge);
+    } catch (cause) {
+      const savedCharge = await get(chargeRef);
+      if (!savedCharge.exists()) {
+        await withTransactionData('erp_geral/frigobar/operations/stock', (stockRef) => runTransaction(stockRef, (value) => {
+          const stock = { ...(value as Record<string, unknown> | null ?? {}) };
+          stock[charge.productId!] = Number(stock[charge.productId!] ?? 0) + (charge.quantity ?? 0);
+          return stock;
+        }, { applyLocally: false }));
+      } else {
+        return;
+      }
+      throw cause;
+    }
+  });
 }
 
 export async function convertRotativoToDaily(rotativo: GuestStay, dailyStay: GuestStay): Promise<void> {
