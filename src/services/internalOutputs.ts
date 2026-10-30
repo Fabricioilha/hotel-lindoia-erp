@@ -1,3 +1,4 @@
+import { inventoryUnitCost } from './inventoryCost';
 import { get, onValue, ref, remove, runTransaction, set, update } from 'firebase/database';
 import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
 import { db } from '../config/firebase';
@@ -129,6 +130,7 @@ export function applyOutput(current: InventoryData, record: OutputRecord): Inven
       note: record.note,
       actor: record.actor,
       unitPrice: 0,
+      unitCost: inventoryUnitCost(product),
       createdAt: record.createdAt,
     };
   });

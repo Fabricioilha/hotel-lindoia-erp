@@ -1,4 +1,5 @@
-import { useState, type ReactNode } from 'react';
+import { DialogBehavior } from '../ui/DialogBehavior';
+import { lazy, Suspense, useRef, useState, type ReactNode } from 'react';
 import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
 import type { UserRole } from '../../types';
 import { DutyContext } from '../../services/dutyContext';
@@ -7,6 +8,8 @@ import { useDuty, useDutyRoster } from '../../services/useAttendant';
 import { SidebarSlotContext } from './sidebarSlot';
 import { useStaff } from '../../services/staffStore';
 import './sidebar.css';
+
+const ReceptionModal = lazy(() => import('../../pages/caixa/CaixaRecepcao').then((module) => ({ default: module.CaixaRecepcao })));
 
 const ICONS: Record<string, string> = {
   home: 'M3 11l9-8 9 8M5 10v10h5v-6h4v6h5V10',
@@ -31,15 +34,15 @@ function Icon({ name }: { name: string }) {
   return <svg className="app-nav-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={ICONS[name]} /></svg>;
 }
 
-interface NavEntry { to: string; label: string; icon: string; end?: boolean }
+interface NavEntry { to: string; label: string; icon: string; end?: boolean; receptionKind?: 'hospede' | 'periodo' }
 interface NavGroup { id: string; title: string; items: NavEntry[] }
 
 function groupsFor(isAdmin: boolean): NavGroup[] {
   const groups: NavGroup[] = [
     { id: 'plantao', title: 'PLANTÃO', items: [
       { to: '/', label: 'Painel principal', icon: 'home', end: true },
-      { to: '/recepcao?novo=hospede', label: 'Adicionar hóspede', icon: 'bed' },
-      { to: '/recepcao?novo=rotativo', label: 'Adicionar rotativo', icon: 'clock' },
+      { to: '/recepcao?novo=hospede', label: 'Adicionar hóspede', icon: 'bed', receptionKind: 'hospede' },
+      { to: '/recepcao?novo=rotativo', label: 'Adicionar rotativo', icon: 'clock', receptionKind: 'periodo' },
       { to: '/vendas', label: 'Geladeira', icon: 'cart' },
       { to: '/saida-caixa', label: 'Saída de caixa', icon: 'dollar' },
       { to: '/conferir-caixa', label: 'Conferir caixa', icon: 'receipt' },
@@ -87,6 +90,9 @@ export function AppShell({ userRole, onLogout }: { userRole: UserRole; onLogout:
   const [collapsed, setCollapsed] = useState(true);
   const [closed, setClosed] = useState<Record<string, boolean>>({});
   const [slot, setSlot] = useState<HTMLElement | null>(null);
+  const [receptionKind, setReceptionKind] = useState<'hospede' | 'periodo' | null>(null);
+  const [receptionNotice, setReceptionNotice] = useState('');
+  const receptionTrigger = useRef<HTMLButtonElement | null>(null);
   const isAdmin = userRole === 'admin';
   const location = useLocation();
   const duty = useDutyRoster(userRole === 'viewer');
@@ -97,6 +103,7 @@ export function AppShell({ userRole, onLogout }: { userRole: UserRole; onLogout:
 
   return (
     <div className={`app-shell ${collapsed ? 'is-collapsed' : ''}`}>
+      <DialogBehavior />
       <aside className="app-sidebar" aria-label="Menu principal">
         <div className="app-sidebar-header">
           <NavLink to="/" className="app-brand" title="Painel principal"><span className="app-brand-mark">HL</span><span className="app-brand-text"><strong>Hotel Lindoia</strong><small>GESTÃO OPERACIONAL</small></span></NavLink>
@@ -111,7 +118,11 @@ export function AppShell({ userRole, onLogout }: { userRole: UserRole; onLogout:
               <button type="button" className="app-nav-title" aria-expanded={!closed[group.id]} onClick={() => setClosed((current) => ({ ...current, [group.id]: !current[group.id] }))}>
                 <span>{group.title}</span><span aria-hidden="true">{closed[group.id] ? '▸' : '▾'}</span>
               </button>
-              {(!closed[group.id] || collapsed) && group.items.map((item) => (
+              {(!closed[group.id] || collapsed) && group.items.map((item) => item.receptionKind ? (
+                <button key={item.to} type="button" className="app-nav-item" title={item.label} aria-label={item.label} aria-haspopup="dialog" onClick={(event) => { receptionTrigger.current = event.currentTarget; setReceptionNotice(''); setReceptionKind(item.receptionKind!); }}>
+                  <Icon name={item.icon} /><span className="app-nav-label">{item.label}</span>
+                </button>
+              ) : (
                 <Link key={item.to} to={item.to} className={`app-nav-item ${isActiveItem(item, location.pathname, location.search) ? 'is-active' : ''}`} title={item.label}>
                   <Icon name={item.icon} /><span className="app-nav-label">{item.label}</span>
                 </Link>
@@ -129,7 +140,10 @@ export function AppShell({ userRole, onLogout }: { userRole: UserRole; onLogout:
       </aside>
       <div className="app-shell-main">
         {staffError && <p role="alert">Não foi possível carregar os funcionários: {staffError}</p>}
-        <DutyContext.Provider value={duty}><SidebarSlotContext.Provider value={slot}><ShiftEndBanner />{!isAdmin && <FloatCheckGate />}<Outlet /></SidebarSlotContext.Provider></DutyContext.Provider>
+        <DutyContext.Provider value={duty}><SidebarSlotContext.Provider value={slot}><ShiftEndBanner />{!isAdmin && <FloatCheckGate />}<Outlet />
+          {receptionNotice && <div className="app-reception-notice" role="status">{receptionNotice}<button type="button" onClick={() => setReceptionNotice('')} aria-label="Fechar confirmação">×</button></div>}
+          {receptionKind && <Suspense fallback={<div className="app-reception-loading" role="status">Carregando formulário...</div>}><ReceptionModal userRole={userRole} modalOnly initialKind={receptionKind} onModalClose={(message) => { setReceptionKind(null); setReceptionNotice(message ?? ''); receptionTrigger.current?.focus(); }} /></Suspense>}
+        </SidebarSlotContext.Provider></DutyContext.Provider>
       </div>
     </div>
   );

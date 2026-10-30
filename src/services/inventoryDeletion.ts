@@ -1,3 +1,5 @@
+import { inventoryUnitCost, weightedInventoryCost, effectiveStockQuantity } from './inventoryCost';
+import type { StockProduct } from '../types/inventory';
 import { get, increment, ref } from 'firebase/database';
 import { db } from '../config/firebase';
 import type { StockMovement } from '../types/inventory';
@@ -61,6 +63,14 @@ async function removeStockMovement(id: string): Promise<void> {
         available = Number((await get(ref(db, `erp_geral/frigobar/operations/stock/${movement.productId}`))).val() ?? 0);
       }
       if (available + deltas[movement.toLocation] < 0) throw new Error('Esta movimentação já foi consumida ou transferida. Reponha o saldo no destino antes de excluí-la.');
+    }
+    const productRecord = product.val() as StockProduct;
+    const receptionQuantity = productRecord.category === 'frigobar' ? Number((await get(ref(db, 'erp_geral/frigobar/operations/stock/' + movement.productId))).val() ?? 0) : undefined;
+    const quantityDelta = Object.values(deltas).reduce((sum, value) => sum + value, 0);
+    if (quantityDelta && productRecord.averageCost !== undefined) {
+      const currentQuantity = effectiveStockQuantity(productRecord, receptionQuantity);
+      const restoredAverage = weightedInventoryCost(currentQuantity, inventoryUnitCost(productRecord), quantityDelta, movement.type === 'entrada' ? movement.unitPrice : movement.unitCost ?? movement.unitPrice);
+      updates['erp_geral/estoque/products/' + movement.productId + '/averageCost'] = currentQuantity + quantityDelta <= 1e-9 ? movement.previousAverageCost ?? restoredAverage : restoredAverage;
     }
     Object.entries(deltas).forEach(([location, quantity]) => {
       if (quantity) updates[`erp_geral/estoque/products/${movement.productId}/locationQuantities/${location}`] = increment(quantity);

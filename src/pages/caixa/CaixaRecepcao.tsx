@@ -1,3 +1,5 @@
+import { existingStayReceipts, initializeStayReceipts } from '../../services/stayReceipts';
+import { financeDateKeyFromTimestamp } from '../../services/financePayments';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { BackToPanel } from '../../components/ui/BackToPanel';
@@ -159,6 +161,8 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   const [extras, setExtras] = useState<ExtraDraft[]>(() => (editingStay?.extras ?? []).map((extra) => ({ ...extra, amount: String(extra.amount).replace('.', ','), method: extra.method ?? editingStay?.dailyMethod ?? 'pix', mode: extra.mode ?? 'fixo' })));
   const [note, setNote] = useState(() => editingStay?.note ?? '');
   const [saving, setSaving] = useState(false);
+  const [receiptDate, setReceiptDate] = useState(() => financeDateKeyFromTimestamp(new Date().toISOString()));
+  const [receiveNow, setReceiveNow] = useState(true);
 
   useEffect(() => {
     if (entryContext) return;
@@ -353,7 +357,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
     if (withTax && !tax) return setError('Informe o valor da taxa ou desmarque "Cobrar taxa".');
     if (withTax && taxSplitPayment && (!taxSplit || taxSplit >= tax || taxSplitMethod === taxMethod)) return setError('Escolha duas formas diferentes para a taxa e informe um valor positivo menor que o total na segunda forma.');
     if (formKind === 'hospede' && draftExtras.some((extra) => !extra.amount || !extra.label.trim())) return setError('Preencha o nome e o valor de todos os extras.');
-    const stay: GuestStay = {
+    let stay: GuestStay = {
       id: editingStay?.id ?? crypto.randomUUID(),
       kind: formKind,
       checkInDate,
@@ -384,7 +388,13 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
       status: editingStay?.status ?? 'hospedado',
       createdAt: editingStay?.createdAt ?? new Date().toISOString(),
     };
+    if (!receiptDate || receiptDate > financeDateKeyFromTimestamp(new Date().toISOString())) return setError('Confira a data de recebimento.');
+    stay = editingStay
+      ? { ...stay, receiptsInitialized: true, receipts: existingStayReceipts(editingStay), ...(editingStay.lastReceiptAt ? { lastReceiptAt: editingStay.lastReceiptAt } : {}) }
+      : initializeStayReceipts(stay, receiptDate, receiveNow);
     if (!reservationDirectoryLoaded) return setError('Aguarde o carregamento da disponibilidade dos quartos e tente novamente.');
+    const chosenRoom = Object.values(roomDirectory).find((room) => room.number === stay.roomNumber);
+    if ((!editingStay || editingStay.roomNumber !== stay.roomNumber) && chosenRoom && (chosenRoom.maintenanceStatus === 'em_manutencao' || chosenRoom.cleaningStatus !== 'limpo')) return setError('Este quarto está bloqueado. Aguarde a conclusão da limpeza e a liberação da manutenção.');
     const requestedInterval = stayInterval(stay);
     const conflictsWithReservation = Object.values(reservationDirectory).some((reservation) => {
       if (reservation.roomNumber !== stay.roomNumber || !['confirmada', 'hospedado'].includes(reservation.status ?? '')) return false;
@@ -466,7 +476,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
         </section>
       </div>}
       {formKind && attendant && <div className="reception-overlay" role="dialog" aria-modal="true" aria-label={editingStay ? `Editar ${formKind === 'periodo' ? 'rotativo' : 'hóspede'}` : formKind === 'periodo' ? 'Adicionar rotativo' : 'Adicionar hóspede'} onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) cancelForm(); }}>
-        <form className="reception-panel reception-modal" onSubmit={(event) => void submitStay(event)}>
+        <form data-guard-unsaved className="reception-panel reception-modal" onSubmit={(event) => void submitStay(event)}>
           <div className="reception-modal-head">
             <h2>{editingStay ? `Editar ${formKind === 'periodo' ? 'rotativo' : 'hóspede'}` : formKind === 'periodo' ? 'Adicionar rotativo' : 'Adicionar hóspede'}</h2>
             <button type="button" className="reception-close" onClick={cancelForm} aria-label="Fechar">×</button>
@@ -489,7 +499,8 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
               {formKind === 'periodo' && <label className="sales-field"><span>Quantidade de horas</span><input type="number" min={1} max={24} value={hours} onChange={(event) => setHours(event.target.value)} /></label>}
               {formKind === 'hospede' && <label className="sales-field"><span>Hóspede titular</span><input value={guestName} onChange={(event) => setGuestName(event.target.value)} maxLength={120} required /></label>}
               {formKind === 'hospede' ? <label className="sales-field"><span>Valor da Diária (R$)</span><span className="reception-money-input"><span>R$</span><input inputMode="decimal" value={dailyRateText} onChange={(event) => setDailyRateText(event.target.value)} required /></span></label> : <label className="sales-field"><span>Valor do rotativo (R$)</span><input inputMode="decimal" value={dailyRate} onChange={(event) => setDailyRate(event.target.value)} required /></label>}
-              {formKind === 'hospede' && <div className="reception-step-heading reception-wide"><span>2</span><div><strong>Pagamento das diárias</strong><small>Escolha uma forma ou divida o valor entre duas.</small></div></div>}
+              {formKind === 'hospede' && <div className="reception-step-heading reception-wide"><span>2</span><div><strong>Pagamento das diárias</strong><small>{editingStay ? "Alterar a estadia preserva os recebimentos já registrados. Novos pagamentos são lançados na conta do quarto." : "Escolha uma forma ou divida o valor entre duas."}</small></div></div>}
+              {!editingStay && <div className="reception-wide reception-receipt-options"><label className="reception-check"><input type="checkbox" checked={receiveNow} onChange={(event) => setReceiveNow(event.target.checked)} />Registrar os pagamentos informados agora</label>{receiveNow ? <label className="sales-field"><span>Data do recebimento</span><DateInput name="receiptDate" value={receiptDate} onValueChange={setReceiptDate} max={financeDateKeyFromTimestamp(new Date().toISOString())} required /></label> : <p>O valor ficará pendente na conta da hospedagem. Receba pela ficha do quarto.</p>}</div>}
               <label className="sales-field"><span>{splitPayment ? '1ª forma de pagamento' : 'Forma de pagamento (FP)'}</span><select value={dailyMethod} onChange={(event) => setDailyMethod(event.target.value as FinancePaymentMethod)}>
                 {FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}
               </select></label>

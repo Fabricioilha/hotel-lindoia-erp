@@ -8,6 +8,7 @@ import type { UserRole } from './types';
 import { useAttendant } from './services/useAttendant';
 import { initializeStaff } from './services/staffStore';
 import './modal-theme.css';
+import './experience.css';
 
 const Funcionarios = lazy(() => import('./pages/Funcionarios').then((module) => ({ default: module.Funcionarios })));
 

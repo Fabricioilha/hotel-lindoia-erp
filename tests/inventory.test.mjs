@@ -87,8 +87,8 @@ function offlineStore(state = fixture()) {
   };
   function load(file) {
     const filename = resolve(rootDirectory, file);
-    if (filename.endsWith('/config/firebase.ts')) return { db: {} };
-    if (filename.endsWith('/types/audit.ts')) return { buildAuditEvents: () => ({}) };
+    if (filename.replaceAll('\\', '/').endsWith('/config/firebase.ts')) return { db: {} };
+    if (filename.replaceAll('\\', '/').endsWith('/types/audit.ts')) return { buildAuditEvents: () => ({}) };
     if (modules.has(filename)) return modules.get(filename).exports;
     const module = { exports: {} }; modules.set(filename, module);
     const compiled = ts.transpileModule(readFileSync(filename, 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.CommonJS } }).outputText;
@@ -103,7 +103,48 @@ function offlineStore(state = fixture()) {
   return { state, load, database, failNextSaleWrite: () => { failSaleWrite = true; } };
 }
 const saleInput = (id, quantity) => ({ id, items: [{ productId: 'water', quantity }], settlement: 'pago_na_recepcao', paymentMethod: 'pix', roomNumber: '', guestName: '', actor: 'Equipe', catalog: {} });
+
+test('weighted purchase cost uses stock remaining after reception sales', async () => {
+  const db = offlineStore();
+  const minibar = db.load('src/services/frigobarStore.ts');
+  const operations = db.load('src/services/inventoryOperations.ts');
+  await minibar.syncFrigobarCatalog(db.state.erp_geral.estoque);
+  await minibar.createFrigobarSale(saleInput('cost-sale', 5));
+  await operations.recordInventoryMovement({ ...movementInput('cost-purchase', 'entrada', 10, '', 'Almoxarifado central'), unitPrice: 4 });
+  assert.equal(db.state.erp_geral.estoque.products.water.averageCost, 3);
+  assert.equal(db.state.erp_geral.estoque.products.water.cost, 4);
+  await operations.recordInventoryMovement(movementInput('cost-loss', 'perda', 1, 'Almoxarifado central'));
+  assert.equal(db.state.erp_geral.estoque.movements['cost-loss'].unitCost, 3);
+});
+
+test('reception clerk can append a card receipt with a stored net value', async () => {
+  const db = offlineStore();
+  db.state.roles.user.role = 'viewer';
+  db.state.erp_geral.financeiro.cardFeeSchedule = { v1: { effectiveAt: '2026-01-01T00:00:00Z', credit: 3, debit: 1 } };
+  db.state.erp_geral.recepcao = { stays: { s: { id: 's', kind: 'hospede', checkInDate: '2026-10-20', nights: 1, dailyRate: 100, dailyMethod: 'cash', roomNumber: '101', guestName: 'Teste', attendant: 'Equipe', status: 'hospedado', hasBreakfast: false, breakfastRate: 0, taxAmount: 0, taxMethod: 'cash', extras: [], note: '', createdAt: '2026-10-20T15:00:00Z', receiptsInitialized: true } } };
+  const reception = db.load('src/services/receptionStore.ts');
+  await reception.saveStayReceipt('s', { id: 'recepcao-s-new', amount: 100, method: 'credit', date: '2026-10-20', attendant: 'Equipe' });
+  const paid = db.state.erp_geral.recepcao.stays.s.receipts['recepcao-s-new'];
+  assert.equal(paid.cardFeeAmount, 3);
+  assert.equal(paid.netAmount, 97);
+  await reception.saveStayReceipt('s', { id: 'recepcao-s-new', amount: 100, method: 'credit', date: '2026-10-20', attendant: 'Equipe' });
+  assert.equal(Object.keys(db.state.erp_geral.recepcao.stays.s.receipts).length, 1);
+});
 const movementInput = (id, type, quantity, fromLocation, toLocation = '') => ({ id, productId: 'water', type, quantity, fromLocation, toLocation, unitPrice: 2, reference: '', note: '', actor: 'Gerência', createdAt: new Date().toISOString(), entryPayment: 'pendente' });
+
+test('catalog price corrections preserve recorded purchase and sale values and apply to the next sale', async () => {
+  const db = offlineStore(); const operations = db.load('src/services/inventoryOperations.ts');
+  const minibar = db.load('src/services/frigobarStore.ts');
+  await operations.recordInventoryMovement(movementInput('purchase', 'entrada', 2, '', 'Geladeira - Recepção'));
+  await minibar.createFrigobarSale(saleInput('before', 1));
+  const inventory = db.state.erp_geral.estoque;
+  db.state.erp_geral.estoque = operations.mergeProductRegistration(inventory, { ...inventory.products.water, cost: 3, salePrice: 7 });
+  await minibar.syncFrigobarCatalog(db.state.erp_geral.estoque);
+  await minibar.createFrigobarSale(saleInput('after', 1));
+  assert.equal(db.state.erp_geral.estoque.movements.purchase.unitPrice, 2);
+  assert.equal(db.state.erp_geral.frigobar.operations.sales.before.amount, 5);
+  assert.equal(db.state.erp_geral.frigobar.operations.sales.after.amount, 7);
+});
 
 test('product registration preserves current balances and rejects duplicate SKU, invalid keys and NaN', async () => {
   const db = offlineStore(); const inventory = db.load('src/services/inventoryStore.ts'); const operations = db.load('src/services/inventoryOperations.ts');
@@ -186,7 +227,8 @@ test('internal outputs reserve complete quantities, prevent oversubscription and
 
 test('viewer settlement validates one receipt and deletion returns sale stock once', async () => {
   const db = offlineStore(); const service = db.load('src/services/frigobarStore.ts'); await service.syncFrigobarCatalog(db.state.erp_geral.estoque);
-  db.state.roles.user.role = 'viewer'; await service.createFrigobarSale({ ...saleInput('pending', 2), settlement: 'cobrar_no_checkout', paymentMethod: '', roomNumber: '101' });
+  db.state.erp_geral.recepcao ??= {}; db.state.erp_geral.recepcao.stays = { s1: { id: 's1', status: 'hospedado', roomNumber: '101', guestName: 'Ana' } };
+  db.state.roles.user.role = 'viewer'; await service.createFrigobarSale({ ...saleInput('pending', 2), settlement: 'cobrar_no_checkout', paymentMethod: '', roomNumber: '101', guestName: 'Ana', sourceType: 'stay', sourceId: 's1' });
   await service.settleFrigobarSale('pending', 'pix', 'Equipe'); await assert.rejects(() => service.settleFrigobarSale('pending', 'dinheiro', 'Equipe'), /pendente/);
   db.state.roles.user.role = 'admin'; const sale = db.state.erp_geral.frigobar.operations.sales.pending;
   db.state.erp_geral.frigobar.operations.stock._saleDebits.pending.state='pending';

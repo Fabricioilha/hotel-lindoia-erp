@@ -1,4 +1,6 @@
 :root {
+  --dialog-width: 80vw;
+  --dialog-height: 80dvh;
   --modal-navy: #142b4d;
   --modal-navy-action: #183c66;
   --modal-navy-hover: #244e7d;
@@ -10,6 +12,27 @@
   --modal-muted: #4e637b;
   --modal-font: "Avenir Next", "Segoe UI", sans-serif;
 }
+
+/* One size for manager and employee dialogs. Overlays still cover the screen. */
+html body :is([role="dialog"][aria-modal="true"]:not(.reception-overlay):not(.float-gate), .reception-overlay > .reception-modal, .float-gate > .float-box) {
+  box-sizing: border-box;
+  width: var(--dialog-width) !important;
+  min-width: 0 !important;
+  max-width: var(--dialog-width) !important;
+  height: var(--dialog-height) !important;
+  min-height: 0 !important;
+  max-height: var(--dialog-height) !important;
+  overflow-y: auto !important;
+  overscroll-behavior: contain;
+}
+
+html body :is(.modal-backdrop, .finance-modal-backdrop, .dashboard-room-charge-backdrop, .dashboard-tool-backdrop, .cx-modal-backdrop, .float-gate, .reception-overlay) {
+  display: grid !important;
+  place-items: center;
+  padding: 0 !important;
+}
+
+.dashboard-room-choice { align-content: start; }
 
 /* Shared shell and overlay colors for every custom dialog. */
 .modal-backdrop,

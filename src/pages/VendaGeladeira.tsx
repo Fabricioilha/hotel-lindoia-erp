@@ -1,3 +1,5 @@
+import { currentOccupants } from '../services/occupantDirectory';
+import { localDateKey } from '../services/receptionStore';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import { createFrigobarSale, emptyFrigobar, settleFrigobarSale, subscribeFrigobar } from '../services/frigobarStore';
@@ -16,6 +18,8 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
   const [data, setData] = useState<FrigobarData>(emptyFrigobar());
   const [occupiedReservations, setOccupiedReservations] = useState<Record<string, ReservationDirectoryEntry>>({});
   const [activeStays, setActiveStays] = useState<Record<string, GuestStay>>({});
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => { const timer = window.setInterval(() => setClock(Date.now()), 60_000); return () => window.clearInterval(timer); }, []);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [saveError, setSaveError] = useState('');
@@ -56,10 +60,9 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
   const productTotal = cartItems.reduce((amount, item) => amount + item.product.salePrice * item.quantity, 0);
   const total = productTotal;
   const pendingSales = Object.values(data.sales).filter((sale) => sale.settlement === 'cobrar_no_checkout').sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-  const activeReservations = [...new Map<string, Pick<ReservationDirectoryEntry, 'id' | 'roomNumber' | 'guestName'>>([
-    ...Object.values(activeStays).filter((stay) => stay.status === 'hospedado').map((stay) => [stay.roomNumber, { id: `stay-${stay.id}`, roomNumber: stay.roomNumber, guestName: stay.guestName }] as const),
-    ...Object.values(occupiedReservations).filter((reservation) => reservation.status === 'hospedado').map((reservation) => [reservation.roomNumber, reservation] as const),
-  ]).values()].sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, 'pt-BR', { numeric: true }));
+  const activeReservations = currentOccupants(activeStays, occupiedReservations, localDateKey(new Date(clock)), clock);
+  const selectedReservation = activeReservations.find((item) => item.id === selectedReservationId);
+
 
   function changeQuantity(product: FrigobarProduct, change: number) {
     const available = Number(data.stock[product.id] ?? 0);
@@ -88,7 +91,8 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
     };
     setSaving(true);
     try {
-      if (cartItems.length > 0) await createFrigobarSale({ ...sale, catalog: data.products });
+      if (settlement === 'cobrar_no_checkout' && !selectedReservation) throw new Error('Selecione a hospedagem atual do quarto.');
+      if (cartItems.length > 0) await createFrigobarSale({ ...sale, ...(settlement === 'cobrar_no_checkout' && selectedReservation ? { roomNumber: selectedReservation.roomNumber, guestName: selectedReservation.guestName, sourceId: selectedReservation.sourceId, sourceType: selectedReservation.sourceType } : {}), catalog: data.products });
       setCart({});
       setPaymentMethod('');
       setRoomNumber('');
@@ -177,7 +181,7 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
             </fieldset>}
 
             {cartItems.length > 0 && settlement === 'pago_na_recepcao' && <label className="sales-field"><span>Forma de pagamento *</span><select required value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as MinibarPaymentMethod | '')}><option value="">Selecione</option><option value="dinheiro">Dinheiro</option><option value="pix">Pix</option><option value="cartao_debito">Cartão de débito</option><option value="cartao_credito">Cartão de crédito</option></select></label>}
-            {cartItems.length > 0 && settlement === 'cobrar_no_checkout' ? <div className="room-fields"><label className="sales-field"><span>Quarto ocupado *</span><select required value={selectedReservationId} onChange={(event) => { const reservation = activeReservations.find((item) => item.id === event.target.value); setSelectedReservationId(event.target.value); setRoomNumber(reservation?.roomNumber ?? ''); setGuestName(reservation?.guestName ?? ''); }}><option value="">Selecione a hospedagem</option>{activeReservations.map((reservation) => <option key={reservation.id} value={reservation.id}>Quarto {reservation.roomNumber}</option>)}</select>{activeReservations.length === 0 && <small>Nenhuma hospedagem ativa. Faça check-in em Reservas antes de lançar no quarto.</small>}</label><label className="sales-field"><span>Hóspede vinculado</span><input value={guestName} readOnly placeholder="Hóspede da hospedagem selecionada" /></label></div> : null}
+            {cartItems.length > 0 && settlement === 'cobrar_no_checkout' ? <div className="room-fields"><label className="sales-field"><span>Quarto ocupado *</span><select required value={selectedReservationId} onChange={(event) => { const reservation = activeReservations.find((item) => item.id === event.target.value); setSelectedReservationId(event.target.value); setRoomNumber(reservation?.roomNumber ?? ''); setGuestName(reservation?.guestName ?? ''); }}><option value="">Selecione a hospedagem</option>{activeReservations.map((reservation) => <option key={reservation.id} value={reservation.id}>Quarto {reservation.roomNumber} · {reservation.guestName}</option>)}</select>{activeReservations.length === 0 && <small>Nenhuma hospedagem ativa. Faça check-in em Reservas antes de lançar no quarto.</small>}</label><label className="sales-field"><span>Hóspede vinculado</span><input value={selectedReservation?.guestName ?? ''} readOnly placeholder="Hóspede da hospedagem selecionada" /></label></div> : null}
 
             <div className="order-total"><span>Total</span><strong>{money(total)}</strong></div>
             <button className="sale-submit" type="submit" disabled={saving || loading || cartItems.length === 0}>{saving ? 'Registrando venda...' : settlement === 'pago_na_recepcao' ? 'Confirmar venda' : 'Lançar para checkout'}</button>

@@ -139,6 +139,7 @@ export interface RoomCleaningLog {
 }
 
 export interface Reservation {
+  checkedOutAt?: string;
   id: string;
   guestName: string;
   channel?: ReservationChannel;

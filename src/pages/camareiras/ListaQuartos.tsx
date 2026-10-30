@@ -198,7 +198,7 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
   }
 
 	async function saveRoom(room: HousekeepingRoom) {
-		if (await changeData(() => saveHousekeepingRoom(room), 'Quarto salvo.')) setModal(null);
+		if (await changeData(() => saveHousekeepingRoom(room, modal?.type === 'room' ? modal.room : undefined), 'Quarto salvo.')) setModal(null);
 	}
 
 	function updateDailyPlan(roomId: string, plan: Partial<RoomDayPlan>) {

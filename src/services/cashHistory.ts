@@ -1,0 +1,38 @@
+import { endAt, onValue, orderByChild, query, ref, startAt } from 'firebase/database';
+import { db } from '../config/firebase';
+import { emptyReception } from './receptionStore';
+import type { ReceptionData } from '../types/reception';
+import type { FrigobarSale } from '../types/frigobar';
+
+// Both day and night shifts belong to their starting operational day.
+export function cashDayBounds(date: string): [string, string] {
+  const start = new Date(`${date}T07:00:00-03:00`);
+  return [start.toISOString(), new Date(start.getTime() + 86_400_000 - 1).toISOString()];
+}
+
+export function subscribeCashDay(date: string, onChange: (data: ReceptionData) => void, onError: (error: Error) => void): () => void {
+  const [start, end] = cashDayBounds(date);
+  const current = emptyReception();
+  const keys = ['stays', 'roomCharges', 'cashOuts', 'floatChecks'] as const;
+  const loaded = new Set<string>();
+  const stayRecords: Record<string, ReceptionData['stays']> = {};
+  const publish = () => { if (loaded.size === keys.length + 1) onChange({ ...current, stays: { ...stayRecords.created, ...stayRecords.receipts } }); };
+  const stops = keys.map((key) => onValue(query(ref(db, `erp_geral/recepcao/${key}`), orderByChild('createdAt'), startAt(start), endAt(end)), (snapshot) => {
+    current[key] = snapshot.val() ?? {};
+    if (key === 'stays') stayRecords.created = snapshot.val() ?? {};
+    loaded.add(key);
+    publish();
+  }, onError));
+  stops.push(onValue(query(ref(db, 'erp_geral/recepcao/stays'), orderByChild('lastReceiptAt'), startAt(start)), (snapshot) => { stayRecords.receipts = snapshot.val() ?? {}; loaded.add('receipts'); publish(); }, onError));
+  return () => stops.forEach((stop) => stop());
+}
+
+export function subscribeCashSales(date: string, onChange: (sales: Record<string, FrigobarSale>) => void, onError: (error: Error) => void): () => void {
+  const [start, end] = cashDayBounds(date);
+  const records: Record<string, Record<string, FrigobarSale>> = {};
+  const stops = ['createdAt', 'settledAt'].map((field) => onValue(query(ref(db, 'erp_geral/frigobar/operations/sales'), orderByChild(field), startAt(start), endAt(end)), (snapshot) => {
+    records[field] = snapshot.val() ?? {};
+    if (Object.keys(records).length === 2) onChange({ ...records.createdAt, ...records.settledAt });
+  }, onError));
+  return () => stops.forEach((stop) => stop());
+}

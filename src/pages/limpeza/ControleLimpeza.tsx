@@ -15,7 +15,6 @@ import { findStaff, staffMembers } from '../../types/staff';
 
 const timeOf = (iso?: string) => iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
 const byRoom = (a: string, b: string) => a.localeCompare(b, 'pt-BR', { numeric: true });
-const cleaningLabels = { sujo: 'Sujo', limpo: 'Limpo', em_limpeza: 'Em limpeza' };
 
 export function ControleLimpeza({ userRole }: { userRole: UserRole }) {
   const [searchParams] = useSearchParams();
@@ -130,7 +129,7 @@ export function ControleLimpeza({ userRole }: { userRole: UserRole }) {
         <div>
           <p className="clean-eyebrow">OPERAÇÃO <span>/</span> HOSPEDAGEM</p>
           <h1>Controle de Limpeza de Quartos</h1>
-          <p>Escolha a camareira, toque nos quartos que ela vai limpar e confirme. Quando ela terminar, toque em <strong>Quarto limpo</strong>.</p>
+          <p>Escolha a camareira, toque nos quartos que ela vai limpar e confirme. Quando ela terminar, toque em <strong>Concluir limpeza</strong>.</p>
         </div>
         <span className="clean-counter"><strong>{inProgress.length}</strong><small>em limpeza agora</small></span>
       </header>
@@ -163,10 +162,9 @@ export function ControleLimpeza({ userRole }: { userRole: UserRole }) {
             const registered = canonicalRooms.get(room);
             const blocked = registered?.maintenanceStatus === 'em_manutencao';
             const declined = cleaningDeclined(room);
-            const guest = guestOf(room);
             const state = blocked || declined || !registered ? 'is-blocked' : busy ? 'is-busy' : selectedRooms.includes(room) ? 'is-selected' : '';
-            return <button key={room} type="button" className={`clean-room ${state} ${focusedRoom === room ? 'is-focused' : ''}`} disabled={!eligible(room) || saving} onClick={() => toggleRoom(room)} aria-pressed={selectedRooms.includes(room)}>
-              <strong>{room}</strong><small>{blocked ? 'Bloqueado' : declined ? 'Limpeza dispensada' : busy ?? (registered ? cleaningLabels[registered.cleaningStatus] : 'Vincule o cadastro')}</small><small>{guest ? `Ocupado · ${guest}` : 'Sem hóspede'}</small>
+            return <button key={room} type="button" className={`clean-room ${state} ${focusedRoom === room ? 'is-focused' : ''}`} disabled={!eligible(room) || saving} onClick={() => toggleRoom(room)} aria-pressed={selectedRooms.includes(room)} aria-label={`Quarto ${room}${busy ? ', em limpeza' : selectedRooms.includes(room) ? ', selecionado' : ''}`} title={busy ? `Em limpeza · ${busy}` : blocked ? 'Bloqueado' : declined ? 'Limpeza dispensada' : `Selecionar quarto ${room}`}>
+              <span className="clean-room-symbol" aria-hidden="true">{busy ? '◌' : selectedRooms.includes(room) ? '✓' : blocked || declined || !registered ? '−' : '◇'}</span><strong>{room}</strong>{busy && <small>Em limpeza</small>}
             </button>;
           })}
           {rooms.length === 0 && <p className="clean-muted">Nenhum quarto cadastrado. Cadastre os quartos em Gerenciar quartos para designar a limpeza.</p>}
@@ -189,7 +187,7 @@ export function ControleLimpeza({ userRole }: { userRole: UserRole }) {
             <div><span className="clean-task-room">Quarto {task.roomNumber}</span><small>{task.camareira} · desde {timeOf(task.assignedAt)} · por {task.assignedBy}</small></div>
             <div className="clean-task-actions">
               {isAdmin && <Link className="clean-link" to={`/quartos?room=${encodeURIComponent(task.roomNumber)}`}>Ver quarto</Link>}
-              <button type="button" className="clean-done" disabled={saving} onClick={() => finish(task)}>✓ Quarto limpo</button>
+              <button type="button" className="clean-done" disabled={saving} onClick={() => finish(task)}>✓ Concluir limpeza</button>
               <button type="button" className="clean-link" disabled={saving} onClick={() => cancel(task)}>Cancelar</button>
               {isAdmin && <button disabled={saving} onClick={() => { if (window.confirm(`Excluir a limpeza do quarto ${task.roomNumber}?`)) void run(() => deleteCleaningTask(task.id), 'Registro excluído.'); }}>Excluir</button>}
             </div>

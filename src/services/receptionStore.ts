@@ -1,3 +1,6 @@
+import { addStayReceipt, initializeStayReceipts } from './stayReceipts';
+import { snapshotStayCardFees } from './cardFeeStore';
+import type { FinancePaymentMethod } from '../types/finance';
 import { endAt, equalTo, get, increment, onValue, orderByChild, query, ref, remove, runTransaction, set, startAt, update } from 'firebase/database';
 import { db } from '../config/firebase';
 import { commitDeletion, removeChargeUpdates, removeFinanceEntries } from './deletionStore';
@@ -11,6 +14,7 @@ import type { FinanceIncome } from '../types/finance';
 import type { HousekeepingRoom } from '../types/housekeeping';
 import { emptyReceptionRateSettings, type CashOut, type FloatCheck, type GuestStay, type ReceptionData, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge } from '../types/reception';
 import { staffReference } from './staffStore';
+import { stayAmountDue } from '../types/reception';
 
 const PATH = 'erp_geral/recepcao';
 const RATE_PATH = `${PATH}/rates`;
@@ -201,8 +205,8 @@ export function saveCashOut(cashOut: CashOut): Promise<void> {
   return set(ref(db, `${PATH}/cashOuts/${cashOut.id}`), { ...cashOut, ...staffReference(cashOut.attendant) });
 }
 
-export function saveStay(stay: GuestStay): Promise<void> {
-  return set(ref(db, `${PATH}/stays/${stay.id}`), { ...stay, ...staffReference(stay.attendant) });
+export async function saveStay(stay: GuestStay): Promise<void> {
+  return set(ref(db, `${PATH}/stays/${stay.id}`), { ...await snapshotStayCardFees(stay), ...staffReference(stay.attendant) });
 }
 
 export async function updateStayAndFinance(stay: GuestStay): Promise<void> {
@@ -335,6 +339,7 @@ export async function saveRoomCharge(charge: RoomCharge): Promise<void> {
 }
 
 export async function convertRotativoToDaily(rotativo: GuestStay, dailyStay: GuestStay): Promise<void> {
+  if (stayAmountDue(rotativo) > 0) throw new Error('Receba o saldo pendente do rotativo antes de convertê-lo em diária.');
   if (rotativo.kind !== 'periodo' || rotativo.status !== 'hospedado'
     || dailyStay.kind !== 'hospede' || dailyStay.status !== 'hospedado'
     || rotativo.roomNumber !== dailyStay.roomNumber || rotativo.id === dailyStay.id) {
@@ -342,7 +347,7 @@ export async function convertRotativoToDaily(rotativo: GuestStay, dailyStay: Gue
   }
   await update(ref(db), {
     [`${PATH}/stays/${rotativo.id}/status`]: 'encerrado',
-    [`${PATH}/stays/${dailyStay.id}`]: { ...dailyStay, ...staffReference(dailyStay.attendant), convertedFromStayId: rotativo.id },
+    [`${PATH}/stays/${dailyStay.id}`]: { ...await snapshotStayCardFees(initializeStayReceipts(dailyStay, localDateKey(), true)), ...staffReference(dailyStay.attendant), convertedFromStayId: rotativo.id },
   });
 }
 
@@ -388,3 +393,15 @@ export async function deleteRoomCharge(charge: RoomCharge): Promise<void> {
   await commitDeletion([`charge-${current.id}`], updates);
 }
 
+
+export async function saveStayReceipt(stayId: string, input: { id: string; amount: number; method: FinancePaymentMethod; date: string; attendant: string }): Promise<void> {
+  const snapshot = await get(ref(db, PATH + '/stays/' + stayId));
+  if (!snapshot.exists()) throw new Error('Hospedagem não encontrada.');
+  const stay = snapshot.val() as GuestStay;
+  const next = await snapshotStayCardFees(addStayReceipt(stay, input));
+  const updates: Record<string, unknown> = { receiptsInitialized: true, lastReceiptAt: next.lastReceiptAt };
+  for (const [id, receipt] of Object.entries(next.receipts ?? {})) {
+    if (!stay.receipts?.[id]) updates[`receipts/${id}`] = receipt;
+  }
+  await update(ref(db, PATH + '/stays/' + stayId), updates);
+}

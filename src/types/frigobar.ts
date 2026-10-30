@@ -18,6 +18,8 @@ export interface FrigobarSaleItem {
 }
 
 export interface FrigobarSale {
+  sourceType?: 'stay' | 'reservation';
+  sourceId?: string;
   id: string;
   items: FrigobarSaleItem[];
   amount: number;

@@ -152,6 +152,9 @@
 .dashboard-room-status.is-occupied { color: #b22a3e; background: #fff0f2; }
 .dashboard-room-status.is-free { color: #247146; background: #eaf6ee; }
 .dashboard-room-status.is-maintenance { color: #946313; background: #fbf3e4; }
+.dashboard-room.is-checkout { border-left-color: #b78332; }
+.dashboard-room-status.is-checkout { color: #795018; background: #fff1d6; }
+.dashboard-room-checkout-notice { margin-bottom: 14px; padding: 12px; border: 1px solid #e7d6b2; border-radius: 6px; color: #684d20; background: #fff3d7; }
 .dashboard-room-status.is-cleaning { color: #946313; background: #fbf3e4; }
 .dashboard-room-type { display: block; min-height: 20px; margin-top: 5px; color: var(--brand-muted); font-size: 0.6875rem; line-height: 1.3; }
 .dashboard-rooms .dashboard-section-heading > div > small { color: var(--brand-muted); font-size: .75rem; }
@@ -238,6 +241,7 @@
 .dashboard-tool-modal-content .sales-home-button { padding-right: 15px; padding-left: 15px; font-family: inherit; cursor: pointer; }
 .dashboard-tool-modal-content .schedule-app { min-height: 100%; grid-template-columns: minmax(0, 1fr); }
 .dashboard-room-charge-modal { width: min(100%, 520px); max-height: min(92vh, 760px); overflow-y: auto; padding: 19px; border: 1px solid #d5deea; border-radius: 10px; background: #fff; box-shadow: 0 18px 55px rgb(9 24 46 / 30%); }
+.dashboard-room-charge-modal.dashboard-occupied-room-modal { width: min(100%, 700px); max-height: min(92dvh, 900px); }
 .dashboard-room-choice { display: grid; width: min(100%, 420px); gap: 17px; padding: 22px; border: 1px solid #d5deea; border-radius: 10px; background: #fff; box-shadow: 0 18px 55px rgb(9 24 46 / 30%); }
 .dashboard-room-choice h2 { margin: 0; color: var(--brand-ink); font-size: 1.25rem; }
 .dashboard-room-choice > div:first-child > p:last-child { margin: 5px 0 0; color: var(--brand-muted); font-size: 0.875rem; }
@@ -270,6 +274,12 @@
 .dashboard-room-charge-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .dashboard-room-charge-actions button { min-height: 36px; padding: 7px 11px; border: 1px solid #c7d1df; border-radius: 5px; font: inherit; font-size: 0.6875rem; font-weight: 700; cursor: pointer; }
 .dashboard-room-charge-cancel { color: #42536b; background: #fff; }
+.dashboard-room-release-button { display: inline-flex; align-items: center; justify-content: center; gap: 9px; min-height: 44px; margin: 0 0 18px; padding: 10px 18px; border: 1px solid #226a67; border-radius: 9px; color: #fff; background: #247b76; box-shadow: 0 3px 8px rgb(36 123 118 / 16%); font: inherit; font-size: .8125rem; font-weight: 700; cursor: pointer; transition: background 160ms ease, transform 160ms ease; }
+.dashboard-room-release-button:hover:not(:disabled) { background: #1d6561; transform: translateY(-1px); }
+.dashboard-room-release-button:focus-visible { outline: 3px solid #83c8c3; outline-offset: 3px; }
+.dashboard-room-release-button:disabled { opacity: .6; cursor: wait; }
+.dashboard-checkout-warning { color: #74551e; font-size: .75rem; }
+@media (prefers-reduced-motion: reduce) { .dashboard-room-release-button { transition: none; } }
 .dashboard-room-charge-submit { border-color: #315f87 !important; color: #fff; background: #315f87; }
 .dashboard-room-charge-submit:hover:not(:disabled) { background: #244b6c; }
 .dashboard-room-charge-actions button:disabled, .dashboard-room-charge-close:disabled { opacity: 0.6; cursor: not-allowed; }
@@ -288,3 +298,12 @@
   .dashboard-room-charge-wide { grid-column: auto; }
   .dashboard-room-charge-actions button { flex: 1; }
 }
+
+.dashboard-room-stats .has-breakfast { background: #fff0b3; color: #624200; border: 2px solid #d39a19; border-radius: 8px; padding: 5px 8px; font-size: .85rem; font-weight: 800; }
+.dashboard-room-stats .no-breakfast { font-size: .7rem; }
+.dashboard-board-date { display: flex; align-items: center; flex-wrap: wrap; gap: 12px; margin: 12px 0 18px; }
+.dashboard-board-date input, .dashboard-board-date button { padding: 8px 12px; border: 1px solid #bcc7d4; border-radius: 6px; font: inherit; }
+.dashboard-board-date .dashboard-board-date-arrow { min-width: 44px; min-height: 44px; padding: 2px 12px; background: #fff; color: #1f4f82; font-size: 1.75rem; font-weight: 700; cursor: pointer; }
+.dashboard-board-date .dashboard-board-date-arrow:hover { background: #eef3fa; border-color: #1f4f82; }
+.dashboard-board-date .dashboard-board-date-arrow:focus-visible { outline: 2px solid #1f4f82; outline-offset: 2px; }
+.dashboard-room:disabled { opacity: 1; }

@@ -62,7 +62,10 @@ export async function createAccountingWorkbook(report: MonthlyAccountingReport):
   const prepaid = workbook.addWorksheet('Pré-pagos OYO');
   const transfers = workbook.addWorksheet('Transferências');
   const obligations = workbook.addWorksheet('Contas e folha');
+  const adjustments = workbook.addWorksheet('Ajustes de caixa');
   const period = `${report.from.slice(8, 10)}/${report.from.slice(5, 7)}/${report.from.slice(0, 4)} a ${report.to.slice(8, 10)}/${report.to.slice(5, 7)}/${report.to.slice(0, 4)}`;
+  formatTable(adjustments, 'Ajustes históricos do caixa físico', 'Valores assinados: somam ou subtraem do saldo a partir da data informada, inclusive nos meses seguintes. Não integram receitas de vendas nem despesas operacionais.', ['Data', 'Valor do ajuste', 'Motivo', 'Referência'], report.cashAdjustments.map((item) => [excelDate(item.date), item.amount, item.note, item.id]), [16, 23, 70, 42], [2], [1]);
+  tableTotal(adjustments, report.cashAdjustments.length, 2, report.cashAdjustments.reduce((sum, item) => sum + item.amount, 0));
   const receiptHeaders = ['Data', 'Categoria', 'Descrição do pagamento', 'Forma de pagamento', 'Carteira', 'Valor', 'Referência do registro/item', 'Observação'];
   const receiptRows = (rows: MonthlyAccountingReport['receipts']) => rows.map((row) => [excelDate(row.date), row.category, row.description, PAYMENT_METHOD_LABELS[row.method as FinancePaymentMethod], WALLET_LABELS[row.wallet], row.amount, row.reference, row.note]);
   formatTable(entries, 'Recebimentos diretos no hotel', `${period}. Uma linha por item e forma de pagamento. Repasses e pré-pagos externos ficam nas abas próprias.`, receiptHeaders, receiptRows(report.receipts), [14, 25, 45, 27, 22, 18, 45, 50], [6], [1]);
@@ -120,7 +123,7 @@ export async function createAccountingWorkbook(report: MonthlyAccountingReport):
     for (let column = 2; column <= 7; column += 1) summary.getCell(row, column).numFmt = currencyFormat;
   });
   const notes = [
-    'Saldo inicial: fechamento do mês anterior, incluindo os saldos anteriores ao primeiro lançamento. As transferências internas afetam as carteiras e se anulam no resultado conjunto.',
+    'Saldo inicial: fechamento do mês anterior, incluindo saldos iniciais e ajustes históricos. Entradas/saídas na carteira incluem os ajustes detalhados na aba Ajustes de caixa. As transferências internas afetam as carteiras e se anulam no resultado conjunto.',
     `${report.legacyPaymentCount} parcela(s) de pagamento neste mês sem data histórica informada: o vencimento foi usado e a origem da data consta na aba Saídas.`,
     'Os lançamentos operacionais de hospedagens, reservas, extras, frigobar, estoque e recepção são conciliados na mesma leitura. Registros anulados não são recriados no relatório.',
   ];

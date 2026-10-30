@@ -18,6 +18,7 @@ export type MinibarSettlement = 'pago_na_recepcao' | 'cobrar_no_checkout' | 'pag
 export type MinibarPaymentMethod = 'dinheiro' | 'pix' | 'cartao_debito' | 'cartao_credito';
 
 export interface StockProduct {
+  averageCost?: number;
   id: string;
   name: string;
   sku: string;
@@ -46,6 +47,8 @@ export interface StockSupplier {
 }
 
 export interface StockMovement {
+  unitCost?: number;
+  previousAverageCost?: number;
   entryPayment?: 'pendente' | 'caixa' | 'banco';
   paidDate?: string;
   sourceLocationQuantities?: Record<string, number>;

@@ -57,6 +57,8 @@ Excluir um produto remove seu histórico de estoque e lançamentos financeiros g
 
 ## Desenvolvimento
 
+Para publicar o sistema completo no Netlify, incluindo o checkout manual e automático, siga [Publicação no Netlify](docs/publicar-netlify.md). Use `npm run deploy:netlify` depois de vincular o site e configurar as credenciais do servidor.
+
 Instale as dependências e inicie o servidor local:
 
 ```bash

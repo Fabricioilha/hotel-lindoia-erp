@@ -4,6 +4,9 @@ export type FinanceWallet = 'cash' | 'bank' | 'oyo';
 export type FinancePaymentMethod = 'credit' | 'debit' | 'cash' | 'pix' | 'bank_transfer' | 'prepaid';
 
 export interface FinanceIncomeItem {
+  cardFeeRate?: number;
+  cardFeeAmount?: number;
+  netAmount?: number;
   id: string;
   description: string;
   amount: number;
@@ -14,6 +17,15 @@ export interface FinanceBalances {
   cash: number;
   bank: number;
   oyo: number;
+}
+
+export interface CashAdjustment {
+  id: string;
+  date: string;
+  amount: number;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface FinancePaymentEvent {
@@ -40,6 +52,9 @@ export interface FinanceIncome {
 }
 
 export interface FinanceExpense {
+  employeeId?: string;
+  advanceMonth?: string;
+  generatedFromIncome?: string;
   id: string;
   dueDate: string;
   category: string;
@@ -67,6 +82,7 @@ export interface FinanceTransfer {
 }
 
 export interface PayrollEntry {
+  advances?: Record<string, number>;
   employeeId?: string;
   id: string;
   month: string;
@@ -86,6 +102,8 @@ export interface PayrollEntry {
 }
 
 export interface FinanceData {
+  cardFeeSchedule?: Record<string, { effectiveAt: string; credit: number; debit: number }>;
+  cashAdjustments?: Record<string, CashAdjustment>;
   incomes: Record<string, FinanceIncome>;
   expenses: Record<string, FinanceExpense>;
   transfers: Record<string, FinanceTransfer>;
@@ -186,6 +204,6 @@ export const WALLET_LABELS: Record<FinanceWallet, string> = {
   oyo: 'Pré-Pagos (Retidos - OYO)',
 };
 
-export function payrollNet(entry: Pick<PayrollEntry, 'basePay' | 'additions' | 'deductions'>) {
-  return Math.max(0, entry.basePay + entry.additions - entry.deductions);
+export function payrollNet(entry: Pick<PayrollEntry, 'basePay' | 'additions' | 'deductions' | 'advances'>) {
+  return Math.max(0, Math.round((entry.basePay + entry.additions - entry.deductions - Object.values(entry.advances ?? {}).reduce((sum, amount) => sum + amount, 0)) * 100) / 100);
 }

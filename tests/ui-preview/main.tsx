@@ -1,0 +1,3 @@
+import React from 'react';import {createRoot} from 'react-dom/client';import {BrowserRouter} from 'react-router-dom';import {FluxoDeCaixa} from '../../src/pages/financeiro/FluxoDeCaixa';import {DialogBehavior} from '../../src/components/ui/DialogBehavior';import '../../src/experience.css';
+const mobile=new URLSearchParams(location.search).has('mobile');
+createRoot(document.getElementById('root')!).render(mobile?<iframe title="Prévia celular" src="/" style={{width:390,height:900,border:'1px solid #ccc',display:'block',margin:'auto'}}/>:<BrowserRouter><div className="app-shell-main"><DialogBehavior/><FluxoDeCaixa/></div></BrowserRouter>);

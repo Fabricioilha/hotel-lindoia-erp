@@ -1,3 +1,4 @@
+import { tmpdir } from 'node:os';
 import assert from 'node:assert/strict';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { createRequire } from 'node:module';
@@ -108,12 +109,12 @@ test('native XLSX preserves numeric money, actual dates, item IDs, formulas, fil
   const report = buildMonthlyAccountingReport(fixture(), '2026-10', timestamp);
   const workbook = await createAccountingWorkbook(report);
   const bytes = await workbook.xlsx.writeBuffer();
-  writeFileSync('/tmp/hotel-finance-export-check.xlsx', Buffer.from(bytes));
+  writeFileSync(resolve(tmpdir(), 'hotel-finance-export-check.xlsx'), Buffer.from(bytes));
   assert.equal(bytes[0], 0x50);
   assert.equal(bytes[1], 0x4b);
   const restored = new ExcelJS.Workbook();
   await restored.xlsx.load(bytes);
-  assert.deepEqual(restored.worksheets.map((sheet) => sheet.name), ['Resumo', 'Entradas', 'Saídas', 'Pré-pagos OYO', 'Transferências', 'Contas e folha']);
+  assert.deepEqual(restored.worksheets.map((sheet) => sheet.name), ['Resumo', 'Entradas', 'Saídas', 'Pré-pagos OYO', 'Transferências', 'Contas e folha', 'Ajustes de caixa']);
   const entries = restored.getWorksheet('Entradas');
   assert.equal(entries.getCell('F6').type, ExcelJS.ValueType.Number);
   assert.equal(entries.getCell('F6').value, 100);
@@ -138,4 +139,25 @@ test('empty month still exports usable XLSX tabs, zero formulas and opening bala
   assert.equal(workbook.getWorksheet('Entradas').getCell('F7').result, 0);
   const bytes = await workbook.xlsx.writeBuffer();
   assert.ok(bytes.byteLength > 1000);
+});
+
+test('signed cash adjustments reconcile in their own month, carry forward and export separately from revenue', async () => {
+  const data = empty(); data.openingBalances.cash = 100;
+  data.cashAdjustments = { positive: { id: 'positive', date: '2025-01-02', amount: 500, note: 'Saldo anterior', createdAt: timestamp, updatedAt: timestamp }, negative: { id: 'negative', date: '2025-01-31', amount: -750, note: 'Correção', createdAt: timestamp, updatedAt: timestamp } };
+  const january = buildMonthlyAccountingReport(data, '2025-01', timestamp);
+  assert.equal(january.wallets[0].closing, -150);
+  assert.equal(january.wallets[0].difference, 0);
+  assert.equal(january.totals.direct, 0);
+  assert.equal(january.totals.cashResult, 0);
+  const february = buildMonthlyAccountingReport(data, '2025-02', timestamp);
+  assert.equal(february.wallets[0].opening, -150);
+  assert.equal(february.wallets[0].closing, -150);
+  assert.equal(february.cashAdjustments.length, 0);
+  const book = await createAccountingWorkbook(january);
+  const bytes = await book.xlsx.writeBuffer(); const restored = new ExcelJS.Workbook(); await restored.xlsx.load(bytes);
+  const sheet = restored.getWorksheet('Ajustes de caixa');
+  assert.equal(sheet.getCell('B6').value, 500);
+  assert.equal(sheet.getCell('B7').value, -750);
+  assert.equal(sheet.getCell('A7').value.toISOString().slice(0, 10), '2025-01-31');
+  assert.equal(restored.getWorksheet('Resumo').getCell('G21').result, 0);
 });

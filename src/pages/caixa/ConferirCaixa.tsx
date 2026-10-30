@@ -1,3 +1,5 @@
+import { cashShiftDate } from '../../services/cashShiftDate';
+import { subscribeCashDay, subscribeCashSales } from '../../services/cashHistory';
 import { useStaff } from '../../services/staffStore';
 import { findStaff, staffMembers } from '../../types/staff';
 import { useEffect, useState, type FormEvent } from 'react';
@@ -7,19 +9,18 @@ import { PAYMENT_METHOD_LABELS, type FinancePaymentMethod } from '../../types/fi
 import type { MinibarPaymentMethod } from '../../types/inventory';
 import { FLOAT_AMOUNT, roomChargePayments, stayPayments, stayTotals, type ReceptionData } from '../../types/reception';
 import type { FrigobarData } from '../../types/frigobar';
-import { deleteFrigobarSale, emptyFrigobar, subscribeFrigobar } from '../../services/frigobarStore';
-import { deleteCashOut, deleteStay, deleteRoomCharge, deleteFloatCheck, emptyReception, localDateKey, subscribeReception } from '../../services/receptionStore';
-import { currentDuty } from '../../services/dutyRoster';
+import { deleteFrigobarSale, emptyFrigobar } from '../../services/frigobarStore';
+import { deleteCashOut, deleteStay, deleteRoomCharge, deleteFloatCheck, emptyReception, localDateKey } from '../../services/receptionStore';
 import { emptySchedule, subscribeSchedule, type ScheduleStoreData } from '../../services/scheduleStore';
 import { BackToPanel } from '../../components/ui/BackToPanel';
 import { useAttendant, useDuty } from '../../services/useAttendant';
-import { effectiveDuty, nextScheduledDuty } from '../../services/dutyRoster';
+import { nextScheduledDuty } from '../../services/dutyRoster';
 import { deleteShiftHandoff, saveShiftHandoff, subscribeShiftHandoffs } from '../../services/shiftHandoffStore';
 import type { ShiftHandoff } from '../../types/reception';
 import './caixa.css';
 
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+const timeOf = (iso: string) => new Date(iso).toLocaleTimeString('pt-BR', { timeZone: 'America/Sao_Paulo', hour: '2-digit', minute: '2-digit' });
 const dateLabel = (key: string) => new Date(`${key}T12:00:00`).toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' });
 const FRIGOBAR_METHODS: Record<MinibarPaymentMethod, FinancePaymentMethod> = { dinheiro: 'cash', pix: 'pix', cartao_debito: 'debit', cartao_credito: 'credit' };
 const parseMoney = (value: string) => {
@@ -39,6 +40,13 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
   const [notice, setNotice] = useState('');
   const sessionAttendant = useAttendant();
   const dutyState = useDuty();
+  const [selectedDate, setSelectedDate] = useState('');
+  const [clock, setClock] = useState(() => new Date());
+  useEffect(() => { const timer = window.setInterval(() => setClock(new Date()), 30_000); return () => window.clearInterval(timer); }, []);
+  const queryDate = selectedDate || cashShiftDate(clock);
+  const [loadedDate, setLoadedDate] = useState('');
+  const [salesLoadedDate, setSalesLoadedDate] = useState('');
+  const cashLoaded = loadedDate === queryDate && salesLoadedDate === queryDate;
   const [chosen, setChosen] = useState('');
   const [handoffs, setHandoffs] = useState<Record<string, ShiftHandoff>>({});
   const [endingTurn, setEndingTurn] = useState(false);
@@ -52,10 +60,10 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
     void action().catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Não foi possível excluir o registro.'));
   }
 
-  useEffect(() => subscribeReception(setData, (cause) => setError(cause.message)), []);
+  useEffect(() => subscribeCashDay(queryDate, (next) => { setData(next); setLoadedDate(queryDate); }, (cause) => setError(cause.message)), [queryDate]);
   const [schedule, setSchedule] = useState<ScheduleStoreData>(emptySchedule());
   useEffect(() => subscribeSchedule(setSchedule, () => undefined), []);
-  useEffect(() => subscribeFrigobar(setFrigobar, () => setFrigobar(emptyFrigobar())), []);
+  useEffect(() => subscribeCashSales(queryDate, (sales) => { setFrigobar({ ...emptyFrigobar(), sales }); setSalesLoadedDate(queryDate); }, (cause) => setError(cause.message)), [queryDate]);
   useEffect(() => subscribeShiftHandoffs(setHandoffs, (cause) => setError(cause.message)), []);
 
   const receptionNames = staffMembers(staff, 'reception').map((member) => member.name);
@@ -72,16 +80,18 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
     if (!days.has(date)) days.set(date, { date, entries: [], cashOuts: [] });
     return days.get(date) as Day;
   };
-  dayOf(localDateKey());
+  dayOf(queryDate);
   // Plantões noturnos atravessam a meia-noite: o movimento conta no dia em que o turno começou.
-  const shiftDay = (when: string) => {
-    const at = new Date(when);
-    const duty = currentDuty(schedule.days, [attendant], at);
-    const effective = effectiveDuty(schedule.days, names, at, handoffs);
-    return localDateKey(effective?.start ?? duty?.start ?? at);
-  };
+  const shiftDay = cashShiftDate;
 
-  Object.values(data.stays).filter((stay) => (findStaff(staff, stay.attendant, stay.employeeId)?.name ?? stay.attendant) === attendant).forEach((stay) => {
+  Object.values(data.stays).forEach((stay) => {
+    if (stay.receiptsInitialized || stay.receipts) {
+      Object.values(stay.receipts ?? {}).filter((receipt) => !stay.voidedPayments?.[receipt.id] && (findStaff(staff, receipt.attendant)?.name ?? receipt.attendant) === attendant).forEach((receipt) => {
+        dayOf(shiftDay(receipt.receivedAt)).entries.push({ time: receipt.receivedAt, kind: 'stay', title: 'Recebimento · Quarto ' + stay.roomNumber, detail: stay.guestName + ' · ' + receipt.label, total: receipt.amount, payments: [{ method: receipt.method, amount: receipt.amount }] });
+      });
+      return;
+    }
+    if ((findStaff(staff, stay.attendant, stay.employeeId)?.name ?? stay.attendant) !== attendant) return;
     dayOf(shiftDay(stay.createdAt)).entries.push({
       time: stay.createdAt,
       kind: 'stay',
@@ -120,7 +130,7 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
   Object.values(data.cashOuts).filter((item) => (findStaff(staff, item.attendant, item.employeeId)?.name ?? item.attendant) === attendant).forEach((item) => {
     dayOf(shiftDay(item.createdAt)).cashOuts.push({ id: item.id, time: item.createdAt, reason: item.reason, note: item.note, amount: item.amount, remove: isAdmin ? () => removeRecord(`Excluir a saída de caixa de ${money(item.amount)} (${item.reason})? A despesa no Financeiro também será removida.`, () => deleteCashOut(item.id)) : undefined });
   });
-  const currentKey = shiftDay(new Date().toISOString());
+  const currentKey = shiftDay(clock);
   dayOf(currentKey);
   const currentDay = days.get(currentKey);
   const currentCheck = Object.values(data.floatChecks).find((item) => (findStaff(staff, item.attendant, item.employeeId)?.name ?? item.attendant) === attendant && shiftDay(item.createdAt) === currentKey);
@@ -128,10 +138,14 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
   const currentCashIn = currentDay?.entries.reduce((sum, entry) => sum + entry.payments.filter((payment) => payment.method === 'cash').reduce((subtotal, payment) => subtotal + payment.amount, 0), 0) ?? 0;
   const currentCashOut = currentDay?.cashOuts.reduce((sum, item) => sum + item.amount, 0) ?? 0;
   const expectedCashAtClose = expectedOpening + currentCashIn - currentCashOut;
-  const ordered = [...days.values()].filter((day) => isAdmin || day.date === currentKey).sort((a, b) => b.date.localeCompare(a.date));
+  const ordered = [...days.values()].filter((day) => day.date === queryDate).sort((a, b) => b.date.localeCompare(a.date));
 
   async function submitHandoff(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!cashLoaded || queryDate !== currentKey) {
+      setError('Volte ao plantão atual e aguarde a consulta antes de encerrar o turno.');
+      return;
+    }
     if (!dutyState.duty || !nextDuty) {
       setError('Não foi possível localizar o próximo plantonista na escala.');
       return;
@@ -176,23 +190,25 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
       <header className="cx-title">
         <p className="cx-eyebrow">PLANTÃO <span>/</span> CAIXA</p>
         <h1>Conferir caixa</h1>
-        <p>{isAdmin ? 'Resumo de tudo que o plantonista lançou em cada dia: entradas por forma de pagamento, retiradas e dinheiro que deve estar no caixa.' : 'Resumo do seu plantão de hoje: entradas por forma de pagamento, retiradas e dinheiro que deve estar no caixa.'}</p>
+        <p>{isAdmin ? 'Resumo de tudo que o plantonista lançou em cada dia: entradas por forma de pagamento, retiradas e dinheiro que deve estar no caixa.' : 'Confira as retiradas, o dinheiro no caixa e o valor a guardar ao encerrar o turno.'}</p>
       </header>
       {error && <div className="cx-alert" role="alert">{error}</div>}
       {notice && <div className="cx-success" role="status">{notice}</div>}
 
-      <div className="cx-panel cx-who-row">
+      <div className="cx-panel cx-who-row"><label className="cx-field">Dia de início do plantão<input type="date" value={queryDate} onChange={(event) => { if (event.target.value) { setSelectedDate(event.target.value); setError(''); } }} /></label><button type="button" onClick={() => setSelectedDate('')}>Plantão atual</button>
         {isAdmin ? <label className="cx-field">Plantonista
           <select value={attendant} onChange={(event) => setChosen(event.target.value)}>{names.map((name) => <option key={name} value={name}>{name}</option>)}</select>
         </label> : <p className="cx-who">Plantonista: <strong>{attendant}</strong></p>}
       </div>
 
-      {!isAdmin && <div className="cx-handoff-panel">
+      <p className="cx-muted">O plantão noturno das 19h às 7h pertence à data em que começou. Movimentos após a meia-noite e antes das 7h ficam no caixa do dia anterior.</p>
+      {!isAdmin && queryDate === currentKey && <div className="cx-handoff-panel">
         <div><strong>Próximo plantonista</strong><span>{nextDuty?.name ?? 'Não encontrado na escala dos próximos 60 dias'}</span></div>
-        <button type="button" className="cx-primary" disabled={!dutyState.duty || !nextDuty} onClick={() => { setCashLeft(String(FLOAT_AMOUNT)); setHandoffJustification(''); setError(''); setEndingTurn(true); }}>Encerrar turno</button>
+        <button type="button" className="cx-primary" disabled={!cashLoaded || !dutyState.duty || !nextDuty} onClick={() => { setCashLeft(String(FLOAT_AMOUNT)); setHandoffJustification(''); setError(''); setEndingTurn(true); }}>Encerrar turno</button>
       </div>}
 
-      {ordered.map((day, index) => {
+      {!cashLoaded && <p role="status">Consultando os registros do dia selecionado…</p>}
+      {cashLoaded && ordered.map((day, index) => {
         const byMethod = new Map<FinancePaymentMethod, number>();
         day.entries.forEach((entry) => entry.payments.forEach((payment) => byMethod.set(payment.method, (byMethod.get(payment.method) ?? 0) + payment.amount)));
         const income = [...byMethod.entries()].filter(([method]) => method !== 'prepaid').reduce((sum, [, amount]) => sum + amount, 0);
@@ -207,11 +223,11 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
           <details key={day.date} className="cx-day" open={index === 0}>
             <summary>
               <span className="cx-day-date">{day.date === localDateKey() ? 'Hoje · ' : ''}{dateLabel(day.date)}</span>
-              <span className="cx-day-total">Entradas {money(income)} · Dinheiro no caixa {money(expectedCash)}</span>
+              <span className="cx-day-total">{isAdmin ? `Entradas ${money(income)} · ` : ''}Dinheiro no caixa {money(expectedCash)}</span>
             </summary>
             <div className="cx-day-body">
               <div className="cx-stats">
-                <div className="cx-stat"><small>Total de entradas</small><strong>{money(income)}</strong></div>
+                {isAdmin && <div className="cx-stat"><small>Total de entradas</small><strong>{money(income)}</strong></div>}
                 <div className="cx-stat is-out"><small>Saídas de caixa</small><strong>− {money(outs)}</strong></div>
                 <div className="cx-stat is-cash"><small>Dinheiro que deve estar no caixa</small><strong>{money(expectedCash)}</strong></div>
                 <div className="cx-stat is-store"><small>Guardar ao fechar (manter {money(FLOAT_AMOUNT)} de troco)</small><strong>{money(toStore)}</strong></div>
@@ -221,7 +237,7 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
                 {isAdmin && check && <button onClick={() => removeRecord('Excluir esta conferência de troco? O caixa será recalculado a partir do troco padrão.', () => deleteFloatCheck(check.id))}>Excluir conferência</button>}
               </p>
 
-              <h3>Recebimentos no hotel por forma de pagamento</h3>
+              {isAdmin && <><h3>Recebimentos no hotel por forma de pagamento</h3>
               {prepaid > 0 && <p className="cx-muted">Pré-pagos recebidos pela OYO: <strong>{money(prepaid)}</strong> · fora das entradas do hotel.</p>}
               {[...byMethod.keys()].filter((method) => method !== 'prepaid').length === 0 ? <p className="cx-muted">Nenhuma entrada neste dia.</p> : <ul className="cx-methods">
                 {[...byMethod.entries()].filter(([method]) => method !== 'prepaid').map(([method, value]) => <li key={method}><span>{PAYMENT_METHOD_LABELS[method]}</span><strong>{money(value)}</strong></li>)}
@@ -236,6 +252,7 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
                 </li>)}
               </ul>}
 
+              </>}
               <h3>Saídas de caixa</h3>
               {day.cashOuts.length === 0 ? <p className="cx-muted">Nenhuma retirada neste dia.</p> : <ul className="cx-list">
                 {day.cashOuts.sort((a, b) => a.time.localeCompare(b.time)).map((item) => <li key={item.id}><span className="cx-time">{timeOf(item.time)}</span><span>{item.reason}{item.note ? ` · ${item.note}` : ''}</span><strong>− {money(item.amount)}{item.remove && <button type="button" className="cx-delete" onClick={item.remove}>Excluir</button>}</strong></li>)}

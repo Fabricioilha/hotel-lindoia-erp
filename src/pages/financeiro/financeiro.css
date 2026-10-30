@@ -9,6 +9,27 @@
 }
 
 .finance-page * { box-sizing: border-box; }
+.cash-flow-page .finance-content { width: 100%; max-width: none; padding: 24px clamp(14px, 2vw, 32px) 36px; }
+.cash-flow-page .finance-header { padding-inline: clamp(14px, 2vw, 32px); }
+.cash-flow-page .finance-tabs { gap: 6px; padding: 6px; margin-bottom: 16px; border: 1px solid var(--finance-border); border-radius: 8px; background: #fff; }
+.cash-flow-page .finance-tabs button { flex: 1 0 auto; min-height: 44px; border-radius: 5px; font-size: .8125rem; }
+.cash-flow-page .finance-tabs button.selected { border-bottom-color: #214f7b; color: #fff; background: #214f7b; }
+.cash-flow-page .finance-tabs button:hover:not(.selected) { background: #edf3fa; }
+.cash-flow-page .finance-tab-content { display: grid; min-width: 0; gap: 16px; outline-offset: 4px; }
+.cash-flow-page .finance-tab-content > * { margin-top: 0; margin-bottom: 0; }
+.cash-flow-page .finance-panel-heading { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px; min-height: 48px; }
+.cash-flow-page .finance-panel-heading h2 { font-size: .9375rem; }
+.cash-flow-page .finance-panel-heading p { line-height: 1.5; font-size: .75rem; }
+.cash-flow-page .finance-report-toolbar { gap: 12px; background: #f7f9fc; }
+.cash-flow-page .finance-report-action { margin-left: auto; }
+.cash-flow-page .finance-export-button { color: #556580; font-weight: 600; background: transparent; }
+@media (min-width: 1400px) {
+  .cash-flow-page .finance-metrics { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+}
+@media (max-width: 620px) {
+  .cash-flow-page .finance-report-action { width: auto; margin-left: 0; }
+  .cash-flow-page .finance-panel-heading { align-items: flex-start; }
+}
 .finance-header { display: flex; min-height: 72px; align-items: center; justify-content: space-between; gap: 24px; padding: 12px clamp(18px, 5vw, 72px); border-top: 4px solid #c52e43; color: #fff; background: #142b4d; }
 .finance-brand { display: flex; align-items: center; gap: 11px; color: inherit; text-decoration: none; }
 .finance-brand-mark { display: grid; width: 38px; height: 38px; place-items: center; border: 1px solid #7184a2; border-radius: 4px; font-size: 0.6875rem; font-weight: 800; }

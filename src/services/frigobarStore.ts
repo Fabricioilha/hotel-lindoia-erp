@@ -186,6 +186,7 @@ export async function syncFrigobarCatalog(inventory: InventoryData): Promise<voi
 }
 
 export async function createFrigobarSale(input: {
+  sourceType?: 'stay' | 'reservation'; sourceId?: string;
   id: string;
   items: { productId: string; quantity: number }[];
   settlement: MinibarSettlement;
@@ -216,9 +217,16 @@ export async function createFrigobarSale(input: {
     if (!product || product.active === false || !Number.isFinite(product.salePrice) || product.salePrice <= 0) throw new Error('Um dos produtos foi arquivado ou está sem preço de venda. Atualize o pedido.');
     return { productId: product.id, productName: product.name, quantity, unit: product.unit, unitPrice: product.salePrice };
   });
+  if (input.settlement === 'cobrar_no_checkout') {
+    if (!input.sourceId || !['stay', 'reservation'].includes(input.sourceType ?? '')) throw new Error('Selecione a hospedagem atual.');
+    const path = input.sourceType === 'stay' ? 'erp_geral/recepcao/stays' : 'erp_geral/quartos/reservationIndex';
+    const source = (await get(ref(db, path + '/' + input.sourceId))).val();
+    if (!source || source.status !== 'hospedado' || source.roomNumber.trim() !== input.roomNumber.trim() || source.guestName !== input.guestName) throw new Error('A hospedagem mudou. Selecione novamente o quarto.');
+  }
   const createdAt = new Date().toISOString();
   const sale: FrigobarSale = {
     id: input.id,
+    ...(input.sourceId ? { sourceId: input.sourceId, sourceType: input.sourceType } : {}),
     items,
     amount: Math.round(items.reduce((total, item) => total + item.quantity * item.unitPrice, 0) * 100) / 100,
     settlement: input.settlement,

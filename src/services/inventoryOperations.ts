@@ -1,3 +1,4 @@
+import { inventoryUnitCost, weightedInventoryCost, effectiveStockQuantity } from './inventoryCost';
 import { get, ref } from 'firebase/database';
 import { db } from '../config/firebase';
 import { invalidInventoryKey, normalizeInventory, updateInventory } from './inventoryStore';
@@ -57,7 +58,11 @@ export function applyInventoryMovement(current: InventoryData, input: InventoryM
   }
   Object.keys(locations).forEach((location) => { locations[location] = normalizedStockQuantity(locations[location]); });
   if (Object.values(locations).some((amount) => !Number.isFinite(amount) || amount < 0)) throw new Error('O saldo do produto ficou inconsistente. Faça a conferência antes de continuar.');
+  const previousAverageCost = inventoryUnitCost(product);
+  const averageCost = input.type === 'entrada' ? weightedInventoryCost(effectiveStockQuantity(product, receptionQuantity), previousAverageCost, input.quantity, input.unitPrice) : previousAverageCost;
   const movement: StockMovement = {
+    unitCost: input.type === 'entrada' ? input.unitPrice : previousAverageCost,
+    previousAverageCost,
     id: input.id, productId: product.id, productName: product.name, category: product.category, type: input.type,
     quantity, unit: product.unit, fromLocation, toLocation, reference: input.reference, actor: input.actor, unitPrice: input.unitPrice,
     note: input.type === 'ajuste' ? `${input.note}${input.note ? ' · ' : ''}Contagem informada: ${input.quantity} ${product.unit}.` : input.note,
@@ -65,7 +70,7 @@ export function applyInventoryMovement(current: InventoryData, input: InventoryM
     ...(input.type === 'entrada' ? { previousUnitCost: Number(product.cost) || 0, entryPayment: input.entryPayment ?? 'pendente', ...(input.paidDate ? { paidDate: input.paidDate } : {}), financeSynced: Math.round(input.quantity * input.unitPrice * 100) === 0 } : {}),
   };
   return { ...current,
-    products: { ...current.products, [product.id]: { ...product, locationQuantities: locations, ...(input.type === 'entrada' ? { cost: input.unitPrice } : {}), updatedAt: input.createdAt } },
+    products: { ...current.products, [product.id]: { ...product, locationQuantities: locations, ...(input.type === 'entrada' ? { cost: input.unitPrice, averageCost } : {}), updatedAt: input.createdAt } },
     movements: { ...current.movements, [movement.id]: movement },
   };
 }

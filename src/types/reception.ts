@@ -51,6 +51,10 @@ export interface StayExtra {
 export const SELECTABLE_EXTRAS: ExtraType[] = ['cama_extra', 'hospede_extra', 'checkin_antecipado', 'checkout_tardio', 'outros'];
 
 export interface GuestStay {
+  receiptsInitialized?: boolean;
+  receipts?: Record<string, StayReceipt>;
+  lastReceiptAt?: string;
+  checkedOutAt?: string;
   employeeId?: string;
   voidedPayments?: Record<string, boolean>;
   id: string;
@@ -84,6 +88,21 @@ export interface GuestStay {
   status: 'hospedado' | 'encerrado';
   checkOutDate?: string;
   createdAt: string;
+}
+
+export interface StayReceipt {
+  cardFeeRate?: number;
+  cardFeeAmount?: number;
+  netAmount?: number;
+  id: string;
+  date: string;
+  receivedAt: string;
+  createdAt: string;
+  attendant: string;
+  amount: number;
+  method: FinancePaymentMethod;
+  label: string;
+  category: string;
 }
 
 export type RoomChargeKind = 'hospede_extra' | 'cafe_avulso' | 'cama_extra' | 'bebida';
@@ -237,6 +256,7 @@ export function stayTaxPayments(stay: Pick<GuestStay, 'taxAmount' | 'taxMethod' 
 }
 
 export function stayPayments(stay: GuestStay): { id: string; method: FinancePaymentMethod; amount: number; label: string }[] {
+  if (stay.receiptsInitialized || stay.receipts) return Object.values(stay.receipts ?? {}).filter((receipt) => !stay.voidedPayments?.[receipt.id]);
   const list: { id: string; method: FinancePaymentMethod; amount: number; label: string }[] = [];
   const add = (suffix: string, method: FinancePaymentMethod, amount: number, label: string) => {
     const id = `recepcao-${stay.id}-${suffix}`;
@@ -258,6 +278,12 @@ export function stayPayments(stay: GuestStay): { id: string; method: FinancePaym
     .forEach((payment) => add(payment.id, payment.method, payment.amount, 'Taxa'));
   (stay.extras ?? []).forEach((extra) => add(`extra-${extra.id}`, extra.method ?? stay.dailyMethod, extraTotal(extra, stay.nights), extra.label));
   return list;
+}
+
+export function stayAmountDue(stay: GuestStay): number {
+  const expected = stayPayments({ ...stay, receiptsInitialized: false, receipts: undefined, voidedPayments: undefined }).reduce((sum, payment) => sum + Math.round(payment.amount * 100), 0);
+  const paid = stayPayments(stay).reduce((sum, payment) => sum + Math.round(payment.amount * 100), 0);
+  return Math.max(0, expected - paid) / 100;
 }
 
 export function roomChargePayments(charge: RoomCharge): RoomChargePayment[] {

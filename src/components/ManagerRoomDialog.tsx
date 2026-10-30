@@ -1,3 +1,4 @@
+import { StayAccount } from './StayAccount';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { releaseOccupiedRoom, saveHousekeepingRoom, subscribeReservationCollections, subscribeReservationExtras, subscribeReservationRecord, updateRoomMaintenanceStatus } from '../services/housekeepingStore';
@@ -52,10 +53,7 @@ export function ManagerRoomDialog({ number, room, receptionRoom, occupant, stay,
   useEffect(() => {
     const previousFocus = document.activeElement;
     closeButton.current?.focus();
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
     return () => {
-      document.body.style.overflow = previousOverflow;
       if (previousFocus instanceof HTMLElement) previousFocus.focus();
     };
   }, []);
@@ -155,6 +153,7 @@ export function ManagerRoomDialog({ number, room, receptionRoom, occupant, stay,
         {(reservation?.note || stay?.note) && <p className="manager-room-note">{reservation?.note || stay?.note}</p>}
         {charges.length > 0 && <p className="manager-room-note">Adicionais do quarto: {charges.map((charge) => `${charge.productName ?? charge.guestName} · ${money(charge.amount)}`).join('; ')}</p>}
       </div>}
+      {stay && <StayAccount stay={stay} charges={charges} attendant="Gerência" onSaved={onSaved} />}
       {error && <p className="dashboard-room-charge-error" role="alert">{error}</p>}
       {confirmRelease ? <div className="manager-room-release-confirm">
         <p>Encerrar a hospedagem de <strong>{occupant?.name}</strong> e liberar o quarto para limpeza? Os pagamentos registrados serão preservados.</p>

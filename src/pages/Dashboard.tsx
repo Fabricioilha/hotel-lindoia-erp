@@ -1,9 +1,12 @@
+import { StayAccount } from '../components/StayAccount';
+import { checkoutQuery, requestCheckout } from '../services/checkoutClient';
+import { currentOccupants, stayOccupiesDate, reservationOccupiesDate } from '../services/occupantDirectory';
 import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAttendant } from '../services/useAttendant';
 import type { UserRole } from '../types';
 import { subscribeDashboardHousekeeping, subscribeCurrentReservationDirectory, subscribeReservationCollections, subscribeRoomCategories, subscribeRoomDirectory, syncReservationCollections, type DashboardHousekeepingData } from '../services/housekeepingStore';
-import { guestStayOccupiesToday, hotelOccupancySummary, occupiedRoomNumbers, reservationOccupiesToday } from '../services/reservationAnalytics';
+import { departureDue, guestStayOccupiesToday, hotelOccupancySummary, occupiedRoomNumbers } from '../services/reservationAnalytics';
 import { subscribeRoomAddOnInventory } from '../services/frigobarStore';
 import { convertRotativoToDaily, emptyReception, localDateKey, saveRoomCharge, subscribeReceptionBoard, subscribeReceptionRates } from '../services/receptionStore';
 import { emptyCleaning, subscribeActiveCleaningTasks, subscribeDashboardCleaningTasks } from '../services/cleaningStore';
@@ -60,6 +63,15 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   const [boardReservationsLoadedKey, setBoardReservationsLoadedKey] = useState('');
   const [boardReceptionLoadedKey, setBoardReceptionLoadedKey] = useState('');
   const [clock, setClock] = useState(() => Date.now());
+  const [checkoutAlertError, setCheckoutAlertError] = useState('');
+  const [checkoutAlerts, setCheckoutAlerts] = useState<{ sourceType: 'stay' | 'reservation'; sourceId: string; roomNumber: string; guestName: string; pending: number }[]>([]);
+  useEffect(() => {
+    const controller = new AbortController();
+    void checkoutQuery<typeof checkoutAlerts>('', controller.signal).then((alerts) => { setCheckoutAlerts(alerts); setCheckoutAlertError(''); }).catch(() => {
+      if (!controller.signal.aborted) setCheckoutAlertError('Alertas de pendências indisponíveis. Confira os débitos antes de liberar o quarto.');
+    });
+    return () => controller.abort();
+  }, [clock, userRole, boardStays]);
   const boardTodayKey = localDateKey(new Date(clock));
   const boardWeekday = weekdayKey(boardTodayKey);
   const todayHoliday = receptionRates.holidays[boardTodayKey];
@@ -96,13 +108,6 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
     reservations: reservationDirectory,
     attendant,
   }), [attendant, boardStays, receptionRooms, roomDirectory, reservationDirectory]);
-
-  useEffect(() => {
-    if (!activeTool) return;
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-    return () => { document.body.style.overflow = previousOverflow; };
-  }, [activeTool]);
 
   function closeTool() {
     setActiveTool(null);
@@ -327,6 +332,9 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
             <p>Acesse os serviços do hotel e acompanhe a operação.</p>
           </div>
         </section>
+
+        {checkoutAlertError && <p className="dashboard-checkout-warning" role="status">{checkoutAlertError}</p>}
+        {checkoutAlerts.length > 0 && <div className="notice notice-error" role="alert"><strong>Saídas de hoje com pendências — conferir antes do checkout:</strong>{checkoutAlerts.map((item) => <p key={`${item.sourceType}-${item.sourceId}`}>Quarto {item.roomNumber} · {item.guestName} · {money(item.pending)} pendentes. Confira a hospedagem com a gerência e as vendas a cobrar. <button type="button" onClick={() => setActiveTool('geladeira')}>Conferir geladeira</button></p>)}</div>}
         {syncError && <div className="notice notice-error" role="alert">{syncError}</div>}
         {displayedNotice && <div key={displayedNotice.id} className="dashboard-toast" role="status"><span aria-hidden="true">✓</span>{displayedNotice.message}</div>}
 
@@ -382,6 +390,8 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
           entryContext={userRole === 'admin' ? { ...receptionEntryContext, roomDirectory: housekeeping.rooms, reservations: housekeeping.reservations } : receptionEntryContext}
           onChargeSaved={showTemporaryNotice}
         />
+
+        <section className="dashboard-task-strip" aria-label="Prioridades do plantão"><a href="#room-board">Quartos e hospedagens<strong>Ver ocupação e saídas</strong><span>Abra o quarto para consultar a conta ou receber.</span></a><Link to="/limpeza">Limpeza<strong>{roomsInCleaning} em andamento</strong><span>Quartos aguardando limpeza ficam indisponíveis.</span></Link><Link to="/conferir-caixa">Caixa do plantão<strong>Conferir recebimentos</strong><span>Veja pagamentos, saídas e passagem de turno.</span></Link></section>
 
         {userRole === 'admin' && <section className="dashboard-modules">
           <div className="dashboard-section-heading">
@@ -480,7 +490,7 @@ interface BoardOccupant {
 
 type RoomBoardAction = RoomChargeKind | 'conversao_diaria';
 
-function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, stays, roomCharges, reservations, loaded, now, attendant, userRole, entryContext, onChargeSaved }: {
+function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, stays: currentStays, roomCharges, reservations: currentReservations, loaded, now, attendant, userRole, entryContext, onChargeSaved }: {
   rooms: Record<string, HousekeepingRoom>;
   cleaningRoomNumbers: ReadonlySet<string>;
   cleaningTasks: CleaningTask[];
@@ -523,7 +533,24 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
   const [splitAmount, setSplitAmount] = useState('');
   const [chargeError, setChargeError] = useState('');
   const [savingCharge, setSavingCharge] = useState(false);
-  const today = localDateKey(new Date(now));
+  const actualToday = localDateKey(new Date(now));
+  const [selectedDate, setSelectedDate] = useState('');
+  const today = selectedDate || actualToday;
+  const historical = today !== actualToday;
+  const isPast = today < actualToday;
+  const [history, setHistory] = useState<{ date: string; stays: Record<string, GuestStay>; reservations: Record<string, ReservationDirectoryEntry> } | null>(null);
+  const [historyError, setHistoryError] = useState('');
+  useEffect(() => {
+    if (!isPast) return;
+    const controller = new AbortController();
+    void checkoutQuery<{ stays: Record<string, GuestStay>; reservations: Record<string, ReservationDirectoryEntry> }>('?action=history&date=' + today, controller.signal)
+      .then((data) => { setHistory({ date: today, ...data }); setHistoryError(''); })
+      .catch((cause) => { if (!controller.signal.aborted) setHistoryError(cause.message); });
+    return () => controller.abort();
+  }, [isPast, today]);
+  const stays = isPast ? history?.date === today ? history.stays : {} : currentStays;
+  const reservations = isPast ? history?.date === today ? history.reservations : {} : currentReservations;
+  const boardLoaded = loaded && (!isPast || history?.date === today);
   const roomsByNumber = new Map(Object.values(rooms).map((room) => [room.number, room]));
   const receptionRoomsByNumber = new Map(Object.values(receptionRooms).map((room) => [room.number, room]));
   const roomNumbers = [...new Set([
@@ -531,19 +558,21 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
     ...Object.values(receptionRooms).map((room) => room.number),
   ])].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
 
+  const currentSelection = new Map(currentOccupants(stays, reservations, today, now).map((item) => [item.roomNumber, item]));
   const occupants = new Map<string, BoardOccupant>();
   const addOccupant = (roomNumber: string, candidate: Omit<BoardOccupant, 'roomNumber'>) => {
+    if (!historical && (currentSelection.get(roomNumber.trim())?.sourceId !== candidate.sourceId || currentSelection.get(roomNumber.trim())?.sourceType !== candidate.sourceType)) return;
     const current = occupants.get(roomNumber);
     if (!current || candidate.startDate >= current.startDate) occupants.set(roomNumber, { ...candidate, roomNumber });
   };
   Object.values(stays).forEach((stay) => {
-    if (!stay.roomNumber || !guestStayOccupiesToday(stay, today, now)) return;
+    if (!stay.roomNumber || !stayOccupiesDate(stay, today, actualToday, now)) return;
     addOccupant(stay.roomNumber, {
       sourceType: 'stay',
       sourceId: stay.id,
       name: (stay.guestName ?? '').trim() || 'Titular não informado',
       peopleCount: Math.max(1, Math.floor(stay.guestCount ?? (stay.hasAdditionalGuests ? 2 : 1))),
-      includedBreakfastCount: stay.kind === 'hospede' && stay.hasBreakfast && today < dateKeyAfterDays(stay.checkInDate, stayBreakfastDays(stay))
+      includedBreakfastCount: stay.kind === 'hospede' && stay.hasBreakfast && today > stay.checkInDate && today <= dateKeyAfterDays(stay.checkInDate, stayBreakfastDays(stay))
         ? Math.max(1, Math.floor(stay.breakfastCount ?? 1))
         : 0,
       breakfastAllowed: stay.kind !== 'periodo',
@@ -553,7 +582,7 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
     });
   });
   Object.values(reservations).forEach((reservation) => {
-    if (!reservation.roomNumber || !reservationOccupiesToday(reservation, today, now)) return;
+    if (!reservation.roomNumber || !reservationOccupiesDate(reservation, today, actualToday, now)) return;
     addOccupant(reservation.roomNumber, {
       sourceType: 'reservation',
       sourceId: reservation.id,
@@ -799,11 +828,19 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
 
   return <section className="dashboard-rooms" aria-label="Situação dos quartos">
     <div className="dashboard-section-heading">
-      <div><p className="dashboard-eyebrow">{isAdmin ? 'GERÊNCIA' : 'RECEPÇÃO'}</p><h2>Quartos de hoje</h2>{isAdmin && <small>Clique no quarto para ver a reserva, liberar ou bloquear.</small>}</div>
-      {loaded && <small>{roomNumbers.length} quartos · {roomNumbers.filter((number) => occupants.has(number)).length} ocupados</small>}
+      <div><p className="dashboard-eyebrow">{isAdmin ? 'GERÊNCIA' : 'RECEPÇÃO'}</p><h2 id="room-board">{historical ? `Quartos em ${new Date(today + 'T12:00:00').toLocaleDateString('pt-BR')}` : 'Quartos de hoje'}</h2>{isAdmin && <small>Clique no quarto para ver a reserva, liberar ou bloquear.</small>}</div>
+      {boardLoaded && <small>{roomNumbers.length} quartos · {roomNumbers.filter((number) => occupants.has(number)).length} ocupados</small>}
     </div>
-    {!loaded
-      ? <p className="dashboard-rooms-empty">Carregando os quartos…</p>
+    <div className="dashboard-board-date">
+      {!isAdmin && <button type="button" className="dashboard-board-date-arrow" aria-label="Dia anterior" title="Dia anterior" onClick={() => { setSelectedDate(dateKeyAfterDays(today, -1)); setSelectedOccupant(null); setSelectedManagerRoom(''); setHistoryError(''); }}>‹</button>}
+      <label>Consultar dia <input type="date" value={today} onChange={(event) => { if (event.target.value) { setSelectedDate(event.target.value); setSelectedOccupant(null); setSelectedManagerRoom(''); setHistoryError(''); } }} /></label>
+      {!isAdmin && <button type="button" className="dashboard-board-date-arrow" aria-label="Dia seguinte" title="Dia seguinte" onClick={() => { setSelectedDate(dateKeyAfterDays(today, 1)); setSelectedOccupant(null); setSelectedManagerRoom(''); setHistoryError(''); }}>›</button>}
+      <button type="button" onClick={() => { setSelectedDate(''); setSelectedOccupant(null); setSelectedManagerRoom(''); setHistoryError(''); }}>Hoje</button>
+      {historical && <small>Consulta de ocupação. Limpeza e ações estão disponíveis na visão de hoje.</small>}
+    </div>
+    {isPast && historyError && <p role="alert">Não foi possível consultar a ocupação histórica. Volte a Hoje ou escolha uma data futura.</p>}
+    {!boardLoaded
+      ? <p className="dashboard-rooms-empty">{isPast && historyError ? 'Histórico indisponível nesta consulta.' : 'Carregando os quartos…'}</p>
       : roomNumbers.length === 0
         ? <p className="dashboard-rooms-empty">Nenhum quarto cadastrado.</p>
         : <div className="dashboard-room-grid">
@@ -812,8 +849,8 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
             const roomProfile = receptionRoomsByNumber.get(number);
             const occupant = occupants.get(number);
             const cleaningTask = cleaningTasks.find((task) => task.roomNumber.trim() === number.trim() && task.status === 'em_limpeza');
-            const isCleaning = room?.cleaningStatus === 'em_limpeza' || cleaningRoomNumbers.has(number);
-            const inMaintenance = !occupant && room?.maintenanceStatus === 'em_manutencao';
+            const isCleaning = !historical && (room?.cleaningStatus === 'em_limpeza' || cleaningRoomNumbers.has(number));
+            const inMaintenance = !historical && !occupant && room?.maintenanceStatus === 'em_manutencao';
             const typeDescription = room?.categoryName || room?.bedComposition
               ? roomCategoryDescription(room)
               : roomProfile
@@ -830,9 +867,10 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
               : room?.bedCount
               ? `${typeDescription.split(' · ')[0]} · ${room.bedCount} ${room.bedCount === 1 ? 'cama' : 'camas'}`
               : typeDescription;
-            const status = occupant ? 'occupied' : inMaintenance ? 'maintenance' : 'free';
-            const statusLabel = status === 'occupied' ? 'Ocupado' : status === 'maintenance' ? 'Em manutenção' : 'Livre';
-            const unavailable = Boolean(inMaintenance);
+            const awaitingCheckout = !historical && occupant && !occupant.rotativo && departureDue(occupant.checkOutDate, now);
+            const status = awaitingCheckout ? 'checkout' : occupant ? 'occupied' : inMaintenance ? 'maintenance' : 'free';
+            const statusLabel = status === 'checkout' ? 'Saída pendente' : status === 'occupied' ? historical && occupant?.sourceType === 'reservation' && reservations[occupant.sourceId]?.status === 'confirmada' ? 'Reservado' : 'Ocupado' : status === 'maintenance' ? 'Em manutenção' : 'Livre';
+            const unavailable = Boolean(inMaintenance || (!occupant && room && room.cleaningStatus !== 'limpo') || (!occupant && isCleaning));
             const cleaningLabel = isCleaning ? ', em limpeza' : '';
             const occupantCharges = occupant ? chargesForOccupant(occupant) : [];
             const activeExtraGuests = occupantCharges.filter((charge) => charge.kind === 'hospede_extra'
@@ -850,9 +888,9 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
               type="button"
               className={`dashboard-room is-${status}${isCleaning ? ' is-cleaning' : ''}`}
               key={number}
-              disabled={!isAdmin && unavailable}
+              disabled={historical || (!isAdmin && unavailable)}
               title={isAdmin ? `Gerenciar quarto ${number}${cleaningLabel}` : unavailable ? `Quarto ${number} ${statusLabel.toLocaleLowerCase('pt-BR')} e indisponível${cleaningLabel}` : occupant ? `Adicionar hóspede, café, cama ou bebida ao quarto ${number}${cleaningLabel}` : `Adicionar hóspede ou rotativo ao quarto ${number}${cleaningLabel}`}
-              aria-label={isAdmin ? `Quarto ${number}, ${statusLabel.toLocaleLowerCase('pt-BR')}${occupant ? ` por ${occupant.name}` : ''}${cleaningLabel}. Abrir opções da gerência.` : unavailable ? `Quarto ${number}, ${statusLabel.toLocaleLowerCase('pt-BR')}, indisponível${cleaningLabel}` : occupant ? `Quarto ${number}, ocupado por ${occupant.name}${cleaningLabel}. Abrir opções do quarto.` : `Quarto ${number}, livre${cleaningLabel}. Adicionar hóspede ou rotativo.`}
+              aria-label={isAdmin ? `Quarto ${number}, ${statusLabel.toLocaleLowerCase('pt-BR')}${occupant ? ` por ${occupant.name}` : ''}${cleaningLabel}. Abrir opções da gerência.` : unavailable ? `Quarto ${number}, ${statusLabel.toLocaleLowerCase('pt-BR')}, indisponível${cleaningLabel}` : occupant ? `Quarto ${number}, ${statusLabel.toLocaleLowerCase('pt-BR')} por ${occupant.name}${cleaningLabel}. Abrir opções do quarto.` : `Quarto ${number}, livre${cleaningLabel}. Adicionar hóspede ou rotativo.`}
               onClick={() => isAdmin
                 ? setSelectedManagerRoom(number)
                 : occupant
@@ -865,11 +903,11 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
               </div>
               <small className="dashboard-room-type">{description}</small>
               {isCleaning && <small className="dashboard-room-cleaning"><RoomStatusIcon status="cleaning" />Em limpeza</small>}
-              {isAdmin && !isCleaning && room && <small className={`dashboard-room-cleanliness is-${room.cleaningStatus}`}>{room.cleaningStatus === 'limpo' ? 'Limpo' : 'Aguardando limpeza'}</small>}
+              {!historical && !isCleaning && room && <small className={`dashboard-room-cleanliness is-${room.cleaningStatus}`}>{room.cleaningStatus === 'limpo' ? 'Limpo' : 'Aguardando limpeza'}</small>}
               {isAdmin && cleaningTask && <small className="dashboard-room-extra-guest">Camareira: {cleaningTask.camareira}</small>}
               <div className="dashboard-room-stats" aria-label={`${peopleLabel} no quarto e ${breakfastLabel} hoje`}>
                 <span className={peopleToday > 0 ? 'has-value' : ''} title={peopleLabel} aria-label={peopleLabel}><PeopleIcon />{peopleToday}</span>
-                <span className={breakfastsToday > 0 ? 'has-value' : ''} title={breakfastLabel} aria-label={breakfastLabel}><BreakfastIcon />{breakfastsToday}</span>
+                <span className={breakfastsToday > 0 ? 'has-value has-breakfast' : 'no-breakfast'} title={breakfastLabel} aria-label={breakfastLabel}><BreakfastIcon />{breakfastsToday > 0 ? `${breakfastsToday} Café` : 'Sem café'}</span>
               </div>
               {occupant
                 ? <>
@@ -896,11 +934,20 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
       />
     </Suspense>}
     {selectedOccupant && <div className="dashboard-room-charge-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingCharge) setSelectedOccupant(null); }}>
-      <form className="dashboard-room-charge-modal" role="dialog" aria-modal="true" aria-labelledby="room-charge-title" onSubmit={(event) => void submitRoomCharge(event)}>
+      <form className="dashboard-room-charge-modal dashboard-occupied-room-modal" role="dialog" aria-modal="true" aria-labelledby="room-charge-title" onSubmit={(event) => void submitRoomCharge(event)}>
         <header className="dashboard-room-charge-header">
           <div><p className="dashboard-eyebrow">QUARTO {selectedOccupant.roomNumber}</p><h2 id="room-charge-title">Opções do quarto</h2><small>Titular: {selectedOccupant.name}</small></div>
           <button type="button" className="dashboard-room-charge-close" aria-label="Fechar" disabled={savingCharge} onClick={() => setSelectedOccupant(null)}>×</button>
         </header>
+        {!selectedOccupant.rotativo && departureDue(selectedOccupant.checkOutDate, now) && <p className="dashboard-room-checkout-notice" role="status">Saída prevista para {selectedOccupant.checkOutDate.split('-').reverse().join('/')} às 12h. O encerramento ainda precisa ser confirmado; confira a conta e libere o quarto para limpeza.</p>}
+        <button type="button" className="dashboard-room-release-button" disabled={savingCharge} onClick={() => {
+          if (!window.confirm('Encerrar a hospedagem e liberar o quarto para limpeza?')) return;
+          setSavingCharge(true); setChargeError('');
+          void requestCheckout({ sourceType: selectedOccupant.sourceType, sourceId: selectedOccupant.sourceId })
+            .then(() => { setSelectedOccupant(null); onChargeSaved('Quarto liberado para limpeza.'); })
+            .catch((cause) => setChargeError(cause.message)).finally(() => setSavingCharge(false));
+        }}><span aria-hidden="true">↗</span>{savingCharge ? 'Liberando…' : 'Liberar quarto para limpeza'}</button>
+        {selectedOccupant.sourceType === 'stay' && stays[selectedOccupant.sourceId] && <StayAccount stay={stays[selectedOccupant.sourceId]} charges={chargesForOccupant(selectedOccupant)} attendant={attendant} onSaved={onChargeSaved} />}
         <fieldset className="dashboard-room-charge-types">
           <legend>O que deseja fazer?</legend>
           <label><input type="radio" name="roomChargeKind" value="hospede_extra" checked={chargeKind === 'hospede_extra'} onChange={() => changeChargeKind('hospede_extra')} /><span>Hóspede extra</span></label>
@@ -1000,7 +1047,8 @@ function ClockIcon() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>;
 }
 
-function RoomStatusIcon({ status }: { status: 'occupied' | 'free' | 'maintenance' | 'cleaning' }) {
+function RoomStatusIcon({ status }: { status: 'occupied' | 'free' | 'maintenance' | 'cleaning' | 'checkout' }) {
+  if (status === 'checkout') return <ClockIcon />;
   const path = status === 'occupied'
     ? <><circle cx="12" cy="8" r="3" /><path d="M5.5 20a6.5 6.5 0 0 1 13 0" /></>
     : status === 'free'

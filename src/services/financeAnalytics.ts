@@ -14,6 +14,9 @@ export function balancesAt(data: FinanceData, month: string): FinanceBalances {
 
 export function balancesAtDate(data: FinanceData, endDate: string): FinanceBalances {
   const balances = { cash: financeCents(data.openingBalances.cash), bank: financeCents(data.openingBalances.bank), oyo: financeCents(data.openingBalances.oyo) };
+  Object.values(data.cashAdjustments ?? {}).filter((item) => item.date <= endDate).forEach((item) => {
+    if (Number.isFinite(item.amount)) balances.cash += financeCents(item.amount);
+  });
   Object.values(data.incomes).filter((item) => item.date <= endDate && !data.suppressed[item.id]).forEach((item) => {
     incomeItems(item).forEach((line) => {
       const wallet = incomePaymentWallet(line.paymentMethod);

@@ -27,6 +27,7 @@ export function dateKeyAfterDays(days: number, date = new Date()): string {
 }
 
 export function stayCheckOutDate(stay: GuestStay): string {
+  if (stay.status === 'encerrado' && stay.checkedOutAt) return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(stay.checkedOutAt));
   if (stay.kind === 'periodo') {
     const end = rotativoStart(stay) + (stay.hours ?? 4) * 3_600_000;
     return Number.isFinite(end) ? localDateKey(new Date(end)) : '';
@@ -43,6 +44,12 @@ function rotativoStart(stay: GuestStay): number {
   return Number.isFinite(createdAt) ? createdAt : Date.parse(`${stay.checkInDate}T12:00:00`);
 }
 
+/** Scheduled departures use hotel time, regardless of the device timezone. */
+export function departureDue(checkOutDate: string, now: number): boolean {
+  const deadline = Date.parse(`${checkOutDate}T12:00:00-03:00`);
+  return Number.isFinite(deadline) && now >= deadline;
+}
+
 export function guestStayOccupiesToday(stay: GuestStay, today: string, now: number): boolean {
   if (stay.status !== 'hospedado') return false;
   if (stay.kind === 'periodo') {
@@ -50,6 +57,8 @@ export function guestStayOccupiesToday(stay: GuestStay, today: string, now: numb
     const start = rotativoStart(stay);
     return Number.isFinite(start) && now >= start && now < start + (stay.hours ?? 4) * 3_600_000;
   }
+  // Legacy records may retain "hospedado" after departure. Status alone is
+  // not evidence of current occupancy; debts are handled separately.
   return stay.checkInDate <= today && today <= stayCheckOutDate(stay);
 }
 

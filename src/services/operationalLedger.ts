@@ -32,6 +32,14 @@ function income(id: string, date: string, category: string, description: string,
 
 export function stayFinanceEntries(stay: GuestStay): Record<string, FinanceIncome> {
   const entries: Record<string, FinanceIncome> = {};
+  if (stay.receiptsInitialized || stay.receipts) {
+    for (const receipt of Object.values(stay.receipts ?? {})) {
+      if (stay.voidedPayments?.[receipt.id]) continue;
+      entries[receipt.id] = income(receipt.id, receipt.date, receipt.category, receipt.label, receipt.amount, receipt.method, 'Quarto ' + stay.roomNumber + ' · ' + stay.guestName + ' · Plantão ' + receipt.attendant, receipt.createdAt);
+      if (receipt.cardFeeRate !== undefined) entries[receipt.id].items![0] = { ...entries[receipt.id].items![0], cardFeeRate: receipt.cardFeeRate, cardFeeAmount: receipt.cardFeeAmount, netAmount: receipt.netAmount };
+    }
+    return entries;
+  }
   const prefix = `recepcao-${stay.id}-`;
   const category = stay.kind === 'periodo' ? 'Rotativo' : 'Diária';
   const dailyTotal = cents(Math.max(0, stayDailyAmount(stay) - (stay.creditApplied ?? 0)));
@@ -69,7 +77,8 @@ export function stayFinanceEntryIds(stay: GuestStay): string[] {
 }
 
 export function stayOyoFeeExpense(stay: GuestStay): FinanceExpense | undefined {
-  const amount = cents(stayTaxPayments(stay).filter((payment) => payment.method !== 'prepaid'
+  const taxReceipts = Object.values(stay.receipts ?? {}).filter((receipt) => receipt.category === 'Taxas' && receipt.method !== 'prepaid' && !stay.voidedPayments?.[receipt.id]);
+  const amount = stay.receiptsInitialized || stay.receipts ? cents(taxReceipts.reduce((sum, receipt) => sum + receipt.amount, 0)) : cents(stayTaxPayments(stay).filter((payment) => payment.method !== 'prepaid'
     && !stay.voidedPayments?.[`recepcao-${stay.id}-${payment.id}`]).reduce((total, payment) => total + payment.amount, 0));
   if (!Number.isFinite(amount) || amount <= 0) return undefined;
   const id = `recepcao-${stay.id}-oyo-fee`;
@@ -82,7 +91,9 @@ export function stayOyoFeeExpense(stay: GuestStay): FinanceExpense | undefined {
     paidBank: 0,
     paidOyo: amount,
     paidDate: stay.checkInDate,
-    payments: { [`${id}-oyo`]: { id: `${id}-oyo`, date: stay.checkInDate, wallet: 'oyo', amount, dateSource: 'informed' } },
+    payments: stay.receiptsInitialized || stay.receipts
+      ? Object.fromEntries(taxReceipts.map((receipt) => [receipt.id, { id: receipt.id, date: receipt.date, wallet: 'oyo' as const, amount: receipt.amount, dateSource: 'informed' as const }]))
+      : { [`${id}-oyo`]: { id: `${id}-oyo`, date: stay.checkInDate, wallet: 'oyo', amount, dateSource: 'informed' } },
     note: [`Taxa cobrada no balcão e compensada com valores retidos pela OYO`, `Quarto ${stay.roomNumber}`, stay.guestName].filter(Boolean).join(' · '),
     createdAt: stay.createdAt,
     updatedAt: stay.createdAt,
@@ -152,7 +163,7 @@ export function withOperationalFinance(data: FinanceData, sources: OperationalFi
     if (data.suppressed[entry.id]) return;
     const saved = incomes[entry.id];
     if (!saved) incomes[entry.id] = entry;
-    else if (!saved.operationalOverride) incomes[entry.id] = { ...entry, createdAt: saved.createdAt, updatedAt: saved.updatedAt };
+    else if (!saved.operationalOverride) incomes[entry.id] = { ...entry, updatedAt: saved.updatedAt };
   };
   const addExpense = (entry: FinanceExpense, preserveSaved = false) => {
     if (data.suppressed[entry.id]) return;

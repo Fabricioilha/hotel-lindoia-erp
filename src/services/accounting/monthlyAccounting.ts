@@ -73,6 +73,7 @@ export interface MonthlyAccountingReport {
   obligations: AccountingObligation[];
   transfers: AccountingTransfer[];
   wallets: AccountingWallet[];
+  cashAdjustments: NonNullable<FinanceData['cashAdjustments']>[string][];
   totals: {
     direct: number; prepaid: number; repasses: number; sentToOyo: number;
     paidHotel: number; paidOyo: number; cashResult: number;
@@ -147,7 +148,7 @@ export function buildMonthlyAccountingReport(data: FinanceData, month: string, g
     }
     const planned = payrollNet(payroll);
     const pending = rounded(Math.max(0, planned - paidAtClosing));
-    if (payroll.month === month || inMonth(payroll.dueDate) || (payroll.dueDate < from && pending > 0)) obligations.push({ dueDate: payroll.dueDate, type: 'Folha', competence: payroll.month, category: 'Folha de pagamento', employee: payroll.employee, planned, paid: rounded(paidAtClosing), pending, status: pending <= 0 ? 'Quitada até o fechamento' : payroll.dueDate < from ? 'Pendente de mês anterior' : paidAtClosing > 0 ? 'Parcialmente paga' : 'A pagar', reference: payroll.id, note: `${payroll.note}${payroll.note ? ' · ' : ''}Base ${payroll.basePay}; adicionais ${payroll.additions}; descontos ${payroll.deductions}` });
+    if (payroll.month === month || inMonth(payroll.dueDate) || (payroll.dueDate < from && pending > 0)) obligations.push({ dueDate: payroll.dueDate, type: 'Folha', competence: payroll.month, category: 'Folha de pagamento', employee: payroll.employee, planned, paid: rounded(paidAtClosing), pending, status: pending <= 0 ? 'Quitada até o fechamento' : payroll.dueDate < from ? 'Pendente de mês anterior' : paidAtClosing > 0 ? 'Parcialmente paga' : 'A pagar', reference: payroll.id, note: `${payroll.note}${payroll.note ? ' · ' : ''}Base ${payroll.basePay}; adicionais ${payroll.additions}; descontos ${payroll.deductions}; adiantamentos compensados ${Object.values(payroll.advances ?? {}).reduce((sum, amount) => sum + amount, 0)}` });
   }
 
   for (const transfer of Object.values(data.transfers)) {
@@ -159,6 +160,8 @@ export function buildMonthlyAccountingReport(data: FinanceData, month: string, g
     if (transfer.to !== 'oyo') incoming[transfer.to] += transfer.amount;
   }
 
+  const cashAdjustments = Object.values(data.cashAdjustments ?? {}).filter((item) => inMonth(item.date)).sort((a, b) => a.date.localeCompare(b.date) || a.id.localeCompare(b.id));
+  cashAdjustments.forEach((item) => { if (item.amount > 0) incoming.cash += item.amount; else outgoing.cash -= item.amount; });
   const opening = balancesAt(data, previousMonth);
   const closing = balancesAt(data, month);
   const wallets: AccountingWallet[] = (['cash', 'bank', 'oyo'] as FinanceWallet[]).map((wallet) => {
@@ -176,5 +179,5 @@ export function buildMonthlyAccountingReport(data: FinanceData, month: string, g
   payments.sort((a, b) => a.date.localeCompare(b.date) || a.reference.localeCompare(b.reference));
   obligations.sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.reference.localeCompare(b.reference));
   transfers.sort((a, b) => a.date.localeCompare(b.date) || a.reference.localeCompare(b.reference));
-  return { month, from, to, generatedAt, receipts, prepaid, payments, obligations, transfers, wallets, totals: { direct, prepaid: prepaidTotal, repasses, sentToOyo, paidHotel, paidOyo, cashResult: rounded(direct + repasses - paidHotel - sentToOyo), pendingMonth: sum(obligations.filter((row) => row.competence === month), (row) => row.pending), pendingOverdue: sum(obligations.filter((row) => row.dueDate < from && row.competence !== month), (row) => row.pending) }, legacyPaymentCount: payments.filter((row) => row.dateSource !== 'Informada').length };
+  return { month, from, to, generatedAt, cashAdjustments, receipts, prepaid, payments, obligations, transfers, wallets, totals: { direct, prepaid: prepaidTotal, repasses, sentToOyo, paidHotel, paidOyo, cashResult: rounded(direct + repasses - paidHotel - sentToOyo), pendingMonth: sum(obligations.filter((row) => row.competence === month), (row) => row.pending), pendingOverdue: sum(obligations.filter((row) => row.dueDate < from && row.competence !== month), (row) => row.pending) }, legacyPaymentCount: payments.filter((row) => row.dateSource !== 'Informada').length };
 }

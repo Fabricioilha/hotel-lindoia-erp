@@ -1,3 +1,4 @@
+import { availablePayrollAdvances } from '../../services/payrollAdvances';
 import { useStaff } from '../../services/staffStore';
 import { findStaff, staffMembers } from '../../types/staff';
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
@@ -42,6 +43,11 @@ export function FolhaDePagamento() {
 	const [saving, setSaving] = useState(false);
 	const [error, setError] = useState('');
 	const [notice, setNotice] = useState('');
+  const [draftEmployee, setDraftEmployee] = useState('');
+  const [draftMonth, setDraftMonth] = useState(month);
+  const [applyAdvances, setApplyAdvances] = useState(true);
+  const eligibleAdvances = availablePayrollAdvances(data, { id: editingId, employee: draftEmployee, employeeId: findStaff(staff, draftEmployee)?.id, month: draftMonth });
+  const advanceTotal = Object.values(eligibleAdvances).reduce((sum, value) => sum + value, 0);
 
 	useEffect(() => subscribeFinance((next) => { setData(next); setLoading(false); setError(''); }, (cause) => { setError(cause.message); setLoading(false); }, { includeOperations: false }), []);
 
@@ -88,7 +94,11 @@ export function FolhaDePagamento() {
 		const paymentDate = String(form.get('paidDate') ?? '');
 		if (!isFinanceDateKey(dueDate) || !isFinanceDateKey(paymentDate)) { setError('Confira o vencimento e a data do pagamento ou correção.'); return; }
 		try { financeMonthRange(competence); } catch { setError('Informe a competência da folha.'); return; }
-		const next: PayrollEntry = {
+    const advances = applyAdvances ? availablePayrollAdvances(data, { id: current?.id ?? editingId, employee, employeeId: findStaff(staff, employee)?.id, month: competence }) : {};
+    const advanceSum = Object.values(advances).reduce((sum, value) => sum + value, 0);
+    if (Math.round((deductions + advanceSum) * 100) > Math.round((basePay + additions) * 100) || Math.round((paidCash + paidBank) * 100) > Math.round((basePay + additions - deductions - advanceSum) * 100)) { setError('Os adiantamentos reduzem o saldo a pagar. Confira descontos e pagamentos da folha.'); return; }
+    const next: PayrollEntry = {
+      advances,
 			id: current?.id ?? editingId,
 			month: competence,
 			dueDate,
@@ -133,6 +143,8 @@ export function FolhaDePagamento() {
 	}
 
 	function openEntry(entryId = '') {
+    const record = entries.find((entry) => entry.id === entryId);
+    setDraftEmployee(record?.employee ?? ''); setDraftMonth(record?.month ?? month); setApplyAdvances(!record || Boolean(record.advances));
 		setEditingId(entryId || createId());
 		setEditingRecord(entries.find((entry) => entry.id === entryId) ?? null);
 		setError('');
@@ -141,11 +153,11 @@ export function FolhaDePagamento() {
 
 	function exportPayroll() {
 		exportCsv(`folha-${month}.csv`, [
-			['Competência', 'Vencimento', 'Funcionário', 'Função', 'Salário-base', 'Acréscimos', 'Descontos', 'Líquido', 'Pago em caixa', 'Pago em banco', 'Total pago', 'Pendente', 'Observação'],
+			['Competência', 'Vencimento', 'Funcionário', 'Função', 'Salário-base', 'Acréscimos', 'Outros descontos', 'Adiantamentos compensados', 'Líquido', 'Pago em caixa', 'Pago em banco', 'Total pago', 'Pendente', 'Observação'],
 			...entries.map((entry) => {
 				const net = payrollNet(entry);
 				const paidTotal = entry.paidCash + entry.paidBank;
-				return [month, entry.dueDate, entry.employee, entry.position, entry.basePay, entry.additions, entry.deductions, net, entry.paidCash, entry.paidBank, paidTotal, Math.max(0, net - paidTotal), entry.note];
+				return [month, entry.dueDate, entry.employee, entry.position, entry.basePay, entry.additions, entry.deductions, Object.values(entry.advances ?? {}).reduce((sum, value) => sum + value, 0), net, entry.paidCash, entry.paidBank, paidTotal, Math.max(0, net - paidTotal), entry.note];
 			}),
 		]);
 	}
@@ -180,31 +192,32 @@ export function FolhaDePagamento() {
 							const net = payrollNet(entry);
 							const paidTotal = entry.paidCash + entry.paidBank;
 							const status = paidTotal >= net ? 'Pago' : paidTotal > 0 ? 'Parcial' : 'Pendente';
-							return <tr key={entry.id}><td><strong>{entry.employee}</strong>{entry.position && <small>{entry.position}</small>}{entry.note && <small>{entry.note}</small>}</td><td>{dateLabel(entry.dueDate)}</td><td className="numeric">{money(entry.basePay)}</td><td className="numeric">{money(entry.additions)}</td><td className="numeric">{money(entry.deductions)}</td><td className="numeric"><strong>{money(net)}</strong></td><td className="numeric">{money(paidTotal)}<small>{money(entry.paidCash)} caixa · {money(entry.paidBank)} banco</small></td><td><span className={`payroll-status status-${status.toLowerCase()}`}>{status}</span></td><td><div className="finance-row-actions"><button onClick={() => openEntry(entry.id)}>Editar</button><button className="danger" onClick={() => void removeEntry(entry)}>Excluir</button></div></td></tr>;
+							return <tr key={entry.id}><td><strong>{entry.employee}</strong>{entry.position && <small>{entry.position}</small>}{entry.note && <small>{entry.note}</small>}</td><td>{dateLabel(entry.dueDate)}</td><td className="numeric">{money(entry.basePay)}</td><td className="numeric">{money(entry.additions)}</td><td className="numeric">{money(entry.deductions)}<small>{money(Object.values(entry.advances ?? {}).reduce((sum, value) => sum + value, 0))} em adiantamentos</small></td><td className="numeric"><strong>{money(net)}</strong></td><td className="numeric">{money(paidTotal)}<small>{money(entry.paidCash)} caixa · {money(entry.paidBank)} banco</small></td><td><span className={`payroll-status status-${status.toLowerCase()}`}>{status}</span></td><td><div className="finance-row-actions"><button onClick={() => openEntry(entry.id)}>Editar</button><button className="danger" onClick={() => void removeEntry(entry)}>Excluir</button></div></td></tr>;
 						})}</tbody><tfoot><tr><th colSpan={5}>Total da competência</th><th className="numeric">{money(planned)}</th><th className="numeric">{money(paid)}</th><th colSpan={2}>{money(pending)} pendentes</th></tr></tfoot></table></div>}
 					</section>
 				</>}
 				<footer className="finance-page-footer"><span>Armazenamento: {financeStorageMode}</span><span>Folha · valores informados manualmente</span></footer>
 			</main>
 
-			{modal && <div className="finance-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setModal(false); }}><section className="finance-modal" role="dialog" aria-modal="true" aria-labelledby="finance-modal-title"><form onSubmit={saveEntry}>
+			{modal && <div className="finance-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !saving) setModal(false); }}><section className="finance-modal" role="dialog" aria-modal="true" aria-labelledby="finance-modal-title"><form data-guard-unsaved onSubmit={saveEntry}>
 				<div className="finance-modal-header"><div><p className="finance-eyebrow">FOLHA DE PAGAMENTO</p><h2 id="finance-modal-title">{selected ? 'Editar lançamento' : 'Novo lançamento'}</h2></div><button type="button" className="finance-close" onClick={() => setModal(false)} aria-label="Fechar" disabled={saving}>×</button></div>
 				{error && <p className="finance-alert" role="alert">{error}</p>}
 				<fieldset className="finance-modal-body" disabled={saving} style={{ border: 0, margin: 0, minWidth: 0 }}>
-					<label className="finance-field"><span>Funcionário *</span><select name="employee" required defaultValue={selected?.employee ?? ''}><option value="">Selecione...</option>{[...new Set([...staffMembers(staff).map((member) => member.name), ...(selected ? [selected.employee] : [])])].map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+					<label className="finance-field"><span>Funcionário *</span><select name="employee" required value={draftEmployee} onChange={(event) => setDraftEmployee(event.target.value)}><option value="">Selecione...</option>{[...new Set([...staffMembers(staff).map((member) => member.name), ...(selected ? [selected.employee] : [])])].map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
 					<label className="finance-field"><span>Função</span><input name="position" defaultValue={selected?.position} placeholder="Cargo / setor" /></label>
-					<label className="finance-field"><span>Competência da folha *</span><input name="competence" type="month" required defaultValue={selected?.month ?? month} /></label>
+					<label className="finance-field"><span>Competência da folha *</span><input name="competence" type="month" required value={draftMonth} onChange={(event) => setDraftMonth(event.target.value)} /></label>
 					<label className="finance-field"><span>Vencimento *</span><DateInput name="dueDate" required defaultValue={selected?.dueDate ?? monthDueDate(month)} /></label>
 					<label className="finance-field"><span>Salário-base *</span><input name="basePay" type="number" min="0" step="0.01" required defaultValue={selected?.basePay ?? 0} /></label>
 					<label className="finance-field"><span>Acréscimos</span><input name="additions" type="number" min="0" step="0.01" defaultValue={selected?.additions ?? 0} /></label>
-					<label className="finance-field"><span>Descontos</span><input name="deductions" type="number" min="0" step="0.01" defaultValue={selected?.deductions ?? 0} /></label>
-					<label className="finance-field"><span>Pago em dinheiro</span><input name="paidCash" type="number" min="0" step="0.01" defaultValue={selected?.paidCash ?? 0} /></label>
+					<label className="finance-field"><span>Outros descontos (sem adiantamentos)</span><input name="deductions" type="number" min="0" step="0.01" defaultValue={selected?.deductions ?? 0} /></label>
+					<label className="finance-field"><span>Compensar adiantamentos</span><span><input type="checkbox" checked={applyAdvances} onChange={(event) => setApplyAdvances(event.target.checked)} /> Descontar {money(advanceTotal)} já pagos nesta competência</span><small>O adiantamento já saiu do caixa. A compensação reduz o saldo da folha sem criar outra saída.</small></label>
+          <label className="finance-field"><span>Pago em dinheiro</span><input name="paidCash" type="number" min="0" step="0.01" defaultValue={selected?.paidCash ?? 0} /></label>
 					<label className="finance-field"><span>Pago pelo banco</span><input name="paidBank" type="number" min="0" step="0.01" defaultValue={selected?.paidBank ?? 0} /></label>
 					<label className="finance-field finance-field-wide"><span>Data do novo pagamento ou correção *</span><DateInput name="paidDate" required defaultValue={financeDateKeyFromTimestamp(new Date().toISOString())} /></label>
 					<p className="finance-form-hint finance-field-wide">Informe os totais já pagos. A diferença em relação ao valor salvo é registrada na data acima, preservando os pagamentos anteriores.</p>
 					{selectedPayments.length > 0 && <fieldset className="finance-field-wide finance-payment-history"><legend>Pagamentos registrados</legend><p className="finance-form-hint">Corrija a data de uma parcela somente quando necessário. Os outros pagamentos mantêm suas datas.</p>{selectedPayments.map((payment, index) => <div key={payment.id} className="finance-payment-event"><div><strong>Parcela {index + 1} · {money(payment.amount)}</strong><small>{WALLET_LABELS[payment.wallet]}{payment.dateSource === 'legacy_due_date' ? ' · registro antigo sem data de pagamento' : ''}</small></div><label className="finance-field"><span>Data da parcela {index + 1}</span><DateInput name={`paymentDate-${payment.id}`} required defaultValue={payment.date} /></label>{payment.dateSource === 'legacy_due_date' && <label className="finance-confirm-date"><input type="checkbox" name={`confirmDate-${payment.id}`} />Confirmar esta data de pagamento</label>}</div>)}</fieldset>}
 					<label className="finance-field finance-field-wide"><span>Observação</span><textarea name="note" rows={2} defaultValue={selected?.note} /></label>
-					<p className="finance-form-hint finance-field-wide">Líquido = salário-base + acréscimos - descontos. Informe manualmente encargos e descontos conforme a folha oficial.</p>
+					<p className="finance-form-hint finance-field-wide">Saldo líquido da folha = salário-base + acréscimos − outros descontos − adiantamentos vinculados. Informe manualmente encargos e descontos conforme a folha oficial.</p>
 				</fieldset>
 				<div className="finance-modal-footer"><button type="button" className="finance-button finance-button-soft" onClick={() => setModal(false)} disabled={saving}>Cancelar</button><button className="finance-button finance-button-primary" type="submit" disabled={saving}>{saving ? 'Salvando...' : selected ? 'Salvar alterações' : 'Registrar folha'}</button></div>
 			</form></section></div>}

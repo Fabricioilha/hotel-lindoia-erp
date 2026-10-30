@@ -163,9 +163,10 @@ function offlineStore(state) {
   };
   function load(path) {
     const filename = resolve(root, path);
-    if (filename.endsWith('/config/firebase.ts')) return { db: {} };
-    if (filename.endsWith('/types/audit.ts')) return { buildAuditEvents: () => ({}) };
-    if (filename.endsWith('/services/cleaningStore.ts')) return {
+    if (filename.replaceAll('\\', '/').endsWith('/services/checkoutClient.ts')) return { requestCheckout: async (target) => domainModule('src/services/checkoutPolicy.ts').applyCheckout(state.erp_geral, target, new Date(), 'test') };
+    if (filename.replaceAll('\\', '/').endsWith('/config/firebase.ts')) return { db: {} };
+    if (filename.replaceAll('\\', '/').endsWith('/types/audit.ts')) return { buildAuditEvents: () => ({}) };
+    if (filename.replaceAll('\\', '/').endsWith('/services/cleaningStore.ts')) return {
       roomCleaningTaskUpdates: async () => ({}), renameRoomCleaningTasks: async () => ({}), deleteCleaningLogTaskUpdates: async () => ({}),
     };
     if (cache.has(filename)) return cache.get(filename).exports;
@@ -278,4 +279,15 @@ test('releasing obsolete slots cannot erase a slot now owned by another reservat
   await service.releaseReservationSlots(reservation);
   assert.equal(state.erp_geral.quartos.reservationSlots.room1['2026-10-14'], undefined);
   assert.equal(state.erp_geral.quartos.reservationSlots.room1['2026-10-15'], 'another-reservation');
+});
+
+test('an old room editor preserves a newly completed cleaning and rejects conflicting changes', async () => {
+  const state = databaseFixture();
+  const current = state.erp_geral.quartos.rooms.room1;
+  const oldForm = { ...current, cleaningStatus: 'sujo' };
+  const { service } = offlineStore(state);
+  await service.saveHousekeepingRoom({ ...oldForm, note: 'Nova observação' }, oldForm);
+  assert.equal(state.erp_geral.quartos.rooms.room1.cleaningStatus, 'limpo');
+  assert.equal(state.erp_geral.quartos.rooms.room1.note, 'Nova observação');
+  await assert.rejects(() => service.saveHousekeepingRoom({ ...oldForm, cleaningStatus: 'em_limpeza' }, oldForm), /mudou em outra tela/);
 });

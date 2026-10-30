@@ -1,6 +1,6 @@
 import { get, increment, ref } from 'firebase/database';
 import { db } from '../config/firebase';
-import type { FinanceExpense, FinanceIncome } from '../types/finance';
+import type { FinanceExpense, FinanceIncome, PayrollEntry } from '../types/finance';
 import type { GuestStay, RoomCharge } from '../types/reception';
 import type { FrigobarSale } from '../types/frigobar';
 import type { Reservation } from '../types/housekeeping';
@@ -42,6 +42,9 @@ export async function deleteFinancialIncome(entry: FinanceIncome): Promise<void>
 }
 
 export async function deleteFinancialExpense(entry: FinanceExpense): Promise<void> {
+  if (entry.generatedFromIncome) throw new Error('A taxa é vinculada ao recebimento. Edite ou exclua a entrada de origem.');
+  const payroll = (await get(ref(db, 'erp_geral/financeiro/payroll'))).val() as Record<string, PayrollEntry> | null;
+  if (Object.values(payroll ?? {}).some((item) => item.advances?.[entry.id])) throw new Error('Este adiantamento está compensado na folha. Remova o vínculo na folha antes de excluí-lo.');
   if (entry.id.startsWith('caixa-')) { await deleteCashOut(entry.id.slice('caixa-'.length)); return; }
   const updates: Record<string, unknown> = {};
   removeFinanceEntries(updates, [entry.id], 'expenses');

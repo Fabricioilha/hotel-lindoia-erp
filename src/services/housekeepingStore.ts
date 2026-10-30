@@ -1,3 +1,4 @@
+import { requestCheckout } from './checkoutClient';
 import { endAt, equalTo, get, limitToLast, onValue, orderByChild, orderByKey, query, ref, runTransaction, set, startAt, update } from 'firebase/database';
 import { db } from '../config/firebase';
 import { buildAuditEvents } from '../types/audit';
@@ -266,10 +267,13 @@ async function writeHousekeepingUpdates(
   await update(ref(db), updates);
 }
 
-export async function saveHousekeepingRoom(room: HousekeepingRoom): Promise<void> {
+export async function saveHousekeepingRoom(room: HousekeepingRoom, original?: HousekeepingRoom): Promise<void> {
   const roomsSnapshot = await get(ref(db, 'erp_geral/quartos/rooms'));
   const rooms = roomsSnapshot.val() as Record<string, HousekeepingRoom> | null ?? {};
   const previous = rooms[room.id];
+  let cleaningEdited = !original || room.cleaningStatus !== original.cleaningStatus;
+  if (previous && original && cleaningEdited && previous.cleaningStatus !== original.cleaningStatus) throw new Error('A limpeza deste quarto mudou em outra tela. Reabra o cadastro para atualizar.');
+  if (previous && !cleaningEdited) room = { ...room, cleaningStatus: previous.cleaningStatus };
   const duplicate = Object.values(rooms).some((existing) => existing.id !== room.id
     && existing.number.trim().toLocaleLowerCase('pt-BR') === room.number.trim().toLocaleLowerCase('pt-BR'));
   if (duplicate) throw new Error(`O quarto ${room.number} já está cadastrado.`);
@@ -294,11 +298,14 @@ export async function saveHousekeepingRoom(room: HousekeepingRoom): Promise<void
     const hasCurrentStay = (Object.values(staysSnapshot.val() ?? {}) as GuestStay[]).some((stay) =>
       stay.roomNumber === room.number && guestStayOccupiesToday(stay, currentLocalDateKey(), Date.now()));
     if (hasCurrentReservation || hasCurrentStay) throw new Error('Faça o checkout do hóspede antes de bloquear o quarto para manutenção.');
-    if (room.cleaningStatus === 'em_limpeza') room = { ...room, cleaningStatus: 'sujo' };
+    if (room.cleaningStatus === 'em_limpeza') { room = { ...room, cleaningStatus: 'sujo' }; cleaningEdited = true; }
   }
-  const cleaningUpdates = previous ? await roomCleaningTaskUpdates({ ...previous, maintenanceStatus: room.maintenanceStatus }, room.cleaningStatus, 'Gerência') : {};
+  const cleaningUpdates = previous && cleaningEdited ? await roomCleaningTaskUpdates({ ...previous, maintenanceStatus: room.maintenanceStatus }, room.cleaningStatus, 'Gerência') : {};
   if (previous && previous.number !== room.number) Object.assign(cleaningUpdates, await renameRoomCleaningTasks(previous, room));
-  await writeHousekeepingUpdates({ ...cleaningUpdates, [`erp_geral/quartos/rooms/${room.id}`]: room }, [
+  const roomUpdates: Record<string, unknown> = previous ? Object.fromEntries(Object.entries(room)
+    .filter(([field]) => field !== 'cleaningStatus' || cleaningEdited)
+    .map(([field, value]) => [`erp_geral/quartos/rooms/${room.id}/${field}`, value])) : { [`erp_geral/quartos/rooms/${room.id}`]: room };
+  await writeHousekeepingUpdates({ ...cleaningUpdates, ...roomUpdates }, [
     { entity: 'room', before: previous ? { [room.id]: previous } : {}, after: { [room.id]: room } },
   ]);
 }
@@ -307,7 +314,7 @@ export async function updateRoomMaintenanceStatus(roomId: string, status: Housek
   const snapshot = await get(ref(db, `erp_geral/quartos/rooms/${roomId}`));
   const room = snapshot.val() as HousekeepingRoom | null;
   if (!room) throw new Error('Este quarto foi excluído. Atualize a grade.');
-  await saveHousekeepingRoom({ ...room, maintenanceStatus: status });
+  await saveHousekeepingRoom({ ...room, maintenanceStatus: status }, room);
 }
 
 export async function saveRoomCategory(category: RoomCategoryRecord, categories: RoomCategoryRecord[]): Promise<void> {
@@ -824,14 +831,13 @@ export async function transitionReservation(
   reservation: Reservation,
   nextStatus: ReservationStatus,
 ): Promise<void> {
-  const allowedTransition = (reservation.status === 'confirmada' && nextStatus === 'hospedado')
-    || (reservation.status === 'hospedado' && nextStatus === 'encerrada');
+  if (nextStatus === 'encerrada') return requestCheckout({ sourceType: 'reservation', sourceId: reservation.id });
+  const allowedTransition = reservation.status === 'confirmada' && nextStatus === 'hospedado';
   if (!allowedTransition) throw new Error('Esta transição de reserva não é permitida.');
   await withReservationWriteLock(reservation.id, async () => {
-    const [snapshot, roomSnapshot, slotsSnapshot, finance] = await Promise.all([
+    const [snapshot, roomSnapshot, finance] = await Promise.all([
       get(ref(db, `erp_geral/quartos/reservations/${reservation.id}`)),
       get(ref(db, `erp_geral/quartos/rooms/${reservation.roomId}`)),
-      get(ref(db, `erp_geral/quartos/reservationSlots/${reservation.roomId}`)),
       readReservationFinance(reservation.id),
     ]);
     const current = snapshot.val() as Reservation | null;
@@ -850,15 +856,6 @@ export async function transitionReservation(
       [`erp_geral/quartos/reservations/${reservation.id}`]: nextReservation,
       [`erp_geral/quartos/reservationIndex/${reservation.id}`]: activeReservationIndexValue(nextReservation),
     };
-    if (nextStatus === 'encerrada') {
-      updates[`erp_geral/quartos/rooms/${current.roomId}/cleaningStatus`] = 'sujo';
-      Object.assign(updates, await roomCleaningTaskUpdates(room, 'sujo', 'Gerência'));
-      const slots = slotsSnapshot.val() as Record<string, unknown> | null ?? {};
-      reservationSlotPaths(current).forEach((slotPath) => {
-        const owner = slotPath.split('/').reduce<unknown>((value, key) => value && typeof value === 'object' ? (value as Record<string, unknown>)[key] : undefined, slots);
-        if (owner === current.id) updates[`erp_geral/quartos/reservationSlots/${current.roomId}/${slotPath}`] = null;
-      });
-    }
     await writeHousekeepingUpdates(updates, [
       { entity: 'reservation', before: reservationsForAudit({ [current.id]: current }), after: reservationsForAudit({ [current.id]: nextReservation }) },
     ]);
@@ -866,46 +863,9 @@ export async function transitionReservation(
 }
 
 export async function releaseOccupiedRoom(input: { reservationId?: string; stayId?: string; roomId?: string }): Promise<void> {
-  if (input.reservationId) {
-    const [snapshot, finance] = await Promise.all([
-      get(ref(db, `erp_geral/quartos/reservations/${input.reservationId}`)), readReservationFinance(input.reservationId),
-    ]);
-    const reservation = snapshot.val() as Reservation | null;
-    if (!reservation || reservation.status !== 'hospedado') throw new Error('A hospedagem não está mais ativa. Atualize a grade.');
-    if (reservationBalanceDue(reservation, finance.incomes, finance.extras, finance.collections, finance.suppressed) > 0) {
-      throw new Error('Abra o checkout da reserva para conferir o saldo e registrar o recebimento antes de liberar o quarto.');
-    }
-    await transitionReservation(reservation, 'encerrada');
-    return;
-  }
-  if (!input.stayId) throw new Error('Selecione uma hospedagem ativa para liberar o quarto.');
-  await withReservationWriteLock(`stay-${input.stayId}`, async () => {
-    const [snapshot, roomsSnapshot, receptionRoomsSnapshot] = await Promise.all([
-      get(ref(db, `erp_geral/recepcao/stays/${input.stayId}`)),
-      get(ref(db, 'erp_geral/quartos/rooms')),
-      get(ref(db, 'erp_geral/recepcao/rooms')),
-    ]);
-    const stay = snapshot.val() as GuestStay | null;
-    if (!stay || stay.status !== 'hospedado') throw new Error('A hospedagem não está mais ativa. Atualize a grade.');
-    const rooms = (roomsSnapshot.val() ?? {}) as Record<string, HousekeepingRoom>;
-    const existingRoom = input.roomId ? rooms[input.roomId] : Object.values(rooms).find((room) => room.number === stay.roomNumber);
-    if (existingRoom && existingRoom.number !== stay.roomNumber) throw new Error('Esta hospedagem mudou de quarto. Atualize a grade.');
-    const receptionRoom = (Object.values(receptionRoomsSnapshot.val() ?? {}) as { id: string; number: string }[])
-      .find((room) => room.number === stay.roomNumber);
-    const room: HousekeepingRoom = existingRoom ?? {
-      id: receptionRoom?.id ?? `room-${stay.roomNumber.replace(/[.#$[\]/]/g, '-')}`,
-      number: stay.roomNumber, cleaningStatus: 'sujo', maintenanceStatus: 'normal', note: '',
-    };
-    const nextStay: GuestStay = { ...stay, status: 'encerrado', checkOutDate: currentLocalDateKey() };
-    await writeHousekeepingUpdates({
-      ...await roomCleaningTaskUpdates(room, 'sujo', 'Gerência'),
-      [`erp_geral/recepcao/stays/${stay.id}`]: nextStay,
-      [`erp_geral/quartos/rooms/${room.id}`]: { ...room, cleaningStatus: 'sujo' },
-    }, [
-      { entity: 'stay', before: { [stay.id]: stay }, after: { [stay.id]: nextStay } },
-      { entity: 'room', before: existingRoom ? { [room.id]: existingRoom } : {}, after: { [room.id]: { ...room, cleaningStatus: 'sujo' } } },
-    ]);
-  });
+  const sourceId = input.reservationId ?? input.stayId;
+  if (!sourceId) throw new Error('Selecione uma hospedagem ativa.');
+  await requestCheckout({ sourceType: input.reservationId ? 'reservation' : 'stay', sourceId });
 }
 
 export async function syncReservationCollections(reservationIds?: string[]): Promise<void> {

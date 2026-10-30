@@ -51,9 +51,9 @@ function isolatedDomain(state = {}, options = {}) {
   };
   function load(path) {
     const filename = resolve(root, path);
-    if (filename.endsWith('/config/firebase.ts')) return { db: {} };
-    if (filename.endsWith('/types/audit.ts')) return { buildAuditEvents: () => ({}) };
-    if (filename.endsWith('/services/cleaningStore.ts')) return { roomCleaningTaskUpdates: async () => ({}),
+    if (filename.replaceAll('\\', '/').endsWith('/config/firebase.ts')) return { db: {} };
+    if (filename.replaceAll('\\', '/').endsWith('/types/audit.ts')) return { buildAuditEvents: () => ({}) };
+    if (filename.replaceAll('\\', '/').endsWith('/services/cleaningStore.ts')) return { roomCleaningTaskUpdates: async () => ({}),
       renameRoomCleaningTasks: async () => ({}), deleteCleaningLogTaskUpdates: async () => ({}) };
     if (cache.has(filename)) return cache.get(filename).exports;
     const module = { exports: {} };
@@ -85,6 +85,72 @@ const receipt = (id, date, amount, method = 'cash') => ({ id, date, category: 'D
 const data = (extra = {}) => ({ incomes: {}, expenses: {}, payroll: {}, transfers: {}, openingBalances: { cash: 100, bank: 200, oyo: 0 }, incomeCategories: [], expenseCategories: [], auditLog: {}, suppressed: {}, ...extra });
 const db = (extra = {}) => ({ erp_geral: { financeiro: data(extra), recepcao: { stays: {}, roomCharges: {}, cashOuts: {} },
   quartos: { reservations: {} }, estoque: { movements: {} }, frigobar: { operations: { sales: {} } }, reservationCollections: {} } });
+
+const adjustment = (amount, date = '2025-01-15') => ({ id: 'a1', date, amount, note: 'Acerto histórico', createdAt: stamp, updatedAt: stamp });
+
+test('finance persists the card net and expense without charging twice on later saves', async () => {
+  const state = db({ cardFeeSchedule: { v1: { effectiveAt: '2026-01-01T00:00:00Z', credit: 3, debit: 1 } } });
+  const { load } = isolatedDomain(state);
+  const store = load('src/services/financeStore.ts');
+  await store.updateFinance((current) => ({ ...current, incomes: { ...current.incomes, card: receipt('card', '2026-10-14', 100, 'credit') } }));
+  await store.updateFinance((current) => current);
+  assert.equal(state.erp_geral.financeiro.incomes.card.items[0].netAmount, 97);
+  assert.equal(state.erp_geral.financeiro.expenses['card-fee-card'].paidBank, 3);
+  assert.equal(Object.values(state.erp_geral.financeiro.expenses).filter((entry) => entry.generatedFromIncome).length, 1);
+  await assert.rejects(store.updateFinance((current) => ({ ...current, cardFeeSchedule: {} })), /histórico/);
+});
+
+test('editing an explicit stay receipt updates its account and stored card net together', async () => {
+  const state = db({ cardFeeSchedule: { v1: { effectiveAt: '2026-01-01T00:00:00Z', credit: 3, debit: 1 } } });
+  state.erp_geral.recepcao.stays.s = { id: 's', kind: 'hospede', checkInDate: '2026-10-14', nights: 1, dailyRate: 100, dailyMethod: 'credit', roomNumber: '101', guestName: 'Teste', attendant: 'Equipe', status: 'hospedado', hasBreakfast: false, breakfastRate: 0, taxAmount: 0, taxMethod: 'cash', extras: [], note: '', createdAt: stamp, receiptsInitialized: true,
+    receipts: { 'recepcao-s-paid': { id: 'recepcao-s-paid', date: '2026-10-14', receivedAt: stamp, createdAt: stamp, attendant: 'Equipe', amount: 100, method: 'credit', label: 'Diária', category: 'Diária', cardFeeRate: 3, cardFeeAmount: 3, netAmount: 97 } } };
+  const { load } = isolatedDomain(state);
+  await load('src/services/financeStore.ts').updateFinance((current) => {
+    const entry = current.incomes['recepcao-s-paid'];
+    return { ...current, incomes: { ...current.incomes, [entry.id]: { ...entry, amount: 50, items: [{ ...entry.items[0], amount: 50 }] } } };
+  });
+  const saved = state.erp_geral.recepcao.stays.s;
+  assert.equal(saved.receipts['recepcao-s-paid'].netAmount, 48.5);
+  assert.equal(saved.receipts['recepcao-s-paid'].amount, 50);
+  assert.equal(load('src/types/reception.ts').stayAmountDue(saved), 50);
+});
+
+test('signed historical cash adjustment carries through months once, alongside later receipts and payments', () => {
+  const source = data({ cashAdjustments: { a1: adjustment(-500) }, incomes: { feb: receipt('feb', '2025-02-10', 200), oct: receipt('oct', '2026-10-01', 100) },
+    expenses: { e1: expense({ dueDate: '2025-03-10', paidCash: 50, paidDate: '2025-03-10' }) } });
+  assert.equal(analytics.balancesAtDate(source, '2025-01-14').cash, 100);
+  assert.equal(analytics.balancesAt(source, '2025-01').cash, -400);
+  assert.equal(analytics.balancesAt(source, '2025-02').cash, -200);
+  assert.equal(analytics.balancesAt(source, '2025-03').cash, -250);
+  assert.equal(analytics.balancesAt(source, '2026-10').cash, -150);
+  assert.equal(analytics.monthlyFinanceSummary(source, '2025-02').openingBalances.cash, -400);
+  assert.equal(analytics.monthlyReceipts(source, '2025-01').direct, 0);
+  assert.equal(analytics.balancesAt(source, '2026-10').bank, 200);
+  source.cashAdjustments.a1.amount = 500;
+  assert.equal(analytics.balancesAt(source, '2026-10').cash, 850);
+  source.cashAdjustments.a1.date = '2025-03-01';
+  assert.equal(analytics.balancesAt(source, '2025-02').cash, 300);
+  delete source.cashAdjustments.a1;
+  assert.equal(analytics.balancesAt(source, '2026-10').cash, 350);
+});
+
+test('historical adjustments persist, reload and can be removed without modifying other entries', async () => {
+  const state = db(); const { load } = isolatedDomain(state); const store = load('src/services/financeStore.ts');
+  await store.updateFinance((latest) => ({ ...latest, cashAdjustments: { ...latest.cashAdjustments, a1: adjustment(-123.45) } }));
+  const snapshot = await store.loadFinanceForMonth('2026-10');
+  assert.equal(snapshot.cashAdjustments.a1.amount, -123.45);
+  assert.equal(analytics.balancesAt(snapshot, '2026-10').cash, -23.45);
+  assert.deepEqual(state.erp_geral.financeiro.incomes, {});
+  await store.updateFinance((latest) => ({ ...latest, cashAdjustments: {} }));
+  assert.equal(analytics.balancesAt(await store.loadFinanceForMonth('2026-10'), '2026-10').cash, 100);
+});
+
+test('cash adjustments reject invalid dates, zero, nonfinite amounts and missing reasons', () => {
+  for (const entry of [adjustment(0), adjustment(NaN), adjustment(Infinity), adjustment(1, '2025-02-30'), { ...adjustment(1), note: '' }]) {
+    assert.throws(() => validation.validateFinanceRecords(data(), data({ cashAdjustments: { a1: entry } })), /ajuste de caixa/);
+  }
+  assert.doesNotThrow(() => validation.validateFinanceRecords(data(), data({ cashAdjustments: { a1: adjustment(-10) } })));
+});
 
 test('payment methods reject unknown values and retain mixed-wallet item allocation', () => {
   assert.equal(financeTypes.incomePaymentWallet('cash'), 'cash');

@@ -1,3 +1,4 @@
+import { inventoryUnitCost } from './inventoryCost';
 import { STOCK_QUANTITY_EPSILON, normalizedStockQuantity,
   type InventoryData,
   type MinibarPaymentMethod,
@@ -81,6 +82,7 @@ export function applyMinibarSale(current: InventoryData, sale: MinibarSaleInput)
       note: '',
       actor: sale.actor,
       unitPrice: product.salePrice,
+      unitCost: inventoryUnitCost(product),
       settlement: sale.settlement,
       paymentMethod: sale.settlement === 'pago_na_recepcao' ? sale.paymentMethod : '',
       roomNumber: sale.roomNumber.trim(),

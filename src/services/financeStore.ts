@@ -1,3 +1,5 @@
+import { withCardFees } from './cardFees';
+import { validatePayrollAdvances } from './payrollAdvances';
 import { endAt, get, limitToLast, onValue, orderByChild, orderByKey, query, ref, startAt, update as updateDatabase } from 'firebase/database';
 import { db } from '../config/firebase';
 import { buildAuditEvents } from '../types/audit';
@@ -11,6 +13,7 @@ const DEPRECATED_INCOME_CATEGORIES = ['Rotativo cartão', 'Consumo Cartão', 'Di
 
 export function emptyFinance(): FinanceData {
   return {
+    cashAdjustments: {},
     incomes: {},
     expenses: {},
     transfers: {},
@@ -53,8 +56,10 @@ function normalizeFinance(value: unknown): FinanceData {
   return {
     incomes,
     expenses,
+    cardFeeSchedule: data.cardFeeSchedule ?? {},
     transfers: data.transfers ?? {},
     payroll: data.payroll ?? {},
+    cashAdjustments: data.cashAdjustments ?? {},
     openingBalances: { ...emptyFinance().openingBalances, ...data.openingBalances },
     incomeCategories: [...new Set([...INCOME_CATEGORIES, ...normalizeCategories(data.incomeCategories, INCOME_CATEGORIES)])]
       .filter((category) => !categoryAliases.income[category] && category.toLocaleLowerCase('pt-BR') !== 'oyo'
@@ -70,7 +75,7 @@ function normalizeFinance(value: unknown): FinanceData {
 
 export const financeStorageMode = 'Firebase';
 
-const FINANCE_KEYS = ['incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'auditLog', 'suppressed', 'categoryAliases'] as const;
+const FINANCE_KEYS = ['cardFeeSchedule', 'cashAdjustments', 'incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'auditLog', 'suppressed', 'categoryAliases'] as const;
 const OPERATIONAL_PATHS = {
   stays: 'erp_geral/recepcao/stays', roomCharges: 'erp_geral/recepcao/roomCharges', cashOuts: 'erp_geral/recepcao/cashOuts',
   sales: 'erp_geral/frigobar/operations/sales', reservationCollections: 'erp_geral/reservationCollections',
@@ -79,10 +84,10 @@ const OPERATIONAL_PATHS = {
 
 function financeView(values: Record<string, unknown>, includeOperations: boolean): FinanceData {
   const data = normalizeFinance(values);
-  return includeOperations ? withOperationalFinance(data, {
+  return withCardFees(includeOperations ? withOperationalFinance(data, {
     stays: values.stays ?? {}, roomCharges: values.roomCharges ?? {}, cashOuts: values.cashOuts ?? {}, sales: values.sales ?? {},
     reservationCollections: values.reservationCollections ?? {}, movements: values.movements ?? {}, reservations: values.reservations ?? {},
-  } as OperationalFinanceSources) : data;
+  } as OperationalFinanceSources) : data);
 }
 
 export async function loadFinanceForMonth(month: string): Promise<FinanceData> {
@@ -173,7 +178,7 @@ export async function updateFinance(
 async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData): Promise<void> {
   const operationId = crypto.randomUUID();
   const occurredAt = new Date().toISOString();
-  const keys = ['incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'suppressed', 'deletions', 'categoryAliases'] as const;
+  const keys = ['cardFeeSchedule', 'cashAdjustments', 'incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'suppressed', 'deletions', 'categoryAliases'] as const;
   const sourcePaths = Object.entries(OPERATIONAL_PATHS);
   const [snapshots, sourceSnapshots] = await Promise.all([
     Promise.all(keys.map((key) => get(ref(db, `erp_geral/financeiro/${key}`)))),
@@ -183,7 +188,7 @@ async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData
     ...Object.fromEntries(sourcePaths.map(([key], index) => [key, sourceSnapshots[index].val() ?? {}])) };
   // The editor sees the same source-only entries as the cash-flow screen; unchanged derived entries are never copied.
   const current = financeView(raw, true);
-  const proposed = update(current);
+  const proposed = withCardFees(update(current));
   const next = { ...proposed, incomes: { ...proposed.incomes }, expenses: { ...proposed.expenses }, payroll: { ...proposed.payroll } };
   const paymentDate = financeDateKeyFromTimestamp(occurredAt);
   Object.entries(next.incomes).forEach(([id, entry]) => {
@@ -206,6 +211,13 @@ async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData
     }
   });
   validateFinanceRecords(current, next);
+  validatePayrollAdvances(next);
+  for (const [id, rate] of Object.entries(current.cardFeeSchedule ?? {})) {
+    if (JSON.stringify(next.cardFeeSchedule?.[id]) !== JSON.stringify(rate)) throw new Error('O histórico das taxas não pode ser alterado. Cadastre uma nova taxa.');
+  }
+  for (const rate of Object.values(next.cardFeeSchedule ?? {})) {
+    if (!Number.isFinite(Date.parse(rate.effectiveAt)) || [rate.credit, rate.debit].some((value) => !Number.isFinite(value) || value < 0 || value >= 100)) throw new Error('Informe taxas de cartão entre 0 e 99,99%.');
+  }
   const updates: Record<string, unknown> = {};
   const changedRecords = (path: string, before: Record<string, unknown> | undefined, after: Record<string, unknown> | undefined) => {
     const ids = new Set([...Object.keys(before ?? {}), ...Object.keys(after ?? {})]);
@@ -216,8 +228,37 @@ async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData
       updates[`erp_geral/financeiro/${path}/${id}`] = value ?? null;
     });
   };
+  changedRecords('cardFeeSchedule', current.cardFeeSchedule, next.cardFeeSchedule);
+  changedRecords('cashAdjustments', current.cashAdjustments, next.cashAdjustments);
   changedRecords('incomes', current.incomes, next.incomes);
   changedRecords('expenses', current.expenses, next.expenses);
+  // Materialize card snapshots and their expenses when the manager saves finance.
+  const persistedIncomes = (raw.incomes ?? {}) as FinanceData['incomes'];
+  const persistedExpenses = (raw.expenses ?? {}) as FinanceData['expenses'];
+  for (const entry of Object.values(next.incomes)) {
+    if (entry.items?.some((item) => item.cardFeeRate !== undefined) && JSON.stringify(persistedIncomes[entry.id]) !== JSON.stringify(entry)) updates[`erp_geral/financeiro/incomes/${entry.id}`] = entry;
+  }
+  for (const entry of Object.values(next.expenses)) {
+    if (entry.generatedFromIncome && JSON.stringify(persistedExpenses[entry.id]) !== JSON.stringify(entry)) updates[`erp_geral/financeiro/expenses/${entry.id}`] = entry;
+  }
+  for (const entry of Object.values(persistedExpenses)) {
+    if (entry.generatedFromIncome && !next.expenses[entry.id]) updates[`erp_geral/financeiro/expenses/${entry.id}`] = null;
+  }
+  for (const source of Object.values((raw.stays ?? {}) as Record<string, import('../types/reception').GuestStay>)) {
+    for (const receipt of Object.values(source.receipts ?? {})) {
+      const previous = current.incomes[receipt.id];
+      const edited = next.incomes[receipt.id];
+      if (!edited || JSON.stringify(previous) === JSON.stringify(edited)) continue;
+      const items = edited.items ?? [];
+      if (items.length !== 1) throw new Error('Este recebimento pertence à conta da hospedagem. Registre pagamentos separados pela ficha do quarto.');
+      const receivedAt = edited.date === receipt.date ? receipt.receivedAt : new Date(edited.date + 'T12:00:00-03:00').toISOString();
+      const { cardFeeRate: _rate, cardFeeAmount: _fee, netAmount: _net, ...baseReceipt } = receipt;
+      void _rate; void _fee; void _net;
+      updates['erp_geral/recepcao/stays/' + source.id + '/receipts/' + receipt.id] = { ...baseReceipt, amount: edited.amount, method: items[0].paymentMethod, date: edited.date, receivedAt, label: items[0].description, category: edited.category,
+        ...(items[0].cardFeeRate !== undefined ? { cardFeeRate: items[0].cardFeeRate, cardFeeAmount: items[0].cardFeeAmount, netAmount: items[0].netAmount } : {}) };
+      updates['erp_geral/recepcao/stays/' + source.id + '/lastReceiptAt'] = [source.lastReceiptAt ?? '', receivedAt].sort().at(-1);
+    }
+  }
   changedRecords('transfers', current.transfers, next.transfers);
   changedRecords('payroll', current.payroll, next.payroll);
   changedRecords('suppressed', current.suppressed, next.suppressed);
@@ -229,6 +270,7 @@ async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData
   if (JSON.stringify(current.expenseCategories) !== JSON.stringify(next.expenseCategories)) updates['erp_geral/financeiro/expenseCategories'] = next.expenseCategories;
 
   const auditEvents = buildAuditEvents(operationId, occurredAt, [
+    { entity: 'cash-adjustment', before: current.cashAdjustments ?? {}, after: next.cashAdjustments ?? {} },
     { entity: 'finance-income', before: current.incomes, after: next.incomes },
     { entity: 'finance-expense', before: current.expenses, after: next.expenses },
     { entity: 'finance-transfer', before: current.transfers, after: next.transfers },

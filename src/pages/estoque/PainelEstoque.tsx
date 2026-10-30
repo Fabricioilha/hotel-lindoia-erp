@@ -1,3 +1,4 @@
+import { inventoryUnitCost } from '../../services/inventoryCost';
 import { deleteStockMovement, deleteStockProduct } from '../../services/inventoryDeletion';
 import { createContext, useContext, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { createPortal } from 'react-dom';
@@ -172,7 +173,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
   });
   const outOfStock = lowStock.filter((product) => quantityOf(product) <= 0);
   const inventoryValue = products.reduce((total, product) => {
-    const unitCost = Number(product.cost);
+    const unitCost = Number(inventoryUnitCost(product));
     return total + quantityOf(product) * (Number.isFinite(unitCost) ? unitCost : 0);
   }, 0);
   const hasValidMinibarPeriod = Boolean(minibarStartDate && minibarEndDate && minibarStartDate <= minibarEndDate);
@@ -460,7 +461,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
       return;
     }
 
-    const entryUnitPrice = movementType === 'entrada' && canViewFinancials ? Number(form.get('entryUnitPrice') || 0) : selectedProduct.cost;
+    const entryUnitPrice = movementType === 'entrada' && canViewFinancials ? Number(form.get('entryUnitPrice') || 0) : inventoryUnitCost(selectedProduct);
     const entryPayment = String(form.get('entryPayment') ?? 'pendente') as 'pendente' | 'caixa' | 'banco';
     setSaving(true); setStorageError('');
     void recordInventoryMovement({
@@ -715,7 +716,7 @@ function Overview({
       <section className="metric-grid">
         <Metric label="Produtos cadastrados" value={String(products.length)} detail="Itens de consumo" tone="green" />
         <Metric label="Abaixo do mínimo ou sem saldo" value={String(lowStock.length)} detail={`${outOfStock.length} sem saldo entre produtos ativos`} tone={lowStock.length ? 'coral' : 'green'} />
-        {canViewFinancials && <Metric label="Valor em estoque" value={money(inventoryValue)} detail="Saldo atual × custo cadastrado; vendas excluídas devolvem itens ao estoque" tone="blue" />}
+        {canViewFinancials && <Metric label="Valor em estoque" value={money(inventoryValue)} detail="Saldo atual × custo médio ponderado; compras antigas usam o custo cadastrado como base" tone="blue" />}
         {canViewFinancials && <Metric label="Geladeira recebida" value={money(minibarSales)} detail={minibarPeriodValid ? `${money(minibarPending)} a cobrar · vendas recebidas no período selecionado` : 'Informe um período válido para pesquisar'} tone="gold" />}
       </section>
 
@@ -793,7 +794,7 @@ function ProductsView({
               <td><span className="category-label"><i className={`category-dot dot-${product.category}`} style={dotStyle(product.category)} />{categoryName(product.category)}</span></td>
               <td><strong>{quantityOf(product)} {product.unit}</strong></td>
               <td>{product.minimumQuantity} {product.unit}</td>
-              {canViewFinancials && <td>{money(product.cost)}</td>}
+              {canViewFinancials && <td>{money(inventoryUnitCost(product))}<small className="sub-cell">Última compra: {money(product.cost)}</small></td>}
               <td><StockStatus product={product} /></td>
               <td><div className="row-actions"><button title="Registrar movimentação" onClick={() => onMovement(product, 'entrada')}>Movimentar</button><button title="Conferir quantidade física" onClick={() => onMovement(product, 'ajuste')}>Conferir</button><button title="Editar produto" onClick={() => onEdit(product)}>Editar</button><button title={product.active === false ? 'Reativar produto' : 'Arquivar produto'} onClick={() => onToggleArchive(product)}>{product.active === false ? 'Reativar' : 'Arquivar'}</button><button className="delete-action" title="Excluir produto" onClick={() => onDelete(product)}>Excluir</button></div></td>
             </tr>
@@ -887,14 +888,14 @@ function ProductForm({ product, suppliers, saving, canViewFinancials, onClose, o
     {category === NEW_CATEGORY ? <label className="form-field"><span>Nome da nova categoria *</span><input name="newCategory" required maxLength={60} autoFocus placeholder="Ex.: Piscina" /></label> : <label className="form-field"><span>Código / SKU</span><input name="sku" defaultValue={product?.sku} placeholder="Opcional" /></label>}
     <label className="form-field"><span>Unidade *</span><input name="unit" required defaultValue={product?.unit ?? 'un.'} placeholder="un., kg, L, pacote..." /></label>
     <label className="form-field"><span>Estoque mínimo</span><input name="minimumQuantity" type="number" min="0" step="any" defaultValue={product?.minimumQuantity ?? 0} /></label>
-    {canViewFinancials && <><label className="form-field"><span>Preço de entrada (R$)</span><input name="cost" type="number" min="0" step="0.01" defaultValue={product?.cost ?? 0} /></label>
+    {canViewFinancials && <><label className="form-field"><span>Último preço de compra / custo inicial (R$)</span><input name="cost" type="number" min="0" step="0.01" defaultValue={product?.cost ?? 0} /></label>
     {isSalesItem && <label className="form-field"><span>Preço de venda (R$) *</span><input name="salePrice" type="number" min="0.01" step="0.01" required defaultValue={product?.salePrice ?? 0} /></label>}</>}
     <label className="form-field"><span>Fornecedor</span><select name="supplierId" defaultValue={product?.supplierId ?? ''}><option value="">Não informado</option>{suppliers.map((supplier) => <option key={supplier.id} value={supplier.id}>{supplier.name}</option>)}</select></label>
     <label className="form-field"><span>Validade</span><DateInput name="expiresAt" defaultValue={product?.expiresAt} /></label>
     <label className="form-field form-wide"><span>Observações</span><textarea name="description" rows={2} defaultValue={product?.description} placeholder="Detalhes, apresentação ou cuidados" /></label>
     {category === NEW_CATEGORY && <label className="form-field"><span>Código / SKU</span><input name="sku" defaultValue={product?.sku} placeholder="Opcional" /></label>}
     <p className="form-hint form-wide">{isSalesItem ? 'Item da geladeira: é o único tipo vendido ao hóspede, por isso tem preço de venda.' : 'Item de uso do hotel: tem apenas preço de entrada, não é vendido.'}</p>
-    {product && <p className="form-hint form-wide">O saldo atual por local será preservado. Para alterá-lo, registre uma movimentação ou faça uma conferência.</p>}
+    {product && <p className="form-hint form-wide">O saldo atual por local será preservado. Alterar o preço do cadastro vale para novas operações; compras e vendas anteriores mantêm o valor registrado. Para corrigir um valor já lançado, abra Financeiro → Fluxo de caixa, selecione o mês e edite a entrada ou saída correspondente.</p>}
   </div><ModalFooter saving={saving} onClose={onClose} submitLabel={product ? 'Salvar alterações' : 'Cadastrar produto'} /></form>;
 }
 

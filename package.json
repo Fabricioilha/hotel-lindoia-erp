@@ -5,21 +5,33 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "dev:netlify": "npx --yes netlify-cli dev",
+    "deploy:netlify": "npx --yes netlify-cli deploy --prod",
+    "build": "tsc -b && tsc -p tsconfig.server.json && vite build",
     "lint": "eslint .",
     "test:operations": "node tests/operations.test.mjs",
     "test:accounting": "node tests/accounting-export.test.mjs",
     "test:finance": "node tests/finance.test.mjs",
+    "test:improvements": "node tests/improvements.test.mjs",
     "preview": "vite preview",
     "test:cleaning": "node tests/cleaning.test.cjs",
-    "test:inventory": "node tests/inventory.test.mjs"
+    "test:inventory": "node tests/inventory.test.mjs",
+    "test:checkout": "node tests/checkout.test.mjs",
+    "test:checkout-runtime": "node --test tests/checkout-runtime.test.mjs",
+    "typecheck:server": "tsc -p tsconfig.server.json"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
     "firebase": "^12.19.0",
+    "firebase-admin": "^14.5.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.4"
+  },
+  "overrides": {
+    "jwks-rsa": {
+      "jose": "^5.10.0"
+    }
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

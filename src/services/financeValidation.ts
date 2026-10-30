@@ -3,7 +3,7 @@ import { expensePaymentEvents, financeCents, isFinanceDateKey, paymentEventTotal
 
 export interface FinanceIssue {
   recordId: string;
-  kind: 'income' | 'expense' | 'payroll' | 'transfer';
+  kind: 'income' | 'expense' | 'payroll' | 'transfer' | 'adjustment';
   message: string;
 }
 
@@ -24,6 +24,10 @@ function paymentIssues(entry: FinanceExpense | PayrollEntry, events: FinancePaym
 export function financeDataIssues(data: FinanceData): FinanceIssue[] {
   const issues: FinanceIssue[] = [];
   const add = (recordId: string, kind: FinanceIssue['kind'], message: string) => issues.push({ recordId, kind, message });
+  Object.entries(data.cashAdjustments ?? {}).forEach(([id, entry]) => {
+    if (entry.id !== id || !isFinanceDateKey(entry.date) || !Number.isFinite(entry.amount) || financeCents(entry.amount) === 0
+      || typeof entry.note !== 'string' || !entry.note.trim()) add(id, 'adjustment', 'Informe data válida, valor positivo ou negativo diferente de zero e motivo do ajuste de caixa.');
+  });
   Object.values(data.incomes).filter((entry) => !data.suppressed[entry.id]).forEach((entry) => {
     const items = incomeItems(entry);
     if (!entry.id || !isFinanceDateKey(entry.date) || !Number.isFinite(entry.amount) || entry.amount <= 0
@@ -59,12 +63,12 @@ export function financeDataIssues(data: FinanceData): FinanceIssue[] {
 export function validateFinanceRecords(previous: FinanceData, next: FinanceData): void {
   if (Object.values(next.openingBalances).some((amount) => !Number.isFinite(amount))) throw new Error('Confira os saldos iniciais.');
   const changed = new Set<string>();
-  for (const collection of ['incomes', 'expenses', 'payroll', 'transfers'] as const) {
-    Object.entries(next[collection]).forEach(([id, entry]) => {
-      if (JSON.stringify(previous[collection][id]) !== JSON.stringify(entry)) changed.add(`${collection}:${id}`);
+  for (const collection of ['incomes', 'expenses', 'payroll', 'transfers', 'cashAdjustments'] as const) {
+    Object.entries(next[collection] ?? {}).forEach(([id, entry]) => {
+      if (JSON.stringify(previous[collection]?.[id]) !== JSON.stringify(entry)) changed.add(`${collection}:${id}`);
     });
   }
-  const collectionNames = { income: 'incomes', expense: 'expenses', payroll: 'payroll', transfer: 'transfers' };
+  const collectionNames = { income: 'incomes', expense: 'expenses', payroll: 'payroll', transfer: 'transfers', adjustment: 'cashAdjustments' };
   const issue = financeDataIssues(next).find((entry) => changed.has(`${collectionNames[entry.kind]}:${entry.recordId}`));
   if (issue) throw new Error(issue.message);
 }
