@@ -9,6 +9,9 @@ export interface DailyRevenueRow {
   amount: number;
   prepaid: number;
   spread: boolean;
+  note: string;
+  paidOn: string;
+  methods: { method: string; amount: number }[];
 }
 
 const toCents = (value: number) => Math.round(value * 100);
@@ -44,6 +47,10 @@ export function dailyRevenueRows(incomes: Record<string, FinanceIncome>, stays: 
     const total = items.reduce((sum, item) => sum + toCents(item.amount), 0);
     if (total <= 0) continue;
     const prepaidTotal = items.filter((item) => item.paymentMethod === 'prepaid').reduce((sum, item) => sum + toCents(item.amount), 0);
+    const note = income.note ?? '';
+    const methodTotals = new Map<string, number>();
+    items.forEach((item) => methodTotals.set(item.paymentMethod, (methodTotals.get(item.paymentMethod) ?? 0) + toCents(item.amount)));
+    const methodShares = (fraction: number) => [...methodTotals].map(([method, cents]) => ({ method, amount: Math.round(cents * fraction) / 100 }));
     const description = items.map((item) => item.description).filter(Boolean).join(' | ');
     const stay = income.category === 'Diária' || income.category === 'Café' ? stayOfIncome(income, list) : undefined;
     let dates: string[] = [];
@@ -60,12 +67,12 @@ export function dailyRevenueRows(incomes: Record<string, FinanceIncome>, stays: 
       }
     }
     if (dates.length <= 1) {
-      rows.push({ incomeId: income.id, date: income.date, category: income.category, description, amount: total / 100, prepaid: prepaidTotal / 100, spread: false });
+      rows.push({ incomeId: income.id, date: income.date, category: income.category, description, amount: total / 100, prepaid: prepaidTotal / 100, spread: false, note, paidOn: income.date, methods: methodShares(1) });
       continue;
     }
     const shares = distribute(total, weights);
     const prepaidShares = distribute(prepaidTotal, weights);
-    dates.forEach((date, index) => rows.push({ incomeId: income.id, date, category: income.category, description: `${description} · dia ${index + 1}/${dates.length}`, amount: shares[index] / 100, prepaid: prepaidShares[index] / 100, spread: true }));
+    dates.forEach((date, index) => rows.push({ incomeId: income.id, date, category: income.category, description: `${description} · dia ${index + 1}/${dates.length}`, amount: shares[index] / 100, prepaid: prepaidShares[index] / 100, spread: true, note, paidOn: income.date, methods: methodShares(total > 0 ? shares[index] / total : 0) }));
   }
   return rows.sort((a, b) => a.date.localeCompare(b.date) || a.category.localeCompare(b.category));
 }

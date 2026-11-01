@@ -285,3 +285,27 @@ test('faturamento diário divide diárias e café prépagos em cada dia', () => 
   assert.deepEqual(diarias.map((row) => [row.date, row.amount, row.prepaid]), [['2026-10-01', 100, 100], ['2026-10-02', 100, 100], ['2026-10-03', 100, 100]]);
   assert.deepEqual(rows.filter((row) => row.category === 'Café').map((row) => [row.date, row.amount]), [['2026-10-02', 10], ['2026-10-03', 10], ['2026-10-04', 10]]);
 });
+
+test('resultado de caixa fecha com a variação de caixa físico e banco', () => {
+  const { monthlyFinanceSummary } = domainModule('src/services/financeAnalytics.ts');
+  const inc = (id, date, items) => ({ id, date, category: 'Diária', amount: items.reduce((s, i) => s + i.amount, 0), wallet: 'cash', items: items.map((i, n) => ({ id: `${id}${n}`, description: 'x', ...i })), note: '', createdAt: '', updatedAt: '' });
+  const data = {
+    openingBalances: { cash: 100, bank: 50, oyo: 0 }, suppressed: {}, deletions: {},
+    cashAdjustments: { a1: { id: 'a1', date: '2026-10-10', amount: -30, note: '' } },
+    incomes: {
+      i0: inc('i0', '2026-09-20', [{ amount: 70, paymentMethod: 'cash' }]),
+      i1: inc('i1', '2026-10-05', [{ amount: 100, paymentMethod: 'cash' }, { amount: 40.1, paymentMethod: 'pix' }, { amount: 500, paymentMethod: 'prepaid' }]),
+    },
+    expenses: { e1: { id: 'e1', dueDate: '2026-10-08', category: 'Gás', plannedAmount: 60, paidCash: 60, paidBank: 0, paidOyo: 0, note: '' } },
+    payroll: {},
+    transfers: {
+      t1: { id: 't1', date: '2026-10-12', from: 'cash', to: 'bank', amount: 20, note: '', createdAt: '' },
+      t2: { id: 't2', date: '2026-10-15', from: 'oyo', to: 'bank', amount: 200, note: '', createdAt: '' },
+      t3: { id: 't3', date: '2026-10-20', from: 'cash', to: 'oyo', amount: 10, note: '', createdAt: '' },
+    },
+  };
+  const s = monthlyFinanceSummary(data, '2026-10');
+  const open = s.openingBalances.cash + s.openingBalances.bank;
+  const close = s.closingBalances.cash + s.closingBalances.bank;
+  assert.equal(Math.round((close - open) * 100), Math.round(s.cashResult * 100));
+});

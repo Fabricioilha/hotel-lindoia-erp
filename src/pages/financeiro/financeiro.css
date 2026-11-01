@@ -275,3 +275,6 @@
   .finance-expense-grid { grid-template-columns: minmax(0, 1fr); gap: 12px; }
   .finance-expense-modal .finance-modal-footer { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-items: stretch; padding: 12px 14px; }
 }
+.finance-revenue-days { display: grid; gap: 8px; margin-top: 14px; }
+.finance-revenue-day { border: 1px solid #d5deea; border-radius: 8px; background: #fff; }
+.finance-revenue-day > summary { cursor: pointer; padding: 10px 12px; }

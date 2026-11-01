@@ -109,6 +109,8 @@ export function monthlyFinanceSummary(data: FinanceData, month: string) {
   const dueExpenses = expenses.filter((entry) => entry.dueDate >= from && entry.dueDate <= to);
   const competencePayroll = payroll.filter((entry) => entry.month === month);
   const receipts = monthlyReceipts(data, month);
+  const adjustments = Object.values(data.cashAdjustments ?? {}).filter((item) => item.date >= from && item.date <= to && Number.isFinite(item.amount))
+    .reduce((sum, item) => sum + financeCents(item.amount), 0) / 100;
   const cashPaidExpenses = (financeCents(payments.cash) + financeCents(payments.bank)) / 100;
   return {
     month,
@@ -127,7 +129,8 @@ export function monthlyFinanceSummary(data: FinanceData, month: string) {
     pendingPayroll: competencePayroll.reduce((sum, entry) => sum + outstanding(payrollNet(entry), payrollPaymentEvents(entry)), 0) / 100,
     overdueExpenses: (expenses.filter((entry) => entry.dueDate < from).reduce((sum, entry) => sum + outstanding(entry.plannedAmount, expensePaymentEvents(entry)), 0)
       + payroll.filter((entry) => entry.dueDate < from && entry.month !== month).reduce((sum, entry) => sum + outstanding(payrollNet(entry), payrollPaymentEvents(entry)), 0)) / 100,
-    cashResult: (financeCents(receipts.received) - financeCents(cashPaidExpenses) - financeCents(receipts.sentToOyo)) / 100,
+    cashAdjustments: adjustments,
+    cashResult: (financeCents(receipts.received) - financeCents(cashPaidExpenses) - financeCents(receipts.sentToOyo) + financeCents(adjustments)) / 100,
     internalTransfers: Object.values(data.transfers).filter((entry) => entry.date >= from && entry.date <= to && entry.from !== 'oyo' && entry.to !== 'oyo')
       .reduce((sum, entry) => sum + financeCents(entry.amount), 0) / 100,
     legacyPaymentCount: periodEvents.filter((event) => event.dateSource === 'legacy_due_date').length,
