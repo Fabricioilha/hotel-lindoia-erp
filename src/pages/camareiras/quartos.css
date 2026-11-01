@@ -390,6 +390,24 @@
   font-size: 0.625rem;
 }
 
+.room-breakfast {
+  display: inline-flex;
+  width: fit-content;
+  padding: 4px 7px;
+  border: 1px solid #dce3eb;
+  border-radius: 4px;
+  color: #69798d;
+  background: #f8f9fb;
+  font-size: 0.625rem;
+  font-weight: 700;
+}
+
+.room-breakfast.has-breakfast {
+  border-color: #d39a19;
+  color: #624200;
+  background: #fff0b3;
+}
+
 .doors-due {
   display: flex;
   align-items: flex-start;

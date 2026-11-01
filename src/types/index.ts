@@ -6,6 +6,7 @@ export type RoomStatus = 'livre' | 'ocupado' | 'limpeza' | 'manutencao';
 
 export interface Shift {
     employeeId?: string;
+    generated?: boolean;
     id: number;
     name: string;
     type: ShiftType;

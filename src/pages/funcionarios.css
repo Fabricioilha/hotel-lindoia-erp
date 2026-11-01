@@ -1,9 +1,37 @@
 .staff-page .finance-panel { margin: 20px 0; padding: 22px; }
-.staff-page .finance-form { display: flex; flex-wrap: wrap; align-items: end; gap: 16px; margin: 18px 0; }
+.staff-page .finance-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 16px; margin: 18px 0; }
 .staff-page label { display: grid; gap: 6px; color: #203b59; font-size: 13px; font-weight: 600; }
 .staff-page input:not([type=checkbox]), .staff-page select { padding: 10px; border: 1px solid #cbd5e1; border-radius: 7px; min-width: 180px; background: #fff; color: #172d47; }
 .staff-page button { padding: 8px 12px; border-radius: 7px; border: 1px solid #bccadc; background: #fff; color: #24476b; cursor: pointer; }
 .staff-page button[type=submit] { background: #24476b; color: #fff; }
 .staff-page button:disabled { opacity: .5; cursor: wait; }
+.staff-page td small { display: block; margin-top: 4px; color: #64748b; font-size: 11px; }
+.staff-page .staff-schedule-hint { align-self: end; max-width: 260px; margin: 0; color: #53627a; font-size: 12px; font-weight: 600; }
 .staff-page .finance-panel > p { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 @media (max-width: 600px) { .staff-page .finance-form > label { width: 100%; } }
+.staff-page .staff-wide {
+  grid-column: 1 / -1;
+}
+
+.staff-page fieldset {
+  display: grid;
+  gap: 8px;
+  border: 1px solid #d4dce7;
+  padding: 10px;
+}
+
+.staff-page fieldset > div {
+  display: grid;
+  grid-template-columns: 1fr 170px auto;
+  gap: 8px;
+}
+
+@media (max-width: 760px) {
+  .staff-page .finance-form {
+    grid-template-columns: 1fr;
+  }
+
+  .staff-page .staff-wide {
+    grid-column: auto;
+  }
+}

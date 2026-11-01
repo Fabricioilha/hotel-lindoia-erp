@@ -24,7 +24,7 @@ import {
 	subscribeHousekeeping,
   updateHousekeepingSettings,
 } from '../../services/housekeepingStore';
-import { guestStayOccupiesToday, reservationOccupiesToday, stayCheckOutDate } from '../../services/reservationAnalytics';
+import { guestStayOccupiesToday, reservationGuestCount, reservationOccupiesToday, stayCheckOutDate } from '../../services/reservationAnalytics';
 import { subscribeActiveCleaningTasks } from '../../services/cleaningStore';
 import { subscribeReceptionStayDirectory, type ReceptionStayDirectoryData } from '../../services/receptionStore';
 import type { CleaningTask } from '../../types/cleaning';
@@ -129,7 +129,14 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 	function occupancyOf(room: HousekeepingRoom) {
 		const reservation = Object.values(data.reservations).find((item) => item.roomId === room.id && reservationOccupiesToday(item, today, clock));
 		const stay = Object.values(reception.stays).find((item) => item.roomNumber === room.number && guestStayOccupiesToday(item, today, clock));
-		return { reservation, stay, guestName: reservation?.guestName ?? stay?.guestName ?? '', checkOutDate: reservation?.checkOutDate ?? (stay ? stayCheckOutDate(stay) : '') };
+		const breakfastCount = reservation
+			? reservation.channel !== 'rotativo' && reservation.breakfastIncluded
+				? Math.max(1, reservationGuestCount(reservation))
+				: 0
+			: stay?.kind === 'hospede' && stay.hasBreakfast
+				? Math.max(1, Math.floor(stay.breakfastCount ?? 1))
+				: 0;
+		return { reservation, stay, guestName: reservation?.guestName ?? stay?.guestName ?? '', checkOutDate: reservation?.checkOutDate ?? (stay ? stayCheckOutDate(stay) : ''), breakfastCount };
 	}
 	function taskOf(room: HousekeepingRoom) {
 		return Object.values(cleaningTasks).find((task) => task.roomId === room.id || task.roomNumber === room.number);
@@ -297,6 +304,7 @@ export function ListaQuartos({ userRole }: { userRole: UserRole }) {
 								{occupancy.guestName && <div className="room-stayover">
 									<div className="room-guest-name">Hóspede <strong>{occupancy.guestName}</strong></div>
 									<small className="room-plan-status">Checkout previsto: {shortDate(occupancy.checkOutDate)}</small>
+									<small className={`room-breakfast${occupancy.breakfastCount > 0 ? ' has-breakfast' : ''}`}>{occupancy.breakfastCount > 0 ? `${occupancy.breakfastCount} ${occupancy.breakfastCount === 1 ? 'café' : 'cafés'} da manhã` : 'Sem café da manhã'}</small>
 									{isAdmin && <Link className="room-reservation-link" to={`/reservas?room=${encodeURIComponent(room.number)}${occupancy.reservation ? `&reservation=${encodeURIComponent(occupancy.reservation.id)}` : ''}`}>Ver reserva e hospedagem</Link>}
 									<div className="cleaning-request-row"><span>Limpeza de hoje</span>{isAdmin && <div className="choice-buttons"><button className={plan.cleaningRequest === 'solicitada' ? 'is-selected' : ''} onClick={() => updateDailyPlan(room.id, { cleaningRequest: 'solicitada' })}>Sim</button><button className={plan.cleaningRequest === 'dispensada' ? 'is-selected' : ''} onClick={() => updateDailyPlan(room.id, { cleaningRequest: 'dispensada' })}>Não</button></div>}</div>
 									<small className="room-plan-status">{cleaningRequestLabels[plan.cleaningRequest]}</small>

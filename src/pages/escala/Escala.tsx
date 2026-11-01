@@ -1,6 +1,6 @@
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import type { ScheduleData, Shift, ShiftType, UserRole } from '../../types';
-import { scheduleStorageMode, subscribeSchedule, updateSchedule, withShift, type ScheduleStoreData } from '../../services/scheduleStore';
+import { propagateShiftToNextMonth, refreshScheduleMonths, scheduleStorageMode, subscribeSchedule, updateSchedule, withShift, type ScheduleStoreData } from '../../services/scheduleStore';
 import { PanelHomeLink } from '../../components/ui/PanelModalContext';
 import './escala.css';
 import { useNavigate } from 'react-router-dom';
@@ -62,16 +62,22 @@ export function Escala({ userRole }: { userRole: UserRole }) {
 	const [timeEnd, setTimeEnd] = useState('16:00');
 	const [filter, setFilter] = useState('');
 	const [editing, setEditing] = useState<{ date: string; shift?: Shift } | null>(null);
+	const scheduleMigrationStarted = useRef(false);
 	const isAdmin = userRole === 'admin';
 
 	useEffect(() => subscribeSchedule((next) => {
 		setData(next);
 		setLoading(false);
 		setStorageError('');
+		if (isAdmin && !scheduleMigrationStarted.current) {
+			scheduleMigrationStarted.current = true;
+			void updateSchedule((current) => refreshScheduleMonths(current, [{ year: 2026, month: 10 }, { year: 2026, month: 11 }], true))
+				.catch((error) => setStorageError(`Não foi possível atualizar novembro e dezembro: ${error instanceof Error ? error.message : 'erro desconhecido'}`));
+		}
 	}, (error) => {
 		setLoading(false);
 		setStorageError(`Não foi possível carregar a escala: ${error.message}`);
-	}), []);
+	}), [isAdmin]);
 
 	const daysInMonth = new Date(year, month + 1, 0).getDate();
 	const firstWeekday = new Date(year, month, 1).getDay();
@@ -148,7 +154,8 @@ export function Escala({ userRole }: { userRole: UserRole }) {
 			} else {
 				Object.assign(days, withShift(days, currentEditing.date, nextShift));
 			}
-			return { ...current, days };
+			const nextDays = propagateShiftToNextMonth(days, currentEditing.date, currentEditing.shift, nextShift);
+			return { ...current, days: nextDays };
 		}, 'Turno salvo.');
 		setEditing(null);
 	}
@@ -161,7 +168,7 @@ export function Escala({ userRole }: { userRole: UserRole }) {
 			const remaining = (days[currentEditing.date] ?? []).filter((shift) => shift.id !== currentEditing.shift?.id);
 			if (remaining.length) days[currentEditing.date] = remaining;
 			else delete days[currentEditing.date];
-			return { ...current, days };
+			return { ...current, days: propagateShiftToNextMonth(days, currentEditing.date, currentEditing.shift, undefined) };
 		}, 'Turno excluído.');
 		setEditing(null);
 	}

@@ -9,7 +9,20 @@ export interface StaffMember {
   name: string;
   categoryId: string;
   active: boolean;
+  address?: string;
+  phone?: string;
+  children?: StaffChild[];
+  workStart?: string;
+  workEnd?: string;
+  weeklyDayOff?: number;
+  startDate?: string;
+  notes?: string;
   previousNames?: string[];
+}
+
+export interface StaffChild {
+  name: string;
+  birthDate: string;
 }
 
 export interface StaffData {
