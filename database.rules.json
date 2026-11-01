@@ -127,6 +127,9 @@
         "rooms": {
           ".read": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || root.child('roles').child(auth.uid).child('role').val() === 'viewer')",
           "$roomId": {
+            "maintenanceStatus": {
+              ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && (newData.val() === 'em_manutencao' || newData.val() === 'normal')))"
+            },
             "cleaningStatus": {
               ".write": "(auth != null && root.child('roles').child(auth.uid).child('role').val() === 'admin') || (auth != null && root.child('roles').child(auth.uid).child('role').val() === 'viewer' && (newData.val() === 'sujo' || (newData.parent().child('maintenanceStatus').val() !== 'em_manutencao' && newData.parent().parent().parent().parent().child('limpeza/tasks').child(root.child('erp_geral/limpeza/activeRooms').child($roomId).child('taskId').val()).child('roomId').val() === $roomId && ((newData.val() === 'em_limpeza' && root.child('erp_geral/limpeza/activeRooms').child($roomId).child('phase').val() === 'assigning' && newData.parent().parent().parent().parent().child('limpeza/tasks').child(root.child('erp_geral/limpeza/activeRooms').child($roomId).child('taskId').val()).child('status').val() === 'em_limpeza') || (newData.val() === 'limpo' && root.child('erp_geral/limpeza/activeRooms').child($roomId).child('phase').val() === 'finishing' && newData.parent().parent().parent().parent().child('limpeza/tasks').child(root.child('erp_geral/limpeza/activeRooms').child($roomId).child('taskId').val()).child('status').val() === 'concluido' && newData.parent().parent().parent().parent().child('quartos/cleaningLogs').child(newData.parent().parent().parent().parent().child('limpeza/tasks').child(root.child('erp_geral/limpeza/activeRooms').child($roomId).child('taskId').val()).child('cleaningLogId').val()).child('roomId').val() === $roomId)))))"
             }
@@ -277,7 +280,7 @@
           ],
           "$cashOutId": {
             ".write": "auth != null && (root.child('roles').child(auth.uid).child('role').val() === 'admin' || (root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.exists()))",
-            ".validate": "newData.child('id').val() === $cashOutId && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && newData.child('attendant').isString() && newData.child('date').isString() && (newData.child('reason').val() === 'Mercado' || newData.child('reason').val() === 'Padaria' || newData.child('reason').val() === 'Farmácia' || newData.child('reason').val() === 'Material de limpeza' || newData.child('reason').val() === 'Manutenção' || newData.child('reason').val() === 'Outros') && newData.child('note').isString() && newData.child('note').val().length <= 300"
+            ".validate": "newData.child('id').val() === $cashOutId && newData.child('amount').isNumber() && newData.child('amount').val() > 0 && newData.child('attendant').isString() && newData.child('date').isString() && (newData.child('reason').val() === 'Café da Manhã' || newData.child('reason').val() === 'Mercado' || newData.child('reason').val() === 'Padaria' || newData.child('reason').val() === 'Farmácia' || newData.child('reason').val() === 'Material de limpeza' || newData.child('reason').val() === 'Manutenção' || newData.child('reason').val() === 'Outros') && newData.child('note').isString() && newData.child('note').val().length <= 300"
           }
         },
         "stays": {
@@ -292,6 +295,9 @@
             ".validate": "newData.child('id').val() === $stayId && newData.child('roomNumber').isString() && newData.child('guestName').isString() && newData.child('checkInDate').isString() && newData.child('nights').isNumber() && newData.child('nights').val() >= 1 && newData.child('dailyRate').isNumber() && newData.child('dailyRate').val() > 0 && newData.child('taxAmount').isNumber() && newData.child('taxAmount').val() >= 0 && newData.child('attendant').isString() && (newData.child('status').val() === 'hospedado' || newData.child('status').val() === 'encerrado')",
             "status": {
               ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'viewer' && data.val() === 'hospedado' && newData.val() === 'encerrado'"
+            },
+            "awaitingArrival": {
+              ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'viewer' && data.val() === true && !newData.exists()"
             },
             "checkOutDate": {
               ".write": "auth != null && root.child('roles').child(auth.uid).child('role').val() === 'viewer' && !data.exists() && newData.isString()"

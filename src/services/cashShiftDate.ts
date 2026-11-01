@@ -10,3 +10,8 @@ export function cashShiftDate(timestamp: string | Date): string {
   if (Number(part('hour')) < 7) day.setUTCDate(day.getUTCDate() - 1);
   return day.toISOString().slice(0, 10);
 }
+
+/** Data operacional atual: lançamentos feitos na madrugada pertencem ao dia em que o plantão começou. */
+export function operationalDateKey(now: Date = new Date()): string {
+  return cashShiftDate(now);
+}

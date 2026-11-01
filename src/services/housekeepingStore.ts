@@ -317,6 +317,16 @@ export async function updateRoomMaintenanceStatus(roomId: string, status: Housek
   await saveHousekeepingRoom({ ...room, maintenanceStatus: status }, room);
 }
 
+/** Bloqueio/liberação para manutenção feito pela recepção: grava apenas o status do quarto. */
+export async function setRoomMaintenanceBlock(roomId: string, blocked: boolean): Promise<void> {
+  const snapshot = await get(ref(db, `erp_geral/quartos/rooms/${roomId}`));
+  if (!snapshot.exists()) throw new Error('Este quarto foi excluído. Atualize a grade.');
+  const active = await get(ref(db, `erp_geral/limpeza/activeRooms/${roomId}`));
+  if (blocked && active.exists()) throw new Error('Este quarto está em limpeza. Conclua ou cancele a limpeza antes de bloquear.');
+  await set(ref(db, `erp_geral/quartos/rooms/${roomId}/maintenanceStatus`), blocked ? 'em_manutencao' : 'normal');
+  if (!blocked) await set(ref(db, `erp_geral/quartos/rooms/${roomId}/cleaningStatus`), 'sujo');
+}
+
 export async function saveRoomCategory(category: RoomCategoryRecord, categories: RoomCategoryRecord[]): Promise<void> {
   const name = category.name.trim();
   const bedComposition = category.bedComposition.trim();

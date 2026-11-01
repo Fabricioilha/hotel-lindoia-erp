@@ -13,6 +13,7 @@ import { withTransactionData } from './firebaseTransactions';
 import type { FinanceIncome } from '../types/finance';
 import type { HousekeepingRoom } from '../types/housekeeping';
 import { emptyReceptionRateSettings, type CashOut, type FloatCheck, type GuestStay, type ReceptionData, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge } from '../types/reception';
+import { operationalDateKey } from './cashShiftDate';
 import { staffReference } from './staffStore';
 import { stayAmountDue } from '../types/reception';
 
@@ -88,7 +89,7 @@ export function subscribeReceptionStayDirectory(
 }
 
 export function subscribeTodayCashOuts(onChange: (cashOuts: Record<string, CashOut>) => void, onError: (error: Error) => void): () => void {
-  const today = localDateKey();
+  const today = operationalDateKey();
   const todayCashOuts = query(ref(db, `${PATH}/cashOuts`), orderByChild('date'), equalTo(today));
   return onValue(todayCashOuts, (snapshot) => onChange(snapshot.val() ?? {}), onError);
 }
@@ -207,6 +208,11 @@ export function saveCashOut(cashOut: CashOut): Promise<void> {
 
 export async function saveStay(stay: GuestStay): Promise<void> {
   return set(ref(db, `${PATH}/stays/${stay.id}`), { ...await snapshotStayCardFees(stay), ...staffReference(stay.attendant) });
+}
+
+/** Confirma a chegada de um hóspede pré-cadastrado: o quarto passa a ficar ocupado. */
+export async function confirmStayArrival(stayId: string): Promise<void> {
+  await set(ref(db, `${PATH}/stays/${stayId}/awaitingArrival`), null);
 }
 
 export async function updateStayAndFinance(stay: GuestStay): Promise<void> {

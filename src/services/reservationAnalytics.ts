@@ -51,7 +51,7 @@ export function departureDue(checkOutDate: string, now: number): boolean {
 }
 
 export function guestStayOccupiesToday(stay: GuestStay, today: string, now: number): boolean {
-  if (stay.status !== 'hospedado') return false;
+  if (stay.status !== 'hospedado' || stay.awaitingArrival) return false;
   if (stay.kind === 'periodo') {
     if (stay.checkInDate > today) return false;
     const start = rotativoStart(stay);

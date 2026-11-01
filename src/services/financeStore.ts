@@ -4,6 +4,7 @@ import { endAt, get, limitToLast, onValue, orderByChild, orderByKey, query, ref,
 import { db } from '../config/firebase';
 import { buildAuditEvents } from '../types/audit';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, type FinanceData } from '../types/finance';
+import { BREAKFAST_EXPENSE_CATEGORY, LEGACY_BREAKFAST_CATEGORIES } from '../types/reception';
 import { withOperationalFinance, type OperationalFinanceSources } from './operationalLedger';
 import { financeDateKeyFromTimestamp, financeMonthRange, withExpensePaymentTotals, withPayrollPaymentTotals } from './financePayments';
 import { validateFinanceRecords } from './financeValidation';
@@ -26,6 +27,8 @@ export function emptyFinance(): FinanceData {
   };
 }
 
+const LEGACY_EXPENSE_ALIASES: Record<string, string> = Object.fromEntries(LEGACY_BREAKFAST_CATEGORIES.map((category) => [category, BREAKFAST_EXPENSE_CATEGORY]));
+
 function normalizeCategories(value: unknown, defaults: string[]) {
   if (!Array.isArray(value)) return [...defaults];
   const seen = new Set<string>();
@@ -44,7 +47,7 @@ function normalizeFinance(value: unknown): FinanceData {
   const incomes = { ...data.incomes };
   const expenses = { ...data.expenses };
   Object.entries(data.suppressed ?? {}).forEach(([id, suppressed]) => { if (suppressed) { delete incomes[id]; delete expenses[id]; } });
-  const categoryAliases = { income: data.categoryAliases?.income ?? {}, expense: data.categoryAliases?.expense ?? {} };
+  const categoryAliases = { income: data.categoryAliases?.income ?? {}, expense: { ...LEGACY_EXPENSE_ALIASES, ...data.categoryAliases?.expense } };
   Object.values(expenses).forEach((entry) => { if (categoryAliases.expense[entry.category]) expenses[entry.id] = { ...entry, category: categoryAliases.expense[entry.category] }; });
   Object.values(incomes).forEach((income) => {
     if (typeof income.category === 'string' && income.category.trim().toLocaleLowerCase('pt-BR') === 'oyo') {
@@ -64,7 +67,7 @@ function normalizeFinance(value: unknown): FinanceData {
     incomeCategories: [...new Set([...INCOME_CATEGORIES, ...normalizeCategories(data.incomeCategories, INCOME_CATEGORIES)])]
       .filter((category) => !categoryAliases.income[category] && category.toLocaleLowerCase('pt-BR') !== 'oyo'
         && !DEPRECATED_INCOME_CATEGORIES.some((deprecated) => deprecated.toLocaleLowerCase('pt-BR') === category.toLocaleLowerCase('pt-BR'))),
-    expenseCategories: [...new Set([...normalizeCategories(data.expenseCategories, EXPENSE_CATEGORIES), 'Adiantamento de salário'])]
+    expenseCategories: [...new Set([...normalizeCategories(data.expenseCategories, EXPENSE_CATEGORIES).filter((category) => !LEGACY_BREAKFAST_CATEGORIES.includes(category)), 'Adiantamento de salário', BREAKFAST_EXPENSE_CATEGORY])]
       .filter((category) => !categoryAliases.expense[category]),
     auditLog: data.auditLog ?? {},
     suppressed: data.suppressed ?? {},
@@ -84,10 +87,11 @@ const OPERATIONAL_PATHS = {
 
 function financeView(values: Record<string, unknown>, includeOperations: boolean): FinanceData {
   const data = normalizeFinance(values);
-  return withCardFees(includeOperations ? withOperationalFinance(data, {
+  const view = withCardFees(includeOperations ? withOperationalFinance(data, {
     stays: values.stays ?? {}, roomCharges: values.roomCharges ?? {}, cashOuts: values.cashOuts ?? {}, sales: values.sales ?? {},
     reservationCollections: values.reservationCollections ?? {}, movements: values.movements ?? {}, reservations: values.reservations ?? {},
   } as OperationalFinanceSources) : data);
+  return includeOperations ? { ...view, stays: (values.stays ?? {}) as FinanceData['stays'] } : view;
 }
 
 export async function loadFinanceForMonth(month: string): Promise<FinanceData> {
@@ -250,13 +254,25 @@ async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData
       const edited = next.incomes[receipt.id];
       if (!edited || JSON.stringify(previous) === JSON.stringify(edited)) continue;
       const items = edited.items ?? [];
-      if (items.length !== 1) throw new Error('Este recebimento pertence à conta da hospedagem. Registre pagamentos separados pela ficha do quarto.');
+      if (items.length === 0) throw new Error('Informe ao menos uma forma de pagamento.');
       const receivedAt = edited.date === receipt.date ? receipt.receivedAt : new Date(edited.date + 'T12:00:00-03:00').toISOString();
       const { cardFeeRate: _rate, cardFeeAmount: _fee, netAmount: _net, ...baseReceipt } = receipt;
       void _rate; void _fee; void _net;
-      updates['erp_geral/recepcao/stays/' + source.id + '/receipts/' + receipt.id] = { ...baseReceipt, amount: edited.amount, method: items[0].paymentMethod, date: edited.date, receivedAt, label: items[0].description, category: edited.category,
+      updates['erp_geral/recepcao/stays/' + source.id + '/receipts/' + receipt.id] = { ...baseReceipt, amount: items.length > 1 ? items[0].amount : edited.amount, method: items[0].paymentMethod, date: edited.date, receivedAt, label: items[0].description, category: edited.category,
         ...(items[0].cardFeeRate !== undefined ? { cardFeeRate: items[0].cardFeeRate, cardFeeAmount: items[0].cardFeeAmount, netAmount: items[0].netAmount } : {}) };
       updates['erp_geral/recepcao/stays/' + source.id + '/lastReceiptAt'] = [source.lastReceiptAt ?? '', receivedAt].sort().at(-1);
+      // Vários meios de pagamento: o primeiro mantém o recebimento original e os demais viram recebimentos próprios da hospedagem.
+      if (items.length > 1) {
+        updates['erp_geral/financeiro/incomes/' + receipt.id] = { ...edited, amount: items[0].amount, items: [items[0]] };
+        items.slice(1).forEach((item, index) => {
+          const extraId = `${receipt.id}-p${index + 2}`;
+          updates['erp_geral/recepcao/stays/' + source.id + '/receipts/' + extraId] = { ...baseReceipt, id: extraId, amount: item.amount, method: item.paymentMethod, date: edited.date, receivedAt, label: item.description, category: edited.category,
+            ...(item.cardFeeRate !== undefined ? { cardFeeRate: item.cardFeeRate, cardFeeAmount: item.cardFeeAmount, netAmount: item.netAmount } : {}) };
+          const { operationalOverride: _o, ...editedBase } = edited;
+          void _o;
+          updates['erp_geral/financeiro/incomes/' + extraId] = { ...editedBase, id: extraId, amount: item.amount, items: [{ ...item, id: extraId }] };
+        });
+      }
     }
   }
   changedRecords('transfers', current.transfers, next.transfers);

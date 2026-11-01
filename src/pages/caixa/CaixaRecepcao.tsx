@@ -1,5 +1,6 @@
 import { existingStayReceipts, initializeStayReceipts } from '../../services/stayReceipts';
 import { financeDateKeyFromTimestamp } from '../../services/financePayments';
+import { operationalDateKey } from '../../services/cashShiftDate';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { BackToPanel } from '../../components/ui/BackToPanel';
@@ -40,7 +41,8 @@ function nightsBetweenDates(checkInDate: string, checkOutDate: string): number {
 
 function stayInterval(stay: GuestStay) {
   if (stay.kind === 'periodo') {
-    const start = stay.checkInDate === localDateKey() ? Date.parse(stay.createdAt) : Date.parse(`${stay.checkInDate}T12:00:00`);
+    const created = Date.parse(stay.createdAt);
+    const start = stay.checkInDate === operationalDateKey() || stay.checkInDate === localDateKey() ? created : Date.parse(`${stay.checkInDate}T12:00:00`);
     return { start, end: start + (stay.hours ?? 4) * 3_600_000 };
   }
   const start = Date.parse(`${stay.checkInDate}T00:00:00`);
@@ -128,7 +130,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
       : searchParams.get('novo');
   const requestedRoom = editingStay?.roomNumber ?? (modalOnly ? initialRoom : searchParams.get('quarto') ?? '');
   const formKind: StayKind | null = requested === 'hospede' ? 'hospede' : requested === 'rotativo' ? 'periodo' : null;
-  const initialCheckIn = editingStay?.checkInDate ?? localDateKey();
+  const initialCheckIn = editingStay?.checkInDate ?? operationalDateKey();
   const initialNights = Math.max(1, editingStay?.nights ?? 1);
   const initialRate = editingStay ? stayDailyAmount(editingStay) / initialNights : 0;
   const initialRateText = editingStay?.kind === 'hospede' ? String(Math.round(initialRate * 100) / 100).replace('.', ',') : '';
@@ -159,9 +161,11 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   const [taxSplitMethod, setTaxSplitMethod] = useState<FinancePaymentMethod>(() => editingStay?.taxSplit?.method ?? 'prepaid');
   const [taxSplitAmount, setTaxSplitAmount] = useState(() => editingStay?.taxSplit ? String(editingStay.taxSplit.amount).replace('.', ',') : '');
   const [extras, setExtras] = useState<ExtraDraft[]>(() => (editingStay?.extras ?? []).map((extra) => ({ ...extra, amount: String(extra.amount).replace('.', ','), method: extra.method ?? editingStay?.dailyMethod ?? 'pix', mode: extra.mode ?? 'fixo' })));
+  const [awaiting, setAwaiting] = useState(false);
+  const [courtesy, setCourtesy] = useState(() => Boolean(editingStay?.courtesy));
   const [note, setNote] = useState(() => editingStay?.note ?? '');
   const [saving, setSaving] = useState(false);
-  const [receiptDate, setReceiptDate] = useState(() => financeDateKeyFromTimestamp(new Date().toISOString()));
+  const [receiptDate, setReceiptDate] = useState(() => operationalDateKey());
   const [receiveNow, setReceiveNow] = useState(true);
 
   useEffect(() => {
@@ -223,10 +227,10 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
     && dailyRateText === initialRateText
     && checkInDate === editingStay.checkInDate
     && checkOutDate === (editingStay.checkOutDate ?? dateKeyAfterDays(editingStay.checkInDate, initialNights)));
-  const dailyTotal = formKind === 'hospede'
+  const dailyTotal = courtesy ? 0 : formKind === 'hospede'
     ? unchangedStayRateAndPeriod ? stayDailyAmount(editingStay!) : Math.round((enteredDailyRate ?? 0) * draftNights * 100) / 100
     : parseAmount(dailyRate) * draftNights;
-  const breakfastTotal = parseAmount(breakfastRate) * draftBreakfastCount * draftBreakfastDays;
+  const breakfastTotal = courtesy ? 0 : parseAmount(breakfastRate) * draftBreakfastCount * draftBreakfastDays;
   const breakfastSplit = breakfastSplitPayment ? parseAmount(breakfastSplitAmount) : 0;
   const appliedBreakfastSplit = breakfastSplitPayment && breakfastSplit > 0 && breakfastSplit < breakfastTotal ? breakfastSplit : 0;
   const breakfastPrepaidAmount = hasBreakfast
@@ -349,7 +353,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
     if (!Number.isInteger(draftGuestCount) || draftGuestCount < 1 || draftGuestCount > 10) return setError('Informe de 1 a 10 pessoas no quarto.');
     if (formKind === 'hospede' && enteredDailyRate === undefined) return setError('Informe um valor válido para a diária.');
     if (formKind === 'periodo' && !rate) return setError('Informe o valor do rotativo.');
-    if (splitPayment && (!draftSplit || draftSplit >= dailyTotal)) return setError('O valor da segunda forma de pagamento deve ser maior que zero e menor que o valor total da hospedagem.');
+    if (!courtesy && splitPayment && (!draftSplit || draftSplit >= dailyTotal)) return setError('O valor da segunda forma de pagamento deve ser maior que zero e menor que o valor total da hospedagem.');
     if (withBreakfast && (!Number.isInteger(draftBreakfastCount) || draftBreakfastCount < 1 || draftBreakfastCount > draftGuestCount)) return setError('A quantidade de cafés deve ficar entre 1 e o número de hóspedes.');
     if (withBreakfast && (!Number.isInteger(draftBreakfastDays) || draftBreakfastDays < 1 || draftBreakfastDays > draftNights)) return setError('A quantidade de dias com café deve ficar entre 1 e o número de diárias.');
     if (withBreakfast && !breakfast) return setError('Informe o valor de cada café.');
@@ -372,6 +376,8 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
       ...(editingStay?.creditApplied !== undefined ? { creditApplied: editingStay.creditApplied } : {}),
       ...(editingStay?.convertedFromStayId ? { convertedFromStayId: editingStay.convertedFromStayId } : {}),
       ...(editingStay?.voidedPayments ? { voidedPayments: editingStay.voidedPayments } : {}),
+      ...(isAdmin && courtesy && formKind === 'hospede' ? { courtesy: true } : {}),
+      ...(editingStay?.awaitingArrival ? { awaitingArrival: true } : awaiting && !editingStay && formKind === 'hospede' ? { awaitingArrival: true } : {}),
       dailyMethod,
       ...(splitPayment ? { dailySplit: { method: splitMethod, amount: draftSplit } } : {}),
       hasBreakfast: withBreakfast,
@@ -388,13 +394,19 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
       status: editingStay?.status ?? 'hospedado',
       createdAt: editingStay?.createdAt ?? new Date().toISOString(),
     };
+    if (stay.courtesy && editingStay) {
+      // Pagamentos de diária e café já recebidos deixam de compor a receita da cortesia.
+      const voided = { ...stay.voidedPayments };
+      Object.values(editingStay.receipts ?? {}).filter((receipt) => receipt.category === 'Diária' || receipt.category === 'Café').forEach((receipt) => { voided[receipt.id] = true; });
+      stay = { ...stay, voidedPayments: voided };
+    }
     if (!receiptDate || receiptDate > financeDateKeyFromTimestamp(new Date().toISOString())) return setError('Confira a data de recebimento.');
     stay = editingStay
       ? { ...stay, receiptsInitialized: true, receipts: existingStayReceipts(editingStay), ...(editingStay.lastReceiptAt ? { lastReceiptAt: editingStay.lastReceiptAt } : {}) }
       : initializeStayReceipts(stay, receiptDate, receiveNow);
     if (!reservationDirectoryLoaded) return setError('Aguarde o carregamento da disponibilidade dos quartos e tente novamente.');
     const chosenRoom = Object.values(roomDirectory).find((room) => room.number === stay.roomNumber);
-    if ((!editingStay || editingStay.roomNumber !== stay.roomNumber) && chosenRoom && (chosenRoom.maintenanceStatus === 'em_manutencao' || chosenRoom.cleaningStatus !== 'limpo')) return setError('Este quarto está bloqueado. Aguarde a conclusão da limpeza e a liberação da manutenção.');
+    if (!stay.awaitingArrival && (!editingStay || editingStay.roomNumber !== stay.roomNumber) && chosenRoom && (chosenRoom.maintenanceStatus === 'em_manutencao' || chosenRoom.cleaningStatus !== 'limpo')) return setError('Este quarto está bloqueado. Aguarde a conclusão da limpeza e a liberação da manutenção.');
     const requestedInterval = stayInterval(stay);
     const conflictsWithReservation = Object.values(reservationDirectory).some((reservation) => {
       if (reservation.roomNumber !== stay.roomNumber || !['confirmada', 'hospedado'].includes(reservation.status ?? '')) return false;
@@ -546,6 +558,8 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
               </section>}
               {formKind === 'hospede' && <section className="reception-optional reception-service-card reception-service-tax reception-wide" aria-label="Taxa">
                 <div className="reception-service-intro"><strong>Taxa</strong><small>O valor pago no balcão entra como entrada e saída para a OYO; taxa pré-paga fica fora do fluxo financeiro.</small></div>
+                {!editingStay && formKind === 'hospede' && <label className="reception-check"><input type="checkbox" checked={awaiting} onChange={(event) => setAwaiting(event.target.checked)} /> Hóspede ainda vai chegar (pré-cadastro; o check-in será confirmado na chegada)</label>}
+                {isAdmin && formKind === 'hospede' && <label className="reception-check"><input type="checkbox" checked={courtesy} onChange={(event) => setCourtesy(event.target.checked)} /> Hospedagem de cortesia (diária e café sem cobrança{editingStay ? "; recebimentos de diária e café já lançados serão anulados" : ""})</label>}
                 <label className="reception-check"><input type="checkbox" checked={hasTax} onChange={(event) => setHasTax(event.target.checked)} /> Cobrar taxa</label>
                 {hasTax && <>
                   <label className="reception-small-field"><span>Taxa (R$)</span><input inputMode="decimal" value={taxAmount} onChange={(event) => setTaxAmount(event.target.value)} /></label>

@@ -1,14 +1,15 @@
 import { StayAccount } from '../components/StayAccount';
+import { cashShiftDate } from '../services/cashShiftDate';
 import { checkoutQuery, requestCheckout } from '../services/checkoutClient';
 import { currentOccupants, stayOccupiesDate, reservationOccupiesDate } from '../services/occupantDirectory';
 import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAttendant } from '../services/useAttendant';
 import type { UserRole } from '../types';
-import { subscribeDashboardHousekeeping, subscribeCurrentReservationDirectory, subscribeReservationCollections, subscribeRoomCategories, subscribeRoomDirectory, syncReservationCollections, type DashboardHousekeepingData } from '../services/housekeepingStore';
+import { subscribeDashboardHousekeeping, subscribeCurrentReservationDirectory, subscribeReservationCollections, subscribeRoomCategories, subscribeRoomDirectory, syncReservationCollections, setRoomMaintenanceBlock, type DashboardHousekeepingData } from '../services/housekeepingStore';
 import { departureDue, guestStayOccupiesToday, hotelOccupancySummary, occupiedRoomNumbers } from '../services/reservationAnalytics';
 import { subscribeRoomAddOnInventory } from '../services/frigobarStore';
-import { convertRotativoToDaily, emptyReception, localDateKey, saveRoomCharge, subscribeReceptionBoard, subscribeReceptionRates } from '../services/receptionStore';
+import { convertRotativoToDaily, emptyReception, localDateKey, saveRoomCharge, confirmStayArrival, subscribeReceptionBoard, subscribeReceptionRates } from '../services/receptionStore';
 import { emptyCleaning, subscribeActiveCleaningTasks, subscribeDashboardCleaningTasks } from '../services/cleaningStore';
 import { subscribeInventoryProducts } from '../services/inventoryStore';
 import { useInternalOutputSync } from '../services/internalOutputs';
@@ -534,6 +535,10 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
   const [chargeError, setChargeError] = useState('');
   const [savingCharge, setSavingCharge] = useState(false);
   const actualToday = localDateKey(new Date(now));
+  const [arrivalBusy, setArrivalBusy] = useState('');
+  const [arrivalError, setArrivalError] = useState('');
+  const [maintenanceBusy, setMaintenanceBusy] = useState('');
+  const [maintenanceError, setMaintenanceError] = useState('');
   const [selectedDate, setSelectedDate] = useState('');
   const today = selectedDate || actualToday;
   const historical = today !== actualToday;
@@ -785,7 +790,7 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
       ...(chargeKind === 'bebida'
         ? { quantity: totalDrinkQuantity, productId: selectedProduct!.id, productName: selectedProduct!.name }
         : { dailyRate: parseRoomChargeAmount(chargeAmount) }),
-      date: today,
+      date: cashShiftDate(new Date()),
       payments: {
         part1: { method: paymentMethod, amount: splitPayment ? Math.round((amount - secondAmount) * 100) / 100 : amount },
         ...(splitPayment ? { part2: { method: splitMethod, amount: secondAmount } } : {}),
@@ -919,6 +924,38 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
             </button>;
           })}
         </div>}
+    {!historical && boardLoaded && (() => {
+      const expected = Object.values(stays).filter((stay) => stay.awaitingArrival && stay.status === 'hospedado' && stay.checkInDate <= dateKeyAfterDays(today, 1)).sort((a, b) => a.checkInDate.localeCompare(b.checkInDate));
+      if (expected.length === 0) return null;
+      return <details className="dashboard-maintenance" open>
+        <summary>Chegadas previstas ({expected.length})</summary>
+        {arrivalError && <p role="alert">{arrivalError}</p>}
+        <ul className="dashboard-arrivals">{expected.map((stay) => <li key={stay.id}>
+          <span><strong>Quarto {stay.roomNumber} · {stay.guestName}</strong><br /><small>{stay.guestCount ?? 1} pessoa(s) · chegada {new Date(`${stay.checkInDate}T12:00:00`).toLocaleDateString('pt-BR')} · {stay.nights} diária(s){stay.hasBreakfast ? ' · com café' : ''}{stay.note ? ` · ${stay.note}` : ''}</small></span>
+          <button type="button" className="dashboard-room-charge-submit" disabled={arrivalBusy === stay.id} onClick={async () => {
+            const room = roomsByNumber.get(stay.roomNumber);
+            if (room && (room.maintenanceStatus === 'em_manutencao' || room.cleaningStatus !== 'limpo')) { setArrivalError(`O quarto ${stay.roomNumber} ainda não está limpo e liberado.`); return; }
+            if (occupants.has(stay.roomNumber)) { setArrivalError(`O quarto ${stay.roomNumber} está ocupado no momento.`); return; }
+            setArrivalBusy(stay.id); setArrivalError('');
+            try { await confirmStayArrival(stay.id); onChargeSaved(`Check-in do quarto ${stay.roomNumber} confirmado.`); } catch (cause) { setArrivalError(cause instanceof Error ? cause.message : 'Não foi possível confirmar o check-in.'); } finally { setArrivalBusy(''); }
+          }}>Conferir dados e fazer check-in</button>
+        </li>)}</ul>
+      </details>;
+    })()}
+    {!isAdmin && !historical && boardLoaded && (() => {
+      const pending = roomNumbers.filter((number) => { const room = roomsByNumber.get(number); return room && !occupants.has(number) && room.cleaningStatus !== 'limpo' && room.maintenanceStatus !== 'em_manutencao' && !cleaningRoomNumbers.has(number); });
+      const manageable = roomNumbers.filter((number) => !occupants.has(number) && !cleaningRoomNumbers.has(number) && roomsByNumber.get(number));
+      return <>
+        {new Date(now).getHours() >= 12 && pending.length > 0 && <p role="alert" className="dashboard-noon-alert">Atenção: já passou do meio-dia e existem quartos a serem limpos e liberados: {pending.join(', ')}.</p>}
+        <details className="dashboard-maintenance">
+          <summary>Bloquear / liberar quarto para manutenção</summary>
+          {maintenanceError && <p role="alert">{maintenanceError}</p>}
+          <div className="dashboard-maintenance-list">
+            {manageable.map((number) => { const room = roomsByNumber.get(number)!; const blocked = room.maintenanceStatus === 'em_manutencao'; return <button type="button" key={number} disabled={maintenanceBusy === number} onClick={async () => { setMaintenanceBusy(number); setMaintenanceError(''); try { await setRoomMaintenanceBlock(room.id, !blocked); } catch (cause) { setMaintenanceError(cause instanceof Error ? cause.message : 'Não foi possível alterar o quarto.'); } finally { setMaintenanceBusy(''); } }}>{blocked ? `Liberar ${number} (em manutenção)` : `Bloquear ${number}`}</button>; })}
+          </div>
+        </details>
+      </>;
+    })()}
     {isAdmin && selectedManagerRoom && <Suspense fallback={<p role="status">Abrindo opções do quarto…</p>}>
       <ManagerRoomDialog
         key={`${selectedManagerRoom}:${occupants.get(selectedManagerRoom)?.sourceId ?? 'livre'}`}

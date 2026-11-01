@@ -229,3 +229,12 @@ a.reception-primary { display: inline-flex; align-items: center; text-decoration
   .reception-modal-footer { padding: 12px; }
   .reception-total-summary { min-width: 0; max-width: none; width: 100%; }
 }
+
+/* Monitores da recepção de baixa resolução: modais compactos e sempre dentro da tela */
+@media (max-height: 800px), (max-width: 1366px) {
+  .reception-modal { width: min(100%, 1040px); min-height: 0; max-height: 96dvh; border-top-width: 4px; }
+  .reception-modal-head { min-height: 52px; padding: 8px 16px; }
+  .reception-modal-body { gap: 10px; padding: 12px 16px; }
+  .reception-modal-footer { gap: 10px; padding: 9px 16px; }
+  .reception-modal input, .reception-modal select { min-height: 34px; padding-block: 4px; }
+}

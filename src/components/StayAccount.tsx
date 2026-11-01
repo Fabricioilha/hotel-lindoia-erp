@@ -6,6 +6,7 @@ import type { FrigobarSale } from '../types/frigobar';
 import { existingStayReceipts } from '../services/stayReceipts';
 import { saveStayReceipt } from '../services/receptionStore';
 import { financeDateKeyFromTimestamp } from '../services/financePayments';
+import { operationalDateKey } from '../services/cashShiftDate';
 import { DateInput } from './ui/DateInput';
 
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
@@ -15,7 +16,7 @@ export function StayAccount({ stay, attendant, charges = [], onSaved }: { stay: 
   useEffect(() => subscribeFrigobar((data) => setSales(Object.values(data.sales).filter((sale) => sale.sourceId ? sale.sourceId === stay.id && sale.sourceType === 'stay' : sale.roomNumber.trim() === stay.roomNumber.trim() && sale.settlement === 'cobrar_no_checkout')), (cause) => setSalesError(cause.message)), [stay.id, stay.roomNumber]);
   const [amount, setAmount] = useState('');
   const [method, setMethod] = useState<FinancePaymentMethod>('pix');
-  const [date, setDate] = useState(() => financeDateKeyFromTimestamp(new Date().toISOString()));
+  const [date, setDate] = useState(() => operationalDateKey());
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [operationId, setOperationId] = useState(() => `recepcao-${stay.id}-${crypto.randomUUID()}`);

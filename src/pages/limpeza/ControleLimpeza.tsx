@@ -78,6 +78,10 @@ export function ControleLimpeza({ userRole }: { userRole: UserRole }) {
   const visibleInProgress = focusedRoom ? inProgress.filter((task) => task.roomNumber === focusedRoom) : inProgress;
   const visibleDone = focusedRoom ? doneOnDate.filter((task) => task.roomNumber === focusedRoom) : doneOnDate;
 
+  const doneToday = tasks.filter((task) => task.status === 'concluido' && localDateKey(new Date(task.completedAt ?? task.assignedAt)) === today);
+  const pendingRooms = Object.values(roomDirectory).filter((room) => room.cleaningStatus !== 'limpo' && room.maintenanceStatus !== 'em_manutencao' && !busyRooms.has(room.number) && !guestOf(room.number));
+  const pastNoon = new Date(clock).getHours() >= 12;
+
   function guestOf(number: string): string {
     return Object.values(reservations).find((reservation) => reservation.roomNumber === number && reservationOccupiesToday(reservation, today, clock))?.guestName
       ?? Object.values(reception.stays).find((stay) => stay.roomNumber === number && guestStayOccupiesToday(stay, today, clock))?.guestName ?? '';
@@ -138,6 +142,15 @@ export function ControleLimpeza({ userRole }: { userRole: UserRole }) {
       {notice && <div className="clean-success" role="status">{notice}</div>}
       {focusedRoom && <section className="clean-context" aria-label={`Limpeza do quarto ${focusedRoom}`}><div><strong>Quarto {focusedRoom}</strong><span>{guestOf(focusedRoom) ? `Ocupado · ${guestOf(focusedRoom)}` : 'Acompanhe a limpeza e a camareira responsável.'}</span>{cleaningDeclined(focusedRoom) && <span>O hóspede dispensou a limpeza de hoje. Atualize a solicitação em Gerenciar quartos para designar.</span>}</div><nav>{isAdmin && <><Link to={`/quartos?room=${encodeURIComponent(focusedRoom)}`}>Gerenciar quarto</Link><Link to={`/reservas?room=${encodeURIComponent(focusedRoom)}`}>Reservas e hospedagens</Link></>}<Link to="/limpeza">Todos os quartos</Link></nav></section>}
       {isAdmin && !focusedRoom && <nav className="clean-module-links"><Link to="/quartos">Gerenciar quartos</Link><Link to="/reservas">Reservas e hospedagens</Link></nav>}
+
+      <section className="clean-panel" aria-label="Resumo do dia">
+        <h2>Resumo de hoje</h2>
+        {pastNoon && pendingRooms.length > 0 && <p role="alert" className="clean-alert">Atenção: após as 12:00 ainda há {pendingRooms.length} quarto(s) a limpar e liberar: {pendingRooms.map((room) => room.number).join(', ')}.</p>}
+        <div className="clean-people">
+          {camareiras.map((item) => <div key={item.id} className="clean-person"><strong>{item.name}</strong><small>{doneToday.filter((task) => task.camareira === item.name).length} limpo(s) hoje · {inProgress.filter((task) => task.camareira === item.name).length} em limpeza</small></div>)}
+          <div className="clean-person"><strong>Faltam</strong><small>{pendingRooms.length} quarto(s) aguardando limpeza · {inProgress.length} em andamento</small></div>
+        </div>
+      </section>
 
       <section className="clean-panel">
         <h2><span className="clean-step">1</span> Quem vai limpar?</h2>

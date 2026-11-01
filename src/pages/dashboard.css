@@ -307,3 +307,16 @@
 .dashboard-board-date .dashboard-board-date-arrow:hover { background: #eef3fa; border-color: #1f4f82; }
 .dashboard-board-date .dashboard-board-date-arrow:focus-visible { outline: 2px solid #1f4f82; outline-offset: 2px; }
 .dashboard-room:disabled { opacity: 1; }
+
+@media (max-height: 800px) {
+  .dashboard-room-charge-modal { max-height: 96dvh; padding: 12px; }
+  .dashboard-tool-modal { height: 97dvh; }
+  .dashboard-room-charge-backdrop, .dashboard-tool-backdrop { padding: 6px; }
+}
+
+.dashboard-noon-alert { margin: 10px 0; padding: 12px 16px; border: 1px solid #f3b6bf; border-radius: 8px; background: #fde8eb; color: #8f1d2e; font-weight: 700; }
+.dashboard-maintenance { margin-top: 12px; }
+.dashboard-maintenance summary { cursor: pointer; font-weight: 700; }
+.dashboard-maintenance-list { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 10px; }
+.dashboard-arrivals { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
+.dashboard-arrivals li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid #d5deea; border-radius: 8px; background: #fff; }

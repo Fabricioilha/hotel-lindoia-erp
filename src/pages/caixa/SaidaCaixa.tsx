@@ -1,7 +1,8 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { UserRole } from '../../types';
 import { CASH_OUT_REASONS, type CashOut } from '../../types/reception';
-import { localDateKey, saveCashOut, subscribeTodayCashOuts } from '../../services/receptionStore';
+import { operationalDateKey } from '../../services/cashShiftDate';
+import { saveCashOut, subscribeTodayCashOuts } from '../../services/receptionStore';
 import { BackToPanel } from '../../components/ui/BackToPanel';
 import { PanelHomeLink } from '../../components/ui/PanelModalContext';
 import { useAttendant } from '../../services/useAttendant';
@@ -27,7 +28,7 @@ export function SaidaCaixa({ userRole }: { userRole: UserRole }) {
     return <div className="cx-page"><div className="cx-panel"><h1>Saída de caixa</h1><p>Não há plantonista na escala neste horário. O plantonista é definido automaticamente pela escala; avise a gerência para ajustá-la.</p><PanelHomeLink className="cx-primary">Voltar ao Painel principal</PanelHomeLink></div></div>;
   }
 
-  const today = localDateKey();
+  const today = operationalDateKey();
   const mine = Object.values(cashOuts).filter((item) => item.attendant === attendant && item.date === today).sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   const total = mine.reduce((sum, item) => sum + item.amount, 0);
 
@@ -60,7 +61,7 @@ export function SaidaCaixa({ userRole }: { userRole: UserRole }) {
       <header className="cx-title">
         <p className="cx-eyebrow">PLANTÃO <span>/</span> CAIXA</p>
         <h1>Saída de caixa</h1>
-        <p>Use quando retirar dinheiro do caixa para uma compra (mercado, padaria, farmácia...). Guarde o comprovante.</p>
+        <p>Use quando retirar dinheiro do caixa para uma compra (café da manhã, farmácia...). Guarde o comprovante.</p>
       </header>
       {error && <div className="cx-alert" role="alert">{error}</div>}
       {notice && <div className="cx-success" role="status">{notice}</div>}

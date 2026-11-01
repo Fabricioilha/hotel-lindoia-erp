@@ -4,6 +4,7 @@ import type { FrigobarSale } from '../types/frigobar';
 import type { ReservationCollection } from '../types/housekeeping';
 import type { Reservation } from '../types/housekeeping';
 import type { StockMovement } from '../types/inventory';
+import { cashShiftDate } from './cashShiftDate';
 import { financeDateKeyFromTimestamp, withExpensePaymentTotals } from './financePayments';
 
 export interface OperationalFinanceSources {
@@ -121,7 +122,7 @@ export function cashOutFinanceEntry(cashOut: CashOut): FinanceExpense {
 export function frigobarFinanceEntry(sale: FrigobarSale): FinanceIncome | undefined {
   if (sale.settlement === 'cobrar_no_checkout' || !sale.paymentMethod) return undefined;
   const methods = { dinheiro: 'cash', pix: 'pix', cartao_debito: 'debit', cartao_credito: 'credit' } as const;
-  const date = financeDateKeyFromTimestamp(sale.settledAt ?? sale.createdAt);
+  const date = cashShiftDate(sale.settledAt ?? sale.createdAt);
   if (!date || !methods[sale.paymentMethod]) return undefined;
   return income(`frigobar-${sale.id}`, date, 'Consumo', sale.items.map((item) => `${item.productName} × ${item.quantity}`).join(', '), sale.amount, methods[sale.paymentMethod], ['Geladeira - Recepção', sale.roomNumber ? `Quarto ${sale.roomNumber}` : '', sale.guestName].filter(Boolean).join(' · '), sale.settledAt ?? sale.createdAt);
 }
@@ -130,7 +131,7 @@ export function minibarMovementFinanceEntry(movement: StockMovement): FinanceInc
   if (movement.type !== 'consumo_frigobar' || !movement.paymentMethod
     || !['pago_na_recepcao', 'pago_no_checkout'].includes(movement.settlement ?? '')) return undefined;
   const methods = { dinheiro: 'cash', pix: 'pix', cartao_debito: 'debit', cartao_credito: 'credit' } as const;
-  const date = financeDateKeyFromTimestamp(movement.settledAt ?? movement.createdAt);
+  const date = cashShiftDate(movement.settledAt ?? movement.createdAt);
   const amount = cents(movement.quantity * movement.unitPrice);
   if (!date || !methods[movement.paymentMethod] || !Number.isFinite(amount) || amount <= 0) return undefined;
   return income(`minibar-${movement.id}`, date, 'Consumo', `${movement.productName} · ${movement.quantity} ${movement.unit}`,

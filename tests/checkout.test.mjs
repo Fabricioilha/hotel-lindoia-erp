@@ -272,3 +272,16 @@ test('future occupancy shows continuing guests and leaves departed or unreserved
   assert.equal(stayOccupiesDate({ kind: 'hospede', status: 'hospedado', checkInDate: '2026-10-24', nights: 3 }, '2026-10-26', '2026-10-24', noon.getTime()), true);
   assert.equal(stayOccupiesDate({ kind: 'hospede', status: 'hospedado', checkInDate: '2026-10-24', nights: 1 }, '2026-10-26', '2026-10-24', noon.getTime()), false);
 });
+
+test('faturamento diário divide diárias e café prépagos em cada dia', () => {
+  const { dailyRevenueRows } = domainModule('src/services/dailyRevenue.ts');
+  const stay = { id: 's1', kind: 'hospede', checkInDate: '2026-10-01', nights: 3, dailyRate: 100, hasBreakfast: true, breakfastRate: 10, breakfastCount: 1, breakfastDays: 3 };
+  const item = (id, amount, paymentMethod) => ({ id, description: id, amount, paymentMethod });
+  const rows = dailyRevenueRows({
+    'recepcao-s1-diaria': { id: 'recepcao-s1-diaria', date: '2026-10-01', category: 'Diária', amount: 300, wallet: 'oyo', items: [item('a', 300, 'prepaid')], note: '', createdAt: '', updatedAt: '' },
+    'recepcao-s1-cafe': { id: 'recepcao-s1-cafe', date: '2026-10-01', category: 'Café', amount: 30, wallet: 'cash', items: [item('b', 30, 'cash')], note: '', createdAt: '', updatedAt: '' },
+  }, { s1: stay });
+  const diarias = rows.filter((row) => row.category === 'Diária');
+  assert.deepEqual(diarias.map((row) => [row.date, row.amount, row.prepaid]), [['2026-10-01', 100, 100], ['2026-10-02', 100, 100], ['2026-10-03', 100, 100]]);
+  assert.deepEqual(rows.filter((row) => row.category === 'Café').map((row) => [row.date, row.amount]), [['2026-10-02', 10], ['2026-10-03', 10], ['2026-10-04', 10]]);
+});

@@ -11,6 +11,7 @@ import { deleteFinancialExpense, deleteFinancialIncome } from '../../services/fi
 import { useStaff } from '../../services/staffStore';
 import { hotelIncomeView, monthlyFinanceSummary, oyoPaymentsAt, prepaidEntriesAt, prepaidEntriesTotal, type PrepaidIncomeEntry } from '../../services/financeAnalytics';
 import { staffMembers } from '../../types/staff';
+import { dailyRevenueRows } from '../../services/dailyRevenue';
 import { financeDataIssues } from '../../services/financeValidation';
 import { expensePaymentEvents, financeDateKeyFromTimestamp, financeMonthRange, isFinanceDateKey, patchPaymentDates, paymentEventTotals, paymentsInRange, payrollPaymentEvents, withExpensePaymentTotals } from '../../services/financePayments';
 import {
@@ -33,7 +34,7 @@ import {
 } from '../../types/finance';
 import './financeiro.css';
 
-type Tab = 'resumo' | 'entradas' | 'prepagos' | 'saidas' | 'transferencias' | 'categorias' | 'pendencias';
+type Tab = 'resumo' | 'faturamento' | 'entradas' | 'prepagos' | 'saidas' | 'transferencias' | 'categorias' | 'pendencias';
 type Modal = 'entrada' | 'entrada-prepaga' | 'saida' | 'transferencia' | 'repasse' | 'saldo' | 'ajuste' | null;
 type TransactionRange = { from: string; to: string };
 // Categorias usadas por lançamentos automáticos (hospedagem, venda, estoque, OYO).
@@ -91,6 +92,7 @@ export function FluxoDeCaixa() {
 	const [error, setError] = useState('');
 	const [notice, setNotice] = useState('');
 	const isMovementTab = tab === 'entradas' || tab === 'saidas';
+	const rangeTab = isMovementTab || tab === 'prepagos' || tab === 'transferencias' || tab === 'faturamento';
 	const financeScope = 'full';
 	const loading = loadedFinanceScope !== financeScope;
   const [summaryOpen, setSummaryOpen] = useState(() => localStorage.getItem('cash-summary-open') !== 'false');
@@ -105,8 +107,8 @@ export function FluxoDeCaixa() {
 		return () => { active = false; stop(); };
 	}, []);
 
-	const activeRange = isMovementTab ? transactionRange : financeMonthRange(month);
-	const term = isMovementTab ? search.trim().toLocaleLowerCase('pt-BR') : '';
+	const activeRange = rangeTab ? transactionRange : financeMonthRange(month);
+	const term = rangeTab || tab === 'pendencias' ? search.trim().toLocaleLowerCase('pt-BR') : '';
 	const matchesText = (...values: (string | undefined)[]) => !term || values.some((value) => value?.toLocaleLowerCase('pt-BR').includes(term));
 	const registeredIncomes = Object.values(data.incomes).filter((entry) => dateWithinRange(entry.date, activeRange) && matchesText(entry.category, entry.note, ...incomeItems(entry).map((item) => item.description))).sort((a, b) => b.date.localeCompare(a.date));
 	const incomes = registeredIncomes.flatMap((entry) => {
@@ -128,12 +130,17 @@ export function FluxoDeCaixa() {
 			&& matchesText(entry.employee, entry.position, entry.note)
 			&& (!isMovementTab || walletFilter === 'all' || paymentsInRange(payments, activeRange.from, activeRange.to).some((payment) => payment.wallet === walletFilter));
 	});
-	const transfers = useMemo(() => Object.values(data.transfers).filter((item) => item.date.startsWith(month)).sort((a, b) => b.date.localeCompare(a.date)), [data.transfers, month]);
+	const transfers = Object.values(data.transfers).filter((item) => (tab === 'transferencias' ? dateWithinRange(item.date, transactionRange) : item.date.startsWith(month)) && (tab !== 'transferencias' || !term || [item.note, WALLET_LABELS[item.from], WALLET_LABELS[item.to]].some((value) => value?.toLocaleLowerCase('pt-BR').includes(term)))).sort((a, b) => b.date.localeCompare(a.date));
+	const revenueRows = useMemo(() => dailyRevenueRows(data.incomes, data.stays ?? {}), [data.incomes, data.stays]);
+	const monthRevenue = revenueRows.filter((row) => dateWithinRange(row.date, financeMonthRange(month))).reduce((sum, row) => sum + Math.round(row.amount * 100), 0) / 100;
+	const periodRevenue = revenueRows.filter((row) => dateWithinRange(row.date, transactionRange) && matchesText(row.category, row.description));
+	const revenueByDay = [...periodRevenue.reduce((map, row) => { const day = map.get(row.date) ?? { date: row.date, diaria: 0, cafe: 0, outros: 0, prepaid: 0, total: 0 }; const value = Math.round(row.amount * 100); if (row.category === 'Diária' || row.category === 'Rotativo') day.diaria += value; else if (row.category === 'Café') day.cafe += value; else day.outros += value; day.prepaid += Math.round(row.prepaid * 100); day.total += value; return map.set(row.date, day); }, new Map<string, { date: string; diaria: number; cafe: number; outros: number; prepaid: number; total: number }>()).values()].sort((a, b) => a.date.localeCompare(b.date));
 	const financeIssues = useMemo(() => financeDataIssues(data), [data]);
 	const monthSummary = monthlyFinanceSummary(data, month);
 	const { receipts, cashPaidExpenses, oyoPaidExpenses, paidExpenses, cashResult, closingBalances: balances } = monthSummary;
 	const pendingExpenses = monthSummary.pendingExpenses + monthSummary.pendingPayroll;
 	const prepaidEntries = useMemo(() => prepaidEntriesAt(data.incomes, month), [data.incomes, month]);
+	const visiblePrepaid = prepaidEntries.filter((entry) => dateWithinRange(entry.income.date, transactionRange) && matchesText(entry.income.category, entry.income.note, ...entry.items.map((item) => item.description)));
 	const prepaidTotal = prepaidEntriesTotal(prepaidEntries);
 	const prepaidMonthTotal = prepaidEntriesTotal(prepaidEntries.filter((entry) => entry.income.date.startsWith(month)));
 	const visibleIncomeTotal = paymentItemTotal(incomes.map((entry) => ({ amount: entry.amount })));
@@ -451,12 +458,13 @@ export function FluxoDeCaixa() {
 							const next = event.key === 'Home' ? tabs[0] : event.key === 'End' ? tabs[tabs.length - 1] : tabs[(tabs.indexOf(tab) + (event.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
 							selectTab(next); event.currentTarget.querySelector<HTMLButtonElement>(`#finance-tab-${next}`)?.focus();
 						}}>
-						{([['resumo', 'Resumo'], ['entradas', 'Entradas'], ['prepagos', 'Retidos OYO'], ['saidas', 'Despesas'], ['transferencias', 'Transferências'], ['pendencias', 'Contas a pagar'], ['categorias', 'Configurações']] as [Tab, string][]).map(([idTab, label]) => <button key={idTab} id={`finance-tab-${idTab}`} role="tab" aria-controls={`finance-view-${idTab}`} tabIndex={tab === idTab ? 0 : -1} aria-selected={tab === idTab} className={tab === idTab ? 'selected' : ''} onClick={() => selectTab(idTab)}>{label}</button>)}
+						{([['resumo', 'Resumo'], ['faturamento', 'Faturamento diário'], ['entradas', 'Entradas'], ['prepagos', 'Retidos OYO'], ['saidas', 'Despesas'], ['transferencias', 'Transferências'], ['pendencias', 'Contas a pagar'], ['categorias', 'Configurações']] as [Tab, string][]).map(([idTab, label]) => <button key={idTab} id={`finance-tab-${idTab}`} role="tab" aria-controls={`finance-view-${idTab}`} tabIndex={tab === idTab ? 0 : -1} aria-selected={tab === idTab} className={tab === idTab ? 'selected' : ''} onClick={() => selectTab(idTab)}>{label}</button>)}
 					</div>
 
 					<div className="finance-summary-toggle"><button type="button" className="finance-button finance-button-soft" aria-expanded={summaryOpen} onClick={() => setSummaryOpen((value) => { localStorage.setItem('cash-summary-open', String(!value)); return !value; })}>{summaryOpen ? 'Recolher resumo mensal' : 'Mostrar resumo mensal'}</button><span>Indicadores mensais · contas em aberto até {dateLabel(positionDate)}</span></div>
           {summaryOpen && <section className="finance-metrics" aria-label="Resumo financeiro do mês">
 						<Metric label="Entradas no hotel" value={money(receipts.received)} detail={`${money(receipts.direct)} diretos · ${money(receipts.repasses)} de repasses OYO`} tone="green" />
+						<Metric label="Faturamento do mês" value={money(monthRevenue)} detail="Competência por dia, inclui hospedagens pré-pagas" tone="green" />
 						<Metric label="Saídas pagas" value={money(paidExpenses)} detail={`${money(cashPaidExpenses)} caixa/banco · ${money(oyoPaidExpenses)} retidos OYO · ${money(pendingExpenses)} pendentes do mês`} tone="coral" />
 						<Metric label="Resultado de caixa" value={money(cashResult)} detail="Variação do caixa e banco no mês" tone="blue" />
 						<Metric label="Caixa físico" value={money(balances.cash)} detail="Saldo acumulado até o mês" tone="gold" />
@@ -466,13 +474,15 @@ export function FluxoDeCaixa() {
 
 					<div className="finance-debt-summary"><button type="button" onClick={() => selectTab('pendencias')}>Vencidas <strong>{money(overdueTotal)}</strong></button><button type="button" onClick={() => selectTab('pendencias')}>Hoje e a vencer <strong>{money(upcomingTotal)}</strong></button><button type="button" onClick={() => selectTab('pendencias')}>Total em aberto <strong>{money(overdueTotal + upcomingTotal)}</strong></button></div>
           <div className="finance-tab-content" role="tabpanel" tabIndex={0} id={`finance-view-${tab}`} aria-labelledby={`finance-tab-${tab}`}>
-					{isMovementTab && <form className="finance-range-form" onSubmit={applyTransactionRange}>
+					{rangeTab && <form className="finance-range-form" onSubmit={applyTransactionRange}>
 						<div className="finance-range-dates"><label className="finance-month"><span>De</span><input type="date" value={rangeFromDraft} onChange={(event) => setRangeFromDraft(event.target.value)} required /></label><label className="finance-month"><span>Até</span><input type="date" value={rangeToDraft} onChange={(event) => setRangeToDraft(event.target.value)} required /></label><button className="finance-button finance-button-dark" type="submit">Aplicar período</button><button className="finance-button finance-button-soft" type="button" onClick={() => setQuickRange('today')}>Hoje</button><button className="finance-button finance-button-soft" type="button" onClick={() => setQuickRange('month')}>Mês selecionado</button></div>
-						<div className="finance-query-controls"><label className="finance-field"><span>Buscar lançamento</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Categoria, hóspede, funcionário ou observação" /></label><label className="finance-field"><span>Carteira</span><select value={walletFilter} onChange={(event) => setWalletFilter(event.target.value as FinanceWallet | 'all')}><option value="all">Todas as carteiras</option><option value="cash">Caixa físico</option><option value="bank">Banco</option>{tab === 'saidas' && <option value="oyo">Retidos OYO</option>}</select></label><button className="finance-button finance-button-soft" type="button" onClick={exportTransactionPeriod}>Baixar consulta (.csv)</button></div>
-						<p className="finance-range-caption" role="status">Exibindo {transactionRange.from === transactionRange.to ? dateLabel(transactionRange.from) : `${dateLabel(transactionRange.from)} a ${dateLabel(transactionRange.to)}`}{search || walletFilter !== 'all' ? ' · busca ou carteira filtrada' : ''}{rangeFromDraft !== transactionRange.from || rangeToDraft !== transactionRange.to ? ' · alterações de data aguardam aplicar' : ''}</p>
+						<div className="finance-query-controls"><label className="finance-field"><span>Buscar lançamento</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Categoria, hóspede, funcionário ou observação" /></label>{isMovementTab && <label className="finance-field"><span>Carteira</span><select value={walletFilter} onChange={(event) => setWalletFilter(event.target.value as FinanceWallet | 'all')}><option value="all">Todas as carteiras</option><option value="cash">Caixa físico</option><option value="bank">Banco</option>{tab === 'saidas' && <option value="oyo">Retidos OYO</option>}</select></label>}{isMovementTab && <button className="finance-button finance-button-soft" type="button" onClick={exportTransactionPeriod}>Baixar consulta (.csv)</button>}</div>
+						<p className="finance-range-caption" role="status">Exibindo {transactionRange.from === transactionRange.to ? dateLabel(transactionRange.from) : `${dateLabel(transactionRange.from)} a ${dateLabel(transactionRange.to)}`}{search || (isMovementTab && walletFilter !== 'all') ? ' · busca ou carteira filtrada' : ''}{rangeFromDraft !== transactionRange.from || rangeToDraft !== transactionRange.to ? ' · alterações de data aguardam aplicar' : ''}</p>
 					</form>}
 
-					{tab === 'pendencias' && <OutstandingAccounts data={data} asOf={positionDate} onEdit={(entry) => openModal('saida', entry.id)} />}
+					{tab === 'pendencias' && <div className="finance-query-controls"><label className="finance-field"><span>Buscar conta</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Categoria, funcionário ou observação" /></label></div>}
+					{tab === 'pendencias' && <OutstandingAccounts data={term ? { ...data, expenses: Object.fromEntries(Object.entries(data.expenses).filter(([, entry]) => matchesText(entry.category, entry.employee, entry.note))), payroll: Object.fromEntries(Object.entries(data.payroll).filter(([, entry]) => matchesText(entry.employee, entry.position, entry.note))) } : data} asOf={positionDate} onEdit={(entry) => openModal('saida', entry.id)} />}
+          {tab === 'faturamento' && <section className="finance-panel"><div className="finance-panel-heading"><div><h2>Faturamento por dia</h2><p>Regime de competência: diárias e café de estadias longas são divididos em cada dia, inclusive pré-pagos e valores pagos antecipadamente. Total do período: <strong>{money(revenueByDay.reduce((sum, day) => sum + day.total, 0) / 100)}</strong></p></div></div>{revenueByDay.length === 0 ? <div className="finance-empty">Nenhum faturamento no período.</div> : <div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Dia</th><th className="numeric">Diárias/Rotativo</th><th className="numeric">Café</th><th className="numeric">Outros</th><th className="numeric">Já pré-pago</th><th className="numeric">Faturado no dia</th></tr></thead><tbody>{revenueByDay.map((day) => <tr key={day.date}><td>{dateLabel(day.date)}</td><td className="numeric">{money(day.diaria / 100)}</td><td className="numeric">{money(day.cafe / 100)}</td><td className="numeric">{money(day.outros / 100)}</td><td className="numeric">{money(day.prepaid / 100)}</td><td className="numeric"><strong>{money(day.total / 100)}</strong></td></tr>)}</tbody></table></div>}<details><summary>Detalhar lançamentos ({periodRevenue.length})</summary><div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Dia</th><th>Categoria</th><th>Descrição</th><th className="numeric">Valor</th></tr></thead><tbody>{periodRevenue.map((row, index) => <tr key={`${row.incomeId}-${index}`}><td>{dateLabel(row.date)}</td><td>{row.category}</td><td>{row.description}</td><td className="numeric">{money(row.amount)}</td></tr>)}</tbody></table></div></details></section>}
           {tab === 'categorias' && <CardFeeSettings data={data} saving={saving} onSave={(credit, debit) => void commit((latest) => ({ ...latest, cardFeeSchedule: { ...latest.cardFeeSchedule, [id()]: { effectiveAt: new Date().toISOString(), credit, debit } } }), 'Taxas salvas. Os recebimentos anteriores foram preservados.')} />}
           {tab === 'prepagos' && <section className="finance-panel">
 						<div className="finance-panel-heading">
@@ -485,7 +495,7 @@ export function FluxoDeCaixa() {
 						</div>
 						<p className="finance-form-hint">Os hóspedes pagaram estes valores diretamente à OYO antes da chegada. Eles não entram no caixa ou banco do hotel. Esta lista discrimina os pré-pagos de hospedagem, café e extras, inclusive parcelas de pagamentos combinados. Taxas pré-pagas ficam fora do fluxo; taxas cobradas no balcão são compensadas nesta carteira. Comissões e o acerto final continuam sob controle da gerência.</p>
                         <p>Transferências enviadas pelo hotel à OYO até o mês: <strong>{money(oyoPaymentsAt(data, month))}</strong>. Esses pagamentos ficam separados dos pré-pagos dos hóspedes.</p>
-						<PrepaidTable entries={prepaidEntries} onEdit={(entry) => openModal('entrada-prepaga', entry.income.id)} onDelete={(entry) => void removeRecord('entrada', entry.income.id)} />
+						<PrepaidTable entries={visiblePrepaid} onEdit={(entry) => openModal('entrada-prepaga', entry.income.id)} onDelete={(entry) => void removeRecord('entrada', entry.income.id)} />
 					</section>}
 
 					{tab === 'resumo' && <>

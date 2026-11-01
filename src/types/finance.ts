@@ -102,6 +102,8 @@ export interface PayrollEntry {
 }
 
 export interface FinanceData {
+  /** Hospedagens da recepção, usadas apenas para ratear a receita por dia. */
+  stays?: Record<string, import('./reception').GuestStay>;
   cardFeeSchedule?: Record<string, { effectiveAt: string; credit: number; debit: number }>;
   cashAdjustments?: Record<string, CashAdjustment>;
   incomes: Record<string, FinanceIncome>;
@@ -185,8 +187,7 @@ export const EXPENSE_CATEGORIES = [
   'IPTU',
   'Internet',
   'Material de limpeza',
-  'Mercado',
-  'Padaria',
+  'Café da Manhã',
   'Farmácia',
   'Manutenção',
   'OYO',

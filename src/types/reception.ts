@@ -57,6 +57,10 @@ export interface GuestStay {
   checkedOutAt?: string;
   employeeId?: string;
   voidedPayments?: Record<string, boolean>;
+  /** Hospedagem de cortesia concedida pela gerência: diária e café não são cobrados. */
+  courtesy?: boolean;
+  /** Pré-cadastro: o hóspede ainda não chegou e só ocupa o quarto após o check-in. */
+  awaitingArrival?: boolean;
   id: string;
   kind: StayKind;
   checkInDate: string;
@@ -146,7 +150,10 @@ export interface CashOut {
   createdAt: string;
 }
 
-export const CASH_OUT_REASONS = ['Mercado', 'Padaria', 'Farmácia', 'Material de limpeza', 'Manutenção', 'Outros'];
+export const BREAKFAST_EXPENSE_CATEGORY = 'Café da Manhã';
+export const CASH_OUT_REASONS = [BREAKFAST_EXPENSE_CATEGORY, 'Farmácia', 'Material de limpeza', 'Manutenção', 'Outros'];
+// Motivos antigos que passaram a ser registrados como Café da Manhã.
+export const LEGACY_BREAKFAST_CATEGORIES = ['Mercado', 'Padaria'];
 
 export const FLOAT_AMOUNT = 300;
 
@@ -201,8 +208,8 @@ export function weekdayKey(date: string): WeekdayKey | undefined {
   return WEEKDAY_BY_INDEX[day];
 }
 
-export function stayDailyAmount(stay?: Pick<GuestStay, 'dailyRate' | 'nights' | 'nightlyRates' | 'lodgingTotal'>): number {
-  if (!stay) return 0;
+export function stayDailyAmount(stay?: Pick<GuestStay, 'dailyRate' | 'nights' | 'nightlyRates' | 'lodgingTotal' | 'courtesy'>): number {
+  if (!stay || stay.courtesy) return 0;
   if (stay.lodgingTotal !== undefined) return Math.round(stay.lodgingTotal * 100) / 100;
   const rates = stay.nightlyRates;
   const amount = rates && rates.length === stay.nights
@@ -242,8 +249,8 @@ export function stayBreakfastDays(stay: Pick<GuestStay, 'hasBreakfast' | 'breakf
   return Math.min(stay.nights, Math.max(1, Math.floor(stay.breakfastDays ?? stay.nights)));
 }
 
-export function stayBreakfastTotal(stay: Pick<GuestStay, 'hasBreakfast' | 'breakfastRate' | 'breakfastCount' | 'breakfastDays' | 'nights'>): number {
-  return stay.hasBreakfast ? stay.breakfastRate * (stay.breakfastCount ?? 1) * stayBreakfastDays(stay) : 0;
+export function stayBreakfastTotal(stay: Pick<GuestStay, 'hasBreakfast' | 'breakfastRate' | 'breakfastCount' | 'breakfastDays' | 'nights' | 'courtesy'>): number {
+  return stay.hasBreakfast && !stay.courtesy ? stay.breakfastRate * (stay.breakfastCount ?? 1) * stayBreakfastDays(stay) : 0;
 }
 
 export function stayTaxPayments(stay: Pick<GuestStay, 'taxAmount' | 'taxMethod' | 'taxSplit'>): { id: string; method: FinancePaymentMethod; amount: number }[] {
