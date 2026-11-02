@@ -28,6 +28,18 @@
 .cx-time { color: #315f87; font-weight: 800; }
 
 .cx-who-row { padding: 12px 18px; }
+.cx-transfer { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; grid-column: 1 / -1; padding-top: 10px; border-top: 1px solid #e1e7ef; }
+.cx-transfer strong { width: 100%; color: #142b4d; font-size: .8125rem; }
+.cx-transfer select { min-height: 44px; padding: 8px 10px; border: 1px solid #b8c5d8; border-radius: 8px; color: #315f87; background: #fff; font: inherit; }
+.cx-transfer button { min-height: 44px; padding: 0 16px; border: 0; border-radius: 8px; color: #fff; background: #b22a3e; font: inherit; font-weight: 700; cursor: pointer; }
+.cx-transfer button:disabled { opacity: .6; cursor: default; }
+.cx-correction { display: grid; grid-template-columns: minmax(100px, .7fr) minmax(150px, 1fr) minmax(180px, 1.4fr) auto; gap: 8px; align-items: end; grid-column: 1 / -1; padding-top: 10px; border-top: 1px solid #e1e7ef; }
+.cx-correction > strong { grid-column: 1 / -1; color: #142b4d; font-size: .8125rem; }
+.cx-correction .cx-field { min-width: 0; }
+.cx-correction input, .cx-correction select { min-height: 44px; min-width: 0; padding: 8px 10px; border: 1px solid #b8c5d8; border-radius: 8px; color: #315f87; background: #fff; font: inherit; }
+.cx-correction > button { min-height: 44px; padding: 0 16px; border: 0; border-radius: 8px; color: #fff; background: #1f7a4a; font: inherit; font-weight: 700; cursor: pointer; }
+.cx-correction > button:disabled { opacity: .6; cursor: default; }
+@media (max-width: 760px) { .cx-correction { grid-template-columns: 1fr; } .cx-correction > button { width: 100%; } }
 .cx-handoff-panel { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border: 1px solid #cdd6e3; border-left: 4px solid #315f87; border-radius: 10px; background: #fff; }
 .cx-handoff-panel > div { display: grid; gap: 3px; }
 .cx-handoff-panel strong { color: #142b4d; font-size: 0.9375rem; }

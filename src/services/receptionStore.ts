@@ -13,7 +13,8 @@ import { withTransactionData } from './firebaseTransactions';
 import type { FinanceIncome } from '../types/finance';
 import type { HousekeepingRoom } from '../types/housekeeping';
 import { emptyReceptionRateSettings, type CashOut, type FloatCheck, type GuestStay, type ReceptionData, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge } from '../types/reception';
-import { operationalDateKey } from './cashShiftDate';
+import { cashShiftDate, operationalDateKey } from './cashShiftDate';
+import { isFinanceDateKey } from './financePayments';
 import { staffReference } from './staffStore';
 import { stayAmountDue } from '../types/reception';
 
@@ -410,4 +411,87 @@ export async function saveStayReceipt(stayId: string, input: { id: string; amoun
     if (!stay.receipts?.[id]) updates[`receipts/${id}`] = receipt;
   }
   await update(ref(db, PATH + '/stays/' + stayId), updates);
+}
+
+export async function transferOperationalCashRecords(date: string, fromAttendant: string, toAttendant: string): Promise<{ stays: number; receipts: number; roomCharges: number; cashOuts: number; floatChecks: number; sales: number; reservationCollections: number }> {
+  if (!isFinanceDateKey(date) || !fromAttendant.trim() || !toAttendant.trim() || fromAttendant === toAttendant) {
+    throw new Error('Informe uma data e plantonistas válidos e diferentes.');
+  }
+  const [staysSnapshot, chargesSnapshot, cashOutsSnapshot, floatChecksSnapshot, salesSnapshot, collectionsSnapshot] = await Promise.all([
+    get(ref(db, `${PATH}/stays`)),
+    get(ref(db, `${PATH}/roomCharges`)),
+    get(ref(db, `${PATH}/cashOuts`)),
+    get(ref(db, `${PATH}/floatChecks`)),
+    get(ref(db, 'erp_geral/frigobar/operations/sales')),
+    get(ref(db, 'erp_geral/reservationCollections')),
+  ]);
+  const updates: Record<string, unknown> = {};
+  const counts = { stays: 0, receipts: 0, roomCharges: 0, cashOuts: 0, floatChecks: 0, sales: 0, reservationCollections: 0 };
+  const shiftMatches = (timestamp: unknown) => typeof timestamp === 'string' && cashShiftDate(timestamp) === date;
+  const staffPatch = (attendant: string) => ({ attendant, ...staffReference(attendant) });
+
+  Object.entries(staysSnapshot.val() ?? {}).forEach(([id, value]) => {
+    const stay = value as GuestStay;
+    let next = stay;
+    let changed = false;
+    if (stay.receiptsInitialized || stay.receipts) {
+      const receipts = { ...(stay.receipts ?? {}) };
+      Object.entries(receipts).forEach(([receiptId, receipt]) => {
+        if (receipt.attendant === fromAttendant && shiftMatches(receipt.receivedAt)) {
+          receipts[receiptId] = { ...receipt, attendant: toAttendant };
+          counts.receipts += 1;
+          changed = true;
+        }
+      });
+      if (changed) next = { ...stay, receipts };
+    } else if (stay.attendant === fromAttendant && shiftMatches(stay.createdAt)) {
+      next = { ...stay, ...staffPatch(toAttendant) };
+      counts.stays += 1;
+      changed = true;
+    }
+    if (changed) updates[`${PATH}/stays/${id}`] = next;
+  });
+  Object.entries(chargesSnapshot.val() ?? {}).forEach(([id, value]) => {
+    const charge = value as RoomCharge;
+    if (charge.attendant === fromAttendant && shiftMatches(charge.createdAt)) {
+      updates[`${PATH}/roomCharges/${id}`] = { ...charge, ...staffPatch(toAttendant) };
+      counts.roomCharges += 1;
+    }
+  });
+  Object.entries(cashOutsSnapshot.val() ?? {}).forEach(([id, value]) => {
+    const cashOut = value as CashOut;
+    if (cashOut.attendant === fromAttendant && shiftMatches(cashOut.createdAt)) {
+      updates[`${PATH}/cashOuts/${id}`] = { ...cashOut, ...staffPatch(toAttendant) };
+      counts.cashOuts += 1;
+    }
+  });
+  Object.entries(floatChecksSnapshot.val() ?? {}).forEach(([id, value]) => {
+    const check = value as FloatCheck;
+    if (check.attendant === fromAttendant && shiftMatches(check.createdAt)) {
+      updates[`${PATH}/floatChecks/${id}`] = { ...check, ...staffPatch(toAttendant) };
+      counts.floatChecks += 1;
+    }
+  });
+  Object.entries(salesSnapshot.val() ?? {}).forEach(([id, value]) => {
+    const sale = value as Record<string, unknown>;
+    const timestamp = typeof sale.settledAt === 'string' ? sale.settledAt : sale.createdAt;
+    if (shiftMatches(timestamp) && (sale.actor === fromAttendant || sale.settledBy === fromAttendant)) {
+      updates[`erp_geral/frigobar/operations/sales/${id}`] = {
+        ...sale,
+        ...(sale.actor === fromAttendant ? { actor: toAttendant } : {}),
+        ...(sale.settledBy === fromAttendant ? { settledBy: toAttendant } : {}),
+        ...staffPatch(toAttendant),
+      };
+      counts.sales += 1;
+    }
+  });
+  Object.entries(collectionsSnapshot.val() ?? {}).forEach(([id, value]) => {
+    const collection = value as Record<string, unknown>;
+    if (collection.actor === fromAttendant && shiftMatches(collection.createdAt)) {
+      updates[`erp_geral/reservationCollections/${id}`] = { ...collection, actor: toAttendant, ...staffPatch(toAttendant) };
+      counts.reservationCollections += 1;
+    }
+  });
+  if (Object.keys(updates).length) await update(ref(db), updates);
+  return counts;
 }

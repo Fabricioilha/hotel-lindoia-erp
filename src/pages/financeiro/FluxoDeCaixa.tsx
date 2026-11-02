@@ -93,7 +93,7 @@ export function FluxoDeCaixa() {
 	const [notice, setNotice] = useState('');
 	const isMovementTab = tab === 'entradas' || tab === 'saidas';
 	const rangeTab = isMovementTab || tab === 'prepagos' || tab === 'transferencias' || tab === 'faturamento';
-	const financeScope = 'full';
+	const financeScope = `full:${month}`;
 	const loading = loadedFinanceScope !== financeScope;
   const [summaryOpen, setSummaryOpen] = useState(() => localStorage.getItem('cash-summary-open') !== 'false');
   const positionDate = month === localMonth() ? localDateKey() : financeMonthRange(month).to;
@@ -103,9 +103,9 @@ export function FluxoDeCaixa() {
 
 	useEffect(() => {
 		let active = true;
-		const stop = subscribeFinance((next) => { if (!active) return; setData(next); setLoadedFinanceScope(financeScope); setError(''); }, (cause) => { if (!active) return; setError(cause.message); setLoadedFinanceScope(financeScope); });
+		const stop = subscribeFinance((next) => { if (!active) return; setData(next); setLoadedFinanceScope(financeScope); setError(''); }, (cause) => { if (!active) return; setError(cause.message); setLoadedFinanceScope(financeScope); }, { transactionRange: financeMonthRange(month) });
 		return () => { active = false; stop(); };
-	}, []);
+	}, [financeScope, month]);
 
 	const activeRange = rangeTab ? transactionRange : financeMonthRange(month);
 	const term = rangeTab || tab === 'pendencias' ? search.trim().toLocaleLowerCase('pt-BR') : '';

@@ -7,10 +7,10 @@ import { Link } from 'react-router-dom';
 import type { UserRole } from '../../types';
 import { PAYMENT_METHOD_LABELS, type FinancePaymentMethod } from '../../types/finance';
 import type { MinibarPaymentMethod } from '../../types/inventory';
-import { FLOAT_AMOUNT, roomChargePayments, stayPayments, stayTotals, type ReceptionData } from '../../types/reception';
+import { CASH_OUT_REASONS, FLOAT_AMOUNT, roomChargePayments, stayPayments, stayTotals, type CashOut, type ReceptionData } from '../../types/reception';
 import type { FrigobarData } from '../../types/frigobar';
 import { deleteFrigobarSale, emptyFrigobar } from '../../services/frigobarStore';
-import { deleteCashOut, deleteStay, deleteRoomCharge, deleteFloatCheck, emptyReception, localDateKey } from '../../services/receptionStore';
+import { deleteCashOut, deleteStay, deleteRoomCharge, deleteFloatCheck, emptyReception, localDateKey, saveCashOut, transferOperationalCashRecords } from '../../services/receptionStore';
 import { emptySchedule, subscribeSchedule, type ScheduleStoreData } from '../../services/scheduleStore';
 import { BackToPanel } from '../../components/ui/BackToPanel';
 import { useAttendant, useDuty } from '../../services/useAttendant';
@@ -53,11 +53,69 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
   const [cashLeft, setCashLeft] = useState(String(FLOAT_AMOUNT));
   const [handoffJustification, setHandoffJustification] = useState('');
   const [savingHandoff, setSavingHandoff] = useState(false);
+  const [transferFrom, setTransferFrom] = useState('Tatiana');
+  const [transferTo, setTransferTo] = useState('Luana');
+  const [transferring, setTransferring] = useState(false);
+  const [correctionAmount, setCorrectionAmount] = useState('');
+  const [correctionReason, setCorrectionReason] = useState('');
+  const [correctionNote, setCorrectionNote] = useState('');
+  const [savingCorrection, setSavingCorrection] = useState(false);
 
   function removeRecord(message: string, action: () => Promise<void>) {
     if (!window.confirm(message)) return;
     setError('');
     void action().catch((cause: unknown) => setError(cause instanceof Error ? cause.message : 'Não foi possível excluir o registro.'));
+  }
+
+  async function transferRecords() {
+    if (!window.confirm(`Transferir todos os registros do plantão de ${dateLabel(queryDate)} de ${transferFrom} para ${transferTo}?`)) return;
+    setTransferring(true);
+    setError('');
+    setNotice('');
+    try {
+      const counts = await transferOperationalCashRecords(queryDate, transferFrom, transferTo);
+      setNotice(`Transferência concluída: ${counts.receipts} recebimentos, ${counts.roomCharges} adicionais, ${counts.cashOuts} saídas, ${counts.floatChecks} conferências, ${counts.sales} vendas e ${counts.reservationCollections} reservas.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível transferir os lançamentos.');
+    } finally {
+      setTransferring(false);
+    }
+  }
+
+  async function saveCorrection() {
+      const amount = parseMoney(correctionAmount);
+      if (!Number.isFinite(amount) || amount <= 0) {
+        setError('Informe um valor positivo para a saída.');
+        return;
+      }
+      if (!correctionReason) {
+        setError('Escolha o motivo da saída.');
+        return;
+      }
+      const cashOut: CashOut = {
+        id: crypto.randomUUID(),
+        amount: Math.round(amount * 100) / 100,
+        reason: correctionReason,
+        note: correctionNote.trim(),
+        attendant,
+        date: queryDate,
+        createdAt: new Date().toISOString(),
+      };
+      if (!window.confirm(`Lançar saída de ${money(cashOut.amount)} no caixa de ${attendant} em ${dateLabel(queryDate)}?`)) return;
+      setSavingCorrection(true);
+      setError('');
+      setNotice('');
+      try {
+        await saveCashOut(cashOut);
+        setCorrectionAmount('');
+        setCorrectionReason('');
+        setCorrectionNote('');
+        setNotice(`Saída de ${money(cashOut.amount)} lançada no caixa de ${attendant} em ${dateLabel(queryDate)}.`);
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : 'Não foi possível registrar a saída.');
+      } finally {
+        setSavingCorrection(false);
+    }
   }
 
   useEffect(() => subscribeCashDay(queryDate, (next) => { setData(next); setLoadedDate(queryDate); }, (cause) => setError(cause.message)), [queryDate]);
@@ -128,7 +186,7 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
     });
   });
   Object.values(data.cashOuts).filter((item) => (findStaff(staff, item.attendant, item.employeeId)?.name ?? item.attendant) === attendant).forEach((item) => {
-    dayOf(shiftDay(item.createdAt)).cashOuts.push({ id: item.id, time: item.createdAt, reason: item.reason, note: item.note, amount: item.amount, remove: isAdmin ? () => removeRecord(`Excluir a saída de caixa de ${money(item.amount)} (${item.reason})? A despesa no Financeiro também será removida.`, () => deleteCashOut(item.id)) : undefined });
+    dayOf(item.date).cashOuts.push({ id: item.id, time: item.createdAt, reason: item.reason, note: item.note, amount: item.amount, remove: isAdmin ? () => removeRecord(`Excluir a saída de caixa de ${money(item.amount)} (${item.reason})? A despesa no Financeiro também será removida.`, () => deleteCashOut(item.id)) : undefined });
   });
   const currentKey = shiftDay(clock);
   dayOf(currentKey);
@@ -199,6 +257,8 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
         {isAdmin ? <label className="cx-field">Plantonista
           <select value={attendant} onChange={(event) => setChosen(event.target.value)}>{names.map((name) => <option key={name} value={name}>{name}</option>)}</select>
         </label> : <p className="cx-who">Plantonista: <strong>{attendant}</strong></p>}
+        {isAdmin && <div className="cx-transfer"><strong>Corrigir plantão</strong><select aria-label="Plantonista de origem" value={transferFrom} onChange={(event) => setTransferFrom(event.target.value)}>{names.map((name) => <option key={name}>{name}</option>)}</select><span>→</span><select aria-label="Plantonista de destino" value={transferTo} onChange={(event) => setTransferTo(event.target.value)}>{names.map((name) => <option key={name}>{name}</option>)}</select><button type="button" disabled={transferring || transferFrom === transferTo} onClick={() => void transferRecords()}>{transferring ? 'Transferindo…' : 'Transferir registros'}</button></div>}
+        {isAdmin && <div className="cx-correction"><strong>Lançar saída de correção</strong><label className="cx-field">Valor (R$)<input inputMode="decimal" value={correctionAmount} onChange={(event) => setCorrectionAmount(event.target.value)} placeholder="0,00" /></label><label className="cx-field">Motivo<select value={correctionReason} onChange={(event) => setCorrectionReason(event.target.value)}><option value="">Selecione</option>{CASH_OUT_REASONS.map((reason) => <option key={reason}>{reason}</option>)}</select></label><label className="cx-field">Observação<input value={correctionNote} onChange={(event) => setCorrectionNote(event.target.value)} placeholder="Ex.: compra de mercado" maxLength={300} /></label><button type="button" disabled={savingCorrection} onClick={() => void saveCorrection()}>{savingCorrection ? 'Lançando…' : `Lançar no caixa de ${attendant}`}</button></div>}
       </div>
 
       <p className="cx-muted">O plantão noturno das 19h às 7h pertence à data em que começou. Movimentos após a meia-noite e antes das 7h ficam no caixa do dia anterior.</p>

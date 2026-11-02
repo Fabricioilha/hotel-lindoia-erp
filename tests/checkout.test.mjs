@@ -223,7 +223,7 @@ test('cash history queries are bounded and include late settlement of an older s
   const queries = [];
   const listeners = [];
   const firebase = {
-    ref: (_db, path) => ({ path }), orderByChild: (field) => ({ field }), startAt: (start) => ({ start }), endAt: (end) => ({ end }),
+    ref: (_db, path) => ({ path }), orderByChild: (field) => ({ field }), startAt: (start) => ({ start }), endAt: (end) => ({ end }), equalTo: (value) => ({ value }),
     query: (reference, ...clauses) => { const q = { ...reference, ...Object.assign({}, ...clauses) }; queries.push(q); return q; },
     onValue: (q, callback) => { listeners.push({ q, callback }); return () => {}; },
   };
@@ -240,12 +240,14 @@ test('cash history queries are bounded and include late settlement of an older s
   service.subscribeCashDay('2026-10-24', (next) => { reception = next; }, () => {});
   let sales;
   service.subscribeCashSales('2026-10-24', (next) => { sales = next; }, () => {});
-  assert.equal(queries.length, 7);
-  assert.ok(queries.filter((q) => q.field !== 'lastReceiptAt').every((q) => q.start === '2026-10-24T10:00:00.000Z' && q.end === '2026-10-25T09:59:59.999Z'));
+  assert.equal(queries.length, 8);
+  assert.ok(queries.filter((q) => q.start !== undefined && q.field !== 'lastReceiptAt').every((q) => q.start === '2026-10-24T10:00:00.000Z' && q.end === '2026-10-25T09:59:59.999Z'));
   const receiptsQuery = queries.find((q) => q.field === 'lastReceiptAt');
   assert.equal(receiptsQuery.start, '2026-10-24T10:00:00.000Z');
   // No upper bound: a later payment must not hide the stay's earlier receipts.
   assert.equal(receiptsQuery.end, undefined);
+  const datedCashOutQuery = queries.find((q) => q.field === 'date');
+  assert.equal(datedCashOutQuery.value, '2026-10-24');
   listeners.filter(({q}) => !q.path.endsWith('/sales')).forEach(({q, callback}) => callback({ val: () => q.field === 'lastReceiptAt' ? { old: { id: 'old', lastReceiptAt: '2026-11-10T12:00:00Z', receipts: { r: { date: '2026-10-24' } } } } : {} }));
   assert.equal(reception.stays.old.receipts.r.date, '2026-10-24');
   const saleListeners = listeners.filter(({ q }) => q.path.endsWith('/sales'));

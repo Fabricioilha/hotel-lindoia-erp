@@ -1,4 +1,4 @@
-import { endAt, onValue, orderByChild, query, ref, startAt } from 'firebase/database';
+import { endAt, equalTo, onValue, orderByChild, query, ref, startAt } from 'firebase/database';
 import { db } from '../config/firebase';
 import { emptyReception } from './receptionStore';
 import type { ReceptionData } from '../types/reception';
@@ -16,11 +16,23 @@ export function subscribeCashDay(date: string, onChange: (data: ReceptionData) =
   const keys = ['stays', 'roomCharges', 'cashOuts', 'floatChecks'] as const;
   const loaded = new Set<string>();
   const stayRecords: Record<string, ReceptionData['stays']> = {};
-  const publish = () => { if (loaded.size === keys.length + 1) onChange({ ...current, stays: { ...stayRecords.created, ...stayRecords.receipts } }); };
+  const cashOutRecords: { created: ReceptionData['cashOuts']; dated: ReceptionData['cashOuts'] } = { created: {}, dated: {} };
+  const publish = () => {
+    if (loaded.size === keys.length + 2) {
+      onChange({ ...current, cashOuts: { ...cashOutRecords.created, ...cashOutRecords.dated }, stays: { ...stayRecords.created, ...stayRecords.receipts } });
+    }
+  };
   const stops = keys.map((key) => onValue(query(ref(db, `erp_geral/recepcao/${key}`), orderByChild('createdAt'), startAt(start), endAt(end)), (snapshot) => {
-    current[key] = snapshot.val() ?? {};
-    if (key === 'stays') stayRecords.created = snapshot.val() ?? {};
+    const records = snapshot.val() ?? {};
+    if (key === 'cashOuts') cashOutRecords.created = records;
+    else current[key] = records;
+    if (key === 'stays') stayRecords.created = records;
     loaded.add(key);
+    publish();
+  }, onError));
+  stops.push(onValue(query(ref(db, 'erp_geral/recepcao/cashOuts'), orderByChild('date'), equalTo(date)), (snapshot) => {
+    cashOutRecords.dated = snapshot.val() ?? {};
+    loaded.add('cashOutDate');
     publish();
   }, onError));
   stops.push(onValue(query(ref(db, 'erp_geral/recepcao/stays'), orderByChild('lastReceiptAt'), startAt(start)), (snapshot) => { stayRecords.receipts = snapshot.val() ?? {}; loaded.add('receipts'); publish(); }, onError));

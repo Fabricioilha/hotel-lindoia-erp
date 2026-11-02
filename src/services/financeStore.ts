@@ -108,12 +108,20 @@ export function subscribeFinance(
   options: { includeOperations?: boolean; transactionRange?: { from: string; to: string } } = {},
 ): () => void {
   const paths = [...FINANCE_KEYS.map((key) => [key, `erp_geral/financeiro/${key}`]), ...(options.includeOperations === false ? [] : Object.entries(OPERATIONAL_PATHS))];
+  const scopedOperationalFields: Record<string, string> = {
+    roomCharges: 'date',
+    cashOuts: 'date',
+  };
   const loaded = new Set<string>();
   const values: Record<string, unknown> = {};
   const stops = paths.map(([key, location]) => {
     const path = ref(db, location);
-    // Filtering only the source due/check-in date omits later installments and corrupts accumulated balances.
-    const listener = key === 'auditLog' ? query(path, orderByChild('occurredAt'), limitToLast(100)) : path;
+    const scopedField = options.transactionRange && scopedOperationalFields[key];
+    const listener = key === 'auditLog'
+      ? query(path, orderByChild('occurredAt'), limitToLast(100))
+      : scopedField
+        ? query(path, orderByChild(scopedField), startAt(options.transactionRange!.from), endAt(options.transactionRange!.to))
+        : path;
     return onValue(listener, (snapshot) => {
       values[key] = snapshot.val() ?? {};
       loaded.add(key);

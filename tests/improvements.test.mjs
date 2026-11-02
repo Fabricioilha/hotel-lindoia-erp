@@ -75,6 +75,15 @@ test('unpaid stay supports partial payments, retries and a later settlement', ()
   assert.equal(stayFinanceEntries(value)['recepcao-s-part2'].date, '2026-10-26');
   assert.throws(() => addStayReceipt(value, { ...input, id: 'extra', amount: 1 }), /saldo pendente/);
 });
+test('split pix and cash payments create separate dated cash-flow entries', () => {
+  const split = { ...stay(), dailyMethod: 'pix', dailySplit: { method: 'cash', amount: 80 } };
+  const paid = initializeStayReceipts(split, '2026-10-25', true);
+  const entries = Object.values(stayFinanceEntries(paid));
+  assert.deepEqual(entries.map((entry) => [entry.amount, entry.items[0].paymentMethod, entry.date]), [
+    [120, 'pix', '2026-10-25'],
+    [80, 'cash', '2026-10-25'],
+  ]);
+});
 test('OYO compensation follows the tax receipt date and is absent while unpaid', () => {
   let value = initializeStayReceipts({ ...stay(), taxAmount: 20 }, '2026-10-25', false);
   assert.equal(stayOyoFeeExpense(value), undefined);

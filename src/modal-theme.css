@@ -13,8 +13,8 @@
   --modal-font: "Avenir Next", "Segoe UI", sans-serif;
 }
 
-/* One size for manager and employee dialogs. Overlays still cover the screen. */
-html body :is([role="dialog"][aria-modal="true"]:not(.reception-overlay):not(.float-gate), .reception-overlay > .reception-modal, .float-gate > .float-box) {
+/* Shared sizing for standard dialogs; specialized room dialogs keep their own dimensions. */
+html body :is([role="dialog"][aria-modal="true"]:not(.reception-overlay):not(.float-gate):not(.dashboard-room-charge-modal):not(.dashboard-room-choice), .reception-overlay > .reception-modal, .float-gate > .float-box) {
   box-sizing: border-box;
   width: var(--dialog-width) !important;
   min-width: 0 !important;
@@ -360,6 +360,29 @@ html body :is(.modal-backdrop, .finance-modal-backdrop, .dashboard-room-charge-b
   padding: 14px 18px !important;
   border-bottom: 1px solid #0b1d34;
   background: var(--modal-navy);
+}
+
+.dashboard-room-charge-modal {
+  width: min(100%, 520px) !important;
+  max-width: 520px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: min(92dvh, 760px) !important;
+  overflow-y: auto !important;
+}
+
+.dashboard-room-charge-modal.dashboard-occupied-room-modal {
+  width: min(100%, 700px) !important;
+  max-width: 700px !important;
+  max-height: min(92dvh, 900px) !important;
+}
+
+.dashboard-room-choice {
+  width: min(100%, 420px) !important;
+  max-width: 420px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: min(92dvh, 760px) !important;
 }
 
 .dashboard-room-charge-header h2,
