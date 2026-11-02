@@ -759,15 +759,16 @@ function subscribeReservationScopedRecords<T>(
   const ids = [...new Set(reservationIds)];
   onChange({});
   if (ids.length === 0) return () => undefined;
-  const loaded = new Set<string>();
-  const groups = new Map<string, Record<string, T>>();
-  const publish = () => onChange(Object.assign({}, ...groups.values()));
-  const stops = ids.map((reservationId) => onValue(ref(db, `${collectionPath}/${reservationId}`), (snapshot) => {
-    groups.set(reservationId, (snapshot.val() ?? {}) as Record<string, T>);
-    loaded.add(reservationId);
-    if (loaded.size === ids.length) publish();
-  }, onError));
-  return () => stops.forEach((stop) => stop());
+  const allowed = new Set(ids);
+  return onValue(ref(db, collectionPath), (snapshot) => {
+    const grouped = snapshot.val() as Record<string, Record<string, T>> | null;
+    const records = ids.reduce<Record<string, T>>((all, reservationId) => {
+      if (!allowed.has(reservationId)) return all;
+      Object.assign(all, grouped?.[reservationId] ?? {});
+      return all;
+    }, {});
+    onChange(records);
+  }, onError);
 }
 
 export function subscribeReservationCollections(
@@ -1068,4 +1069,3 @@ export async function releaseReservationSlots(reservation: Reservation): Promise
     return roomSlots;
   }, { applyLocally: false }));
 }
-
