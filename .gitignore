@@ -34,3 +34,7 @@ dist-ssr
 *.key
 *.pem
 .env*
+
+# Variáveis e chaves de acesso locais
+netlify-variaveis.txt
+ssh-key-*
