@@ -64,9 +64,9 @@ function applyQuery(value: DatabaseValue | undefined, reference: DatabaseReferen
   return Object.fromEntries(entries);
 }
 
-async function fetchState(path: string): Promise<{ value: DatabaseValue | undefined; versions: Record<string, number | null> }> {
+async function fetchState(path: string, versionOnly = false): Promise<{ value: DatabaseValue | undefined; versions: Record<string, number | null> }> {
   const result = await pb.send<{ value: DatabaseValue | undefined; versions: Record<string, number | null> }>('/api/hotel/state', {
-    query: { path: cleanPath(path) },
+    query: versionOnly ? { path: cleanPath(path), versionOnly: 1 } : { path: cleanPath(path) },
   });
   return result;
 }
@@ -87,10 +87,10 @@ async function commit(updates: Record<string, unknown>): Promise<void> {
 
   for (let attempt = 0; attempt < 8; attempt++) {
     const versions: Record<string, number | null> = {};
-    for (const root of roots) {
-      const current = await fetchState(root);
+    await Promise.all(roots.map(async (root) => {
+      const current = await fetchState(root, true);
       versions[root] = current.versions[root] ?? null;
-    }
+    }));
 
     const encoded = Object.fromEntries(Object.entries(absolute).map(([path, value]) => [
       path,
@@ -149,19 +149,45 @@ export function increment(value: number): { [incrementKey]: number } {
   return { [incrementKey]: value };
 }
 
+const inFlight = new Map<string, ReturnType<typeof fetchState>>();
+
+/** Reuses an identical request already in flight so many listeners do not multiply server work. */
+function sharedFetchState(path: string) {
+  const key = cleanPath(path);
+  let pending = inFlight.get(key);
+  if (!pending) {
+    pending = fetchState(key).finally(() => inFlight.delete(key));
+    inFlight.set(key, pending);
+  }
+  return pending;
+}
+
 export async function get(reference: DatabaseReference): Promise<DataSnapshot> {
-  const result = await fetchState(reference.path);
+  const result = await sharedFetchState(reference.path);
   return makeSnapshot(applyQuery(result.value, reference));
 }
 
 export function onValue(reference: DatabaseReference, onChange: Listener, onError?: (error: Error) => void): () => void {
   let active = true;
   let previous: string | undefined;
+  let lastVersion: number | null | undefined;
+  const root = cleanPath(reference.path).split('/').slice(0, 2).join('/');
+  const canCheckVersion = cleanPath(reference.path).split('/').length >= 2;
   const refresh = async () => {
+    if (typeof document !== 'undefined' && document.hidden && previous !== undefined) return;
     try {
-      const snapshot = await get(reference);
+      // The revision check is cheap; download the data only when the branch changed.
+      if (canCheckVersion && previous !== undefined) {
+        const check = await fetchState(reference.path, true);
+        const version = check.versions[root] ?? null;
+        if (!active || version === lastVersion) return;
+      }
+      const result = await sharedFetchState(reference.path);
+      if (!active) return;
+      lastVersion = result.versions[root] ?? null;
+      const snapshot = makeSnapshot(applyQuery(result.value, reference));
       const serialized = JSON.stringify(snapshot.val());
-      if (!active || serialized === previous) return;
+      if (serialized === previous) return;
       previous = serialized;
       onChange(snapshot);
     } catch (cause) {

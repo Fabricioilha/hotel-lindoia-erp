@@ -38,10 +38,23 @@ routerAdd("GET", "/api/hotel/state", (event) => {
     "erp_geral/reservationExtras",
     "erp_geral/reservationCollectionReconciliations",
   ]
-  const denied = adminOnlyRead.some((prefix) => path === prefix || path.startsWith(prefix + "/") || prefix.startsWith(path + "/"))
-  if (role !== "admin" && denied) throw new ForbiddenError("Seu perfil não pode acessar estes dados.")
+  const viewerReadable = ["erp_geral/financeiro/cardFeeSchedule"]
+  const viewerAllowed = viewerReadable.some((prefix) => path === prefix || path.startsWith(prefix + "/"))
+  const denied = !viewerAllowed && adminOnlyRead.some((prefix) => path === prefix || path.startsWith(prefix + "/") || prefix.startsWith(path + "/"))
+  // A revisão não expõe dados e é necessária para qualquer gravação permitida ao perfil.
+  if (role !== "admin" && denied && !query.versionOnly) throw new ForbiddenError("Seu perfil não pode acessar estes dados.")
 
-  const records = $app.findRecordsByFilter("hotel_state", "", "path", 10000, 0)
+  const root = path.split("/").slice(0, 2).join("/")
+  // Carrega só os registros necessários em vez de toda a coleção a cada requisição.
+  const records = path === "erp_geral"
+    ? $app.findRecordsByFilter("hotel_state", "path ~ 'erp_geral/%'", "path", 10000, 0)
+    : path === ""
+      ? $app.findRecordsByFilter("hotel_state", "", "path", 10000, 0)
+      : $app.findRecordsByFilter("hotel_state", "path = {:root}", "", 1, 0, { root })
+  if (query.versionOnly && path.split("/").length >= 2) {
+    const record = records[0]
+    return event.json(200, { value: null, versions: { [root]: record?.getInt("revision") ?? null } })
+  }
   const decodeValue = (record) => {
     const raw = record.get("value")
     if (!raw || typeof raw === "string") return raw ? JSON.parse(raw) : {}
@@ -50,10 +63,7 @@ routerAdd("GET", "/api/hotel/state", (event) => {
   }
   const selected = path === "erp_geral"
     ? records.filter((record) => record.getString("path").startsWith("erp_geral/"))
-    : records.filter((record) => {
-      const root = path.split("/").slice(0, 2).join("/")
-      return record.getString("path") === root && path !== ""
-    })
+    : records.filter((record) => record.getString("path") === root && path !== "")
   const versions = Object.fromEntries(selected.map((record) => [record.getString("path"), record.getInt("revision")]))
   if (path === "erp_geral") {
     const value = {}
@@ -76,7 +86,6 @@ routerAdd("GET", "/api/hotel/state", (event) => {
   }
   if (path.split("/").length < 2) throw new BadRequestError("Caminho de dados inválido.")
 
-  const root = path.split("/").slice(0, 2).join("/")
   const record = selected[0]
   let value = record ? decodeValue(record) : null
   const relative = path === root ? [] : path.slice(root.length + 1).split("/")
