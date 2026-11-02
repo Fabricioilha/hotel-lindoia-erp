@@ -81,8 +81,10 @@ intacto até validar os dados e os fluxos do aplicativo.
 ## Servidor na Oracle Cloud
 
 O PocketBase 0.41.1 roda na VM como o serviço `pocketbase` (systemd), em
-`/opt/pocketbase`, servido em `https://164-152-59-134.sslip.io` com certificado
-Let's Encrypt emitido pelo próprio PocketBase. Requer ingress TCP 80 e 443 na
+`/opt/pocketbase`, servido em `https://137-131-244-154.sslip.io` com certificado
+Let's Encrypt emitido pelo próprio PocketBase. O IP público (137.131.244.154) é
+reservado na Oracle e deve permanecer associado à VM; se mudar, o domínio
+`sslip.io` (`<ip com hífens>.sslip.io`) e as variáveis do Netlify precisam mudar junto. Requer ingress TCP 80 e 443 na
 Security List da VCN (a tela de ingress da Oracle) e liberação equivalente no
 firewall da VM.
 
@@ -97,7 +99,7 @@ firewall da VM.
 Para o aplicativo usar este servidor:
 
 ```sh
-export VITE_POCKETBASE_URL=https://164-152-59-134.sslip.io
+export VITE_POCKETBASE_URL=https://137-131-244-154.sslip.io
 ```
 
 No Netlify, defina `VITE_POCKETBASE_URL` e, para as funções, `POCKETBASE_URL`
