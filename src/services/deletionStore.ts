@@ -1,9 +1,9 @@
-import { ref, runTransaction, update } from 'firebase/database';
-import { db } from '../config/firebase';
+import { db, ref, runTransaction, update } from './pocketbaseRealtime';
 import type { RoomCharge } from '../types/reception';
-import { withTransactionData } from './firebaseTransactions';
+import { withTransactionData } from './pocketbaseTransactions';
 
 const FINANCE = 'erp_geral/financeiro';
+type DeletionClaim = { token: string; status: 'pending' | 'done' };
 
 export function removeFinanceEntries(updates: Record<string, unknown>, ids: string[], kind: 'incomes' | 'expenses' = 'incomes') {
   ids.forEach((id) => {
@@ -25,7 +25,7 @@ export async function commitDeletion(ids: string[], updates: Record<string, unkn
 
 async function commitClaimedDeletion(ids: string[], updates: Record<string, unknown>, locks: ReturnType<typeof ref>): Promise<void> {
   const token = crypto.randomUUID();
-  const result = await runTransaction(locks, (value) => {
+  const result = await runTransaction<Record<string, DeletionClaim>>(locks, (value) => {
     const current = value ?? {};
     if (ids.some((id) => current[id])) return;
     return { ...current, ...Object.fromEntries(ids.map((id) => [id, { token, status: 'pending' }])) };
@@ -34,7 +34,7 @@ async function commitClaimedDeletion(ids: string[], updates: Record<string, unkn
   ids.forEach((id) => { updates[`${FINANCE}/deletions/${id}`] = { token, status: 'done' }; });
   try { await update(ref(db), updates); }
   catch (cause) {
-    await runTransaction(locks, (value) => {
+    await runTransaction<Record<string, DeletionClaim>>(locks, (value) => {
       if (!value) return;
       const current = { ...value };
       ids.forEach((id) => { if (current[id]?.token === token && current[id]?.status === 'pending') delete current[id]; });

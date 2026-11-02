@@ -25,3 +25,12 @@ dist-ssr
 
 # Local Netlify folder
 .netlify
+
+# Local database files and migration backups
+/backup_banco*
+/pocketbase/pb_data/
+
+# Chaves privadas e dados do servidor
+*.key
+*.pem
+.env*

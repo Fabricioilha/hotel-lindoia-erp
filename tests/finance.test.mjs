@@ -21,7 +21,7 @@ function isolatedDomain(state = {}, options = {}) {
     else parent[keys.at(-1)] = structuredClone(value);
   };
   const snapshot = (value) => ({ exists: () => value !== null, val: () => structuredClone(value) });
-  const firebase = {
+  const pocketbaseDatabase = {
     ref: (_db, path = '') => ({ path }), query: (location, ...clauses) => ({ ...location, clauses }),
     get: async (location) => {
       let value = read(location.path);
@@ -51,7 +51,7 @@ function isolatedDomain(state = {}, options = {}) {
   };
   function load(path) {
     const filename = resolve(root, path);
-    if (filename.replaceAll('\\', '/').endsWith('/config/firebase.ts')) return { db: {} };
+    if (filename.replaceAll('\\', '/').endsWith('/config/pocketbase.ts')) return { pb: { authStore: { record: null } } };
     if (filename.replaceAll('\\', '/').endsWith('/types/audit.ts')) return { buildAuditEvents: () => ({}) };
     if (filename.replaceAll('\\', '/').endsWith('/services/cleaningStore.ts')) return { roomCleaningTaskUpdates: async () => ({}),
       renameRoomCleaningTasks: async () => ({}), deleteCleaningLogTaskUpdates: async () => ({}) };
@@ -60,7 +60,7 @@ function isolatedDomain(state = {}, options = {}) {
     cache.set(filename, module);
     const compiled = ts.transpileModule(readFileSync(filename, 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.CommonJS } }).outputText;
     const require = (name) => {
-      if (name === 'firebase/database') return firebase;
+      if (name === './pocketbaseRealtime') return pocketbaseDatabase;
       if (name === 'react') return { useEffect: () => undefined, useRef: (value) => ({ current: value }) };
       assert.ok(name.startsWith('.'), `Unexpected dependency: ${name}`);
       return load(resolve(dirname(filename), `${name}.ts`));

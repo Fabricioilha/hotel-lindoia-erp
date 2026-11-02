@@ -24,8 +24,8 @@ export function Login({ onLogin }: LoginProps) {
         : '';
       if (message === 'Conta autenticada sem perfil de acesso.') {
         setError('Conta sem perfil de acesso. Solicite à gerência a liberação do usuário.');
-      } else if (code === 'auth/network-request-failed') {
-        setError('Não foi possível conectar ao Firebase. Verifique sua conexão.');
+      } else if (code === 'auth/network-request-failed' || code === 'Failed to fetch') {
+        setError('Não foi possível conectar ao servidor. Verifique sua conexão.');
       } else if (
         ['auth/invalid-credential', 'auth/invalid-login-credentials', 'auth/user-not-found', 'auth/wrong-password'].includes(code)
       ) {

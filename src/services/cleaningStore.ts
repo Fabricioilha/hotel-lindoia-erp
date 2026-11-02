@@ -1,10 +1,9 @@
-import { endAt, equalTo, get, onValue, orderByChild, query, ref, runTransaction, startAt, update } from 'firebase/database';
-import { db } from '../config/firebase';
+import { db, endAt, equalTo, get, onValue, orderByChild, query, ref, runTransaction, startAt, update } from './pocketbaseRealtime';
 import { type CleaningData, type CleaningTask } from '../types/cleaning';
 import type { HousekeepingRoom, ReservationDirectoryEntry, RoomCleaningLog, RoomDayPlan } from '../types/housekeeping';
 import type { GuestStay } from '../types/reception';
 import { guestStayOccupiesToday, localDateKey, reservationOccupiesToday } from './reservationAnalytics';
-import { withTransactionData } from './firebaseTransactions';
+import { withTransactionData } from './pocketbaseTransactions';
 
 const PATH = 'erp_geral/limpeza';
 const ROOMS_PATH = 'erp_geral/quartos/rooms';

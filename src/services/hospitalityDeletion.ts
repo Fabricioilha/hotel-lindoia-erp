@@ -1,5 +1,4 @@
-import { get, increment, ref } from 'firebase/database';
-import { db } from '../config/firebase';
+import { db, get, increment, ref } from './pocketbaseRealtime';
 import type { FinanceIncome } from '../types/finance';
 import type { HousekeepingData, HousekeepingRoom, Reservation, ReservationCollection, ReservationExtra } from '../types/housekeeping';
 import type { GuestStay, ReceptionRoom, RoomCharge } from '../types/reception';

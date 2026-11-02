@@ -45,7 +45,7 @@ As operações financeiras concorrentes são protegidas para evitar perda de par
 
 ### Cadastro, movimentação e venda de estoque
 
-Foi identificado um erro no início de transações: o Firebase podia chamar a validação antes de o produto ou saldo estar disponível no cache local. Algumas operações eram interrompidas como se o produto não existisse ou não tivesse estoque. As transações que dependem desses dados agora aguardam o carregamento necessário.
+Foi identificado um erro no início de transações: a camada de dados podia chamar a validação antes de o produto ou saldo estar disponível no cache local. Algumas operações eram interrompidas como se o produto não existisse ou não tivesse estoque. As transações que dependem desses dados agora aguardam o carregamento necessário.
 
 Editar o cadastro de um produto também podia substituir o saldo atual por um saldo antigo capturado na abertura do formulário. O cadastro agora conserva o saldo da transação atual; quantidades são alteradas por movimentação ou conferência. Rascunhos mantêm o mesmo identificador nas tentativas de salvamento, e os erros aparecem dentro do formulário.
 
@@ -82,4 +82,4 @@ Trocar de aba conserva os dados carregados. As descrições podem ser lidas sem 
 
 Os testes locais cobrem conciliação mensal, fontes operacionais, parcelas em meses distintos, correções, OYO, datas brasileiras, concorrência, anulações, cadastro de produto, movimentação, venda, saldo insuficiente e recuperação de falhas. A geração e a leitura do Excel verificam as seis abas, valores, datas, fórmulas e referências. O navegador também foi usado para conferir os fluxos com dados fictícios.
 
-As mudanças do aplicativo e as regras atualizadas do Firebase devem ser publicadas juntas. As novas proteções de estoque dependem das permissões dos registros de controle incluídas em `database.rules.json`.
+As mudanças do aplicativo e os hooks atualizados do PocketBase devem ser publicados juntos. As proteções de estoque dependem das permissões dos registros de controle verificadas no servidor.

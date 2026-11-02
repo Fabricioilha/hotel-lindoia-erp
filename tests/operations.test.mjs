@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import ts from 'typescript';
 
-// Execute only pure domain modules. Firebase initialization and network calls are never loaded.
+// Execute only pure domain modules. Network calls are never loaded.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const modules = new Map();
 function domainModule(path) {
@@ -130,7 +130,7 @@ function offlineStore(state) {
     else parent[keys.at(-1)] = structuredClone(value);
   };
   const snapshot = (value) => ({ exists: () => value !== null, val: () => structuredClone(value) });
-  const firebase = {
+  const pocketbaseDatabase = {
     ref: (_db, path = '') => ({ path }),
     query: (location, ...clauses) => ({ ...location, clauses }),
     get: async (location) => {
@@ -164,7 +164,7 @@ function offlineStore(state) {
   function load(path) {
     const filename = resolve(root, path);
     if (filename.replaceAll('\\', '/').endsWith('/services/checkoutClient.ts')) return { requestCheckout: async (target) => domainModule('src/services/checkoutPolicy.ts').applyCheckout(state.erp_geral, target, new Date(), 'test') };
-    if (filename.replaceAll('\\', '/').endsWith('/config/firebase.ts')) return { db: {} };
+    if (filename.replaceAll('\\', '/').endsWith('/config/pocketbase.ts')) return { pb: { authStore: { record: null } } };
     if (filename.replaceAll('\\', '/').endsWith('/types/audit.ts')) return { buildAuditEvents: () => ({}) };
     if (filename.replaceAll('\\', '/').endsWith('/services/cleaningStore.ts')) return {
       roomCleaningTaskUpdates: async () => ({}), renameRoomCleaningTasks: async () => ({}), deleteCleaningLogTaskUpdates: async () => ({}),
@@ -176,7 +176,7 @@ function offlineStore(state) {
       compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.CommonJS },
     }).outputText;
     const require = (name) => {
-      if (name === 'firebase/database') return firebase;
+      if (name === './pocketbaseRealtime') return pocketbaseDatabase;
       assert.ok(name.startsWith('.'), `Unexpected external dependency: ${name}`);
       return load(resolve(dirname(filename), `${name}.ts`));
     };

@@ -1,5 +1,4 @@
-import { onValue, ref, runTransaction } from 'firebase/database';
-import { db } from '../config/firebase';
+import { db, onValue, ref, runTransaction } from './pocketbaseRealtime';
 import type { ScheduleData, Shift } from '../types';
 import { defaultStaff, findStaff, staffMembers, type StaffData, type StaffMember } from '../types/staff';
 
@@ -27,7 +26,7 @@ function normalizeSchedule(value: unknown): ScheduleStoreData {
   return { days, employees: staffMembers(staff).map((member) => member.name), staff };
 }
 
-export const scheduleStorageMode = 'Firebase';
+export const scheduleStorageMode = 'PocketBase';
 
 export function subscribeSchedule(
   onChange: (data: ScheduleStoreData) => void,

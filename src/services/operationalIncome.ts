@@ -1,5 +1,4 @@
-import { get, ref, remove, runTransaction, set } from 'firebase/database';
-import { db } from '../config/firebase';
+import { db, get, ref, remove, runTransaction, set } from './pocketbaseRealtime';
 import { buildAuditEvents } from '../types/audit';
 import {
   incomePaymentWallet,
@@ -9,7 +8,7 @@ import {
   type FinancePaymentEvent,
 } from '../types/finance';
 import { expensePaymentEvents, isFinanceDateKey, paymentEventTotals } from './financePayments';
-import { withTransactionData } from './firebaseTransactions';
+import { withTransactionData } from './pocketbaseTransactions';
 
 export interface OperationalIncomeInput {
   id: string;

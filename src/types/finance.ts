@@ -155,7 +155,7 @@ export const PAYMENT_METHOD_LABELS: Record<FinancePaymentMethod, string> = {
 
 export function incomePaymentWallet(method: FinancePaymentMethod): FinanceWallet | null {
   if (method === 'cash') return 'cash';
-  // Preserva a chave dos lançamentos e repasses existentes no Firebase.
+  // Preserva as chaves dos lançamentos e repasses existentes durante a migração.
   if (method === 'prepaid') return 'oyo';
   return ['credit', 'debit', 'pix', 'bank_transfer'].includes(method) ? 'bank' : null;
 }

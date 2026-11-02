@@ -1,5 +1,4 @@
-import { getAuth } from 'firebase/auth';
-import { app } from '../config/firebase';
+import { pb } from '../config/pocketbase';
 
 export type AuditAction = 'criado' | 'alterado' | 'excluido';
 
@@ -19,8 +18,7 @@ export interface AuditBucket {
 }
 
 export function buildAuditEvents(operationId: string, occurredAt: string, buckets: AuditBucket[]) {
-  const user = getAuth(app).currentUser;
-  const actorUid = user?.uid ?? 'local';
+  const actorUid = pb.authStore.record?.id ?? 'local';
   const events: Record<string, AuditEvent> = {};
 
   buckets.forEach((bucket) => {

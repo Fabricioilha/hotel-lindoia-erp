@@ -1,7 +1,6 @@
 import { withCardFees } from './cardFees';
 import { validatePayrollAdvances } from './payrollAdvances';
-import { endAt, get, limitToLast, onValue, orderByChild, orderByKey, query, ref, startAt, update as updateDatabase } from 'firebase/database';
-import { db } from '../config/firebase';
+import { db, endAt, get, limitToLast, onValue, orderByChild, orderByKey, query, ref, startAt, update as updateDatabase } from './pocketbaseRealtime';
 import { buildAuditEvents } from '../types/audit';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, type FinanceData } from '../types/finance';
 import { BREAKFAST_EXPENSE_CATEGORY, LEGACY_BREAKFAST_CATEGORIES } from '../types/reception';
@@ -76,7 +75,7 @@ function normalizeFinance(value: unknown): FinanceData {
   };
 }
 
-export const financeStorageMode = 'Firebase';
+export const financeStorageMode = 'PocketBase';
 
 const FINANCE_KEYS = ['cardFeeSchedule', 'cashAdjustments', 'incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'auditLog', 'suppressed', 'categoryAliases'] as const;
 const OPERATIONAL_PATHS = {

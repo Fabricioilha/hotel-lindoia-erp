@@ -1,7 +1,6 @@
-import { onValue, ref, runTransaction } from 'firebase/database';
-import { db } from '../config/firebase';
+import { db, onValue, ref, runTransaction } from './pocketbaseRealtime';
 import type { InventoryData } from '../types/inventory';
-import { withTransactionData } from './firebaseTransactions';
+import { withTransactionData } from './pocketbaseTransactions';
 
 export function emptyInventory(): InventoryData {
   return { products: {}, suppliers: {}, movements: {}, assets: {} };
@@ -21,7 +20,7 @@ export function normalizeInventory(value: unknown): InventoryData {
   };
 }
 
-export const inventoryStorageMode = 'Firebase';
+export const inventoryStorageMode = 'PocketBase';
 
 export function subscribeInventory(
   onChange: (data: InventoryData) => void,
@@ -65,7 +64,7 @@ export function cleanInventoryPayload(value: unknown, path = 'estoque'): unknown
 export async function updateInventory(
   update: (current: InventoryData) => InventoryData,
 ): Promise<void> {
-  // Firebase calls transaction callbacks with an empty local cache first.
+  // PocketBase transactions use a complete server snapshot before applying writes.
   // Fetch the branch before callbacks that validate an existing product/balance.
   const result = await withTransactionData('erp_geral/estoque', (reference) => runTransaction(reference, (current) => {
     const original = current && typeof current === 'object' ? current as Record<string, unknown> : {};

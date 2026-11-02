@@ -1,5 +1,4 @@
-import { onValue, ref, type DatabaseReference } from 'firebase/database';
-import { db } from '../config/firebase';
+import { db, onValue, ref, type DatabaseReference } from './pocketbaseRealtime';
 
 /** Keep a complete server snapshot cached until a dependent transaction ends. */
 export async function withTransactionData<T>(path: string, action: (reference: DatabaseReference) => Promise<T>): Promise<T> {

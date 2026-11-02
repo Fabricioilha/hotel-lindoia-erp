@@ -1,5 +1,4 @@
-import { endAt, equalTo, onValue, orderByChild, query, ref, startAt } from 'firebase/database';
-import { db } from '../config/firebase';
+import { db, endAt, equalTo, onValue, orderByChild, query, ref, startAt } from './pocketbaseRealtime';
 import { emptyReception } from './receptionStore';
 import type { ReceptionData } from '../types/reception';
 import type { FrigobarSale } from '../types/frigobar';
@@ -23,19 +22,22 @@ export function subscribeCashDay(date: string, onChange: (data: ReceptionData) =
     }
   };
   const stops = keys.map((key) => onValue(query(ref(db, `erp_geral/recepcao/${key}`), orderByChild('createdAt'), startAt(start), endAt(end)), (snapshot) => {
-    const records = snapshot.val() ?? {};
-    if (key === 'cashOuts') cashOutRecords.created = records;
-    else current[key] = records;
-    if (key === 'stays') stayRecords.created = records;
+    if (key === 'cashOuts') cashOutRecords.created = snapshot.val<ReceptionData['cashOuts']>() ?? {};
+    else if (key === 'stays') {
+      const records = snapshot.val<ReceptionData['stays']>() ?? {};
+      current.stays = records;
+      stayRecords.created = records;
+    } else if (key === 'roomCharges') current.roomCharges = snapshot.val<ReceptionData['roomCharges']>() ?? {};
+    else current.floatChecks = snapshot.val<ReceptionData['floatChecks']>() ?? {};
     loaded.add(key);
     publish();
   }, onError));
   stops.push(onValue(query(ref(db, 'erp_geral/recepcao/cashOuts'), orderByChild('date'), equalTo(date)), (snapshot) => {
-    cashOutRecords.dated = snapshot.val() ?? {};
+    cashOutRecords.dated = snapshot.val<ReceptionData['cashOuts']>() ?? {};
     loaded.add('cashOutDate');
     publish();
   }, onError));
-  stops.push(onValue(query(ref(db, 'erp_geral/recepcao/stays'), orderByChild('lastReceiptAt'), startAt(start)), (snapshot) => { stayRecords.receipts = snapshot.val() ?? {}; loaded.add('receipts'); publish(); }, onError));
+  stops.push(onValue(query(ref(db, 'erp_geral/recepcao/stays'), orderByChild('lastReceiptAt'), startAt(start)), (snapshot) => { stayRecords.receipts = snapshot.val<ReceptionData['stays']>() ?? {}; loaded.add('receipts'); publish(); }, onError));
   return () => stops.forEach((stop) => stop());
 }
 

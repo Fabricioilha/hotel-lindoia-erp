@@ -1,6 +1,5 @@
 import { inventoryUnitCost, weightedInventoryCost, effectiveStockQuantity } from './inventoryCost';
-import { get, ref } from 'firebase/database';
-import { db } from '../config/firebase';
+import { db, get, ref } from './pocketbaseRealtime';
 import { invalidInventoryKey, normalizeInventory, updateInventory } from './inventoryStore';
 import { syncFrigobarCatalog, withStockProductLocks } from './frigobarStore';
 import { SALES_CATEGORY_ID, STOCK_QUANTITY_EPSILON, normalizedStockQuantity, stockCategoriesOf, type InventoryData, type MovementType, type StockMovement, type StockProduct } from '../types/inventory';

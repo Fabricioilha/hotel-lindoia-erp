@@ -1,14 +1,14 @@
-import { endAt, get, increment, onValue, orderByChild, query, ref, runTransaction, set, startAt, update } from 'firebase/database';
-import { db } from '../config/firebase';
+import { db, endAt, get, increment, onValue, orderByChild, query, ref, runTransaction, set, startAt, update } from './pocketbaseRealtime';
 import { commitDeletion, removeFinanceEntries } from './deletionStore';
 import { STOCK_QUANTITY_EPSILON, normalizedStockQuantity, type InventoryData, type MinibarPaymentMethod, type MinibarSettlement, type StockProduct } from '../types/inventory';
 import type { FrigobarData, FrigobarProduct, FrigobarSale } from '../types/frigobar';
-import { withTransactionData } from './firebaseTransactions';
+import { withTransactionData } from './pocketbaseTransactions';
 import { invalidInventoryKey } from './inventoryStore';
 
 const CATALOG_PATH = 'erp_geral/frigobar/catalog';
 const OPERATIONS_PATH = 'erp_geral/frigobar/operations';
 const RECEPTION_LOCATION = 'Geladeira - Recepção';
+type StockLock = { token: string; expiresAt: number };
 
 function visibleProducts(value: unknown): Record<string, FrigobarProduct> {
   return Object.fromEntries(Object.entries((value ?? {}) as Record<string, FrigobarProduct>).filter(([key]) => !key.startsWith('_')));
@@ -23,13 +23,13 @@ export async function withStockProductLocks<T>(productIds: string[], action: () 
   try {
     for (const id of [...new Set(productIds)].sort()) {
       const stamp = Date.now();
-      const result = await runTransaction(ref(db, `erp_geral/stockProductLocks/${id}`), (current) => !current || Number(current.expiresAt) < stamp ? { token, expiresAt: stamp + 300_000 } : undefined, { applyLocally: false });
+      const result = await runTransaction<StockLock>(ref(db, `erp_geral/stockProductLocks/${id}`), (current) => !current || current.expiresAt < stamp ? { token, expiresAt: stamp + 300_000 } : undefined, { applyLocally: false });
       if (!result.committed) throw new Error('Este produto está sendo movimentado em outra sessão. Aguarde e tente novamente.');
       held.push(id);
     }
     return await action();
   } finally {
-    await Promise.allSettled(held.map((id) => withTransactionData(`erp_geral/stockProductLocks/${id}`, (reference) => runTransaction(reference, (current) => current?.token === token ? null : undefined, { applyLocally: false }))));
+    await Promise.allSettled(held.map((id) => withTransactionData(`erp_geral/stockProductLocks/${id}`, (reference) => runTransaction<StockLock>(reference, (current) => current?.token === token ? null : undefined, { applyLocally: false }))));
   }
 }
 
@@ -168,7 +168,7 @@ export async function syncFrigobarCatalog(inventory: InventoryData): Promise<voi
     return stock;
   }, { applyLocally: false }));
   if (outdated) return;
-  await withTransactionData(CATALOG_PATH, (reference) => runTransaction(reference, (current) => Number(current?._revision ?? -1) > revision ? undefined : { ...products, _revision: revision }, { applyLocally: false }));
+  await withTransactionData(CATALOG_PATH, (reference) => runTransaction<Record<string, unknown>>(reference, (current) => Number(current?._revision ?? -1) > revision ? undefined : { ...products, _revision: revision }, { applyLocally: false }));
   // A persisted debit can be recovered after a lost connection before sale creation.
   const stockSnapshot = await get(ref(db, `${OPERATIONS_PATH}/stock/_saleDebits`));
   const staged = Object.values((stockSnapshot.val() ?? {}) as Record<string, { sale: FrigobarSale; state: string }>).filter((item) => item.state === 'pending');
@@ -220,8 +220,11 @@ export async function createFrigobarSale(input: {
   if (input.settlement === 'cobrar_no_checkout') {
     if (!input.sourceId || !['stay', 'reservation'].includes(input.sourceType ?? '')) throw new Error('Selecione a hospedagem atual.');
     const path = input.sourceType === 'stay' ? 'erp_geral/recepcao/stays' : 'erp_geral/quartos/reservationIndex';
-    const source = (await get(ref(db, path + '/' + input.sourceId))).val();
-    if (!source || source.status !== 'hospedado' || source.roomNumber.trim() !== input.roomNumber.trim() || source.guestName !== input.guestName) throw new Error('A hospedagem mudou. Selecione novamente o quarto.');
+    const source = (await get(ref(db, path + '/' + input.sourceId))).val<{ status?: unknown; roomNumber?: unknown; guestName?: unknown }>();
+    if (!source || source.status !== 'hospedado' || typeof source.roomNumber !== 'string'
+      || source.roomNumber.trim() !== input.roomNumber.trim() || source.guestName !== input.guestName) {
+      throw new Error('A hospedagem mudou. Selecione novamente o quarto.');
+    }
   }
   const createdAt = new Date().toISOString();
   const sale: FrigobarSale = {

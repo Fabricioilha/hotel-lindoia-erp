@@ -18,21 +18,17 @@ A grade do painel da gerência reúne reservas e hospedagens da recepção. Ao c
 
 Os links entre o painel, **Gerenciar quartos**, **Reservas e hospedagens** e **Controle de Limpeza de Quartos** conservam o contexto do quarto. A edição também está disponível para reservas já hospedadas; nome, quarto, datas e correções de recebimentos atualizam o índice de ocupação e o Fluxo de Caixa. Recebimentos de checkout mantêm seus identificadores, e pagamentos anulados não voltam a aparecer ao editar.
 
-As tarefas das camareiras e o estado de limpeza do quarto são relacionados: designar uma limpeza marca o quarto em limpeza; concluir registra a camareira no histórico e marca o quarto limpo; cancelar deixa o quarto sujo. Conclusões pela gerência também atualizam a tarefa correspondente. As regras locais em `database.rules.json` precisam acompanhar a publicação do aplicativo para permitir essa sincronização pela equipe.
+As tarefas das camareiras e o estado de limpeza do quarto são relacionados: designar uma limpeza marca o quarto em limpeza; concluir registra a camareira no histórico e marca o quarto limpo; cancelar deixa o quarto sujo. Conclusões pela gerência também atualizam a tarefa correspondente. As permissões e gravações são verificadas pelos hooks do PocketBase, que precisam acompanhar a publicação do aplicativo.
 
 A busca de `/reservas` abre, por padrão, com os check-ins de hoje. Os campos **Check-in de** e **Até** permitem escolher o período. A tela consulta reservas e hospedagens da recepção pela data de check-in selecionada e busca recebimentos, cobranças e adicionais relacionados às reservas exibidas. O resumo de ocupação usa o índice operacional de reservas; a ocupação do painel administrativo também considera os quartos cadastrados.
 
 ## Dados e permissões
 
-O app usa Firebase Authentication e Realtime Database. A configuração de desenvolvimento também aponta para o Firebase configurado no projeto; não há configuração de emulador local. Portanto, alterações feitas durante o desenvolvimento podem gravar no banco conectado.
+O app usa PocketBase Authentication e a coleção protegida `hotel_state`. Para desenvolvimento, configure `VITE_POCKETBASE_URL` e inicie o PocketBase local conforme as instruções em [PocketBase local](pocketbase/README.md). O adaptador centraliza leitura e gravação e controla concorrência por revisão; não há conexão com um banco remoto até que uma URL seja configurada.
 
-O login usa e-mail e senha. O papel é armazenado em `/roles/{uid}/role`: `admin` para gerência e `viewer` para equipe. As telas de estoque, reservas, quartos, funcionários, tarifas e financeiro são restritas à gerência. A equipe tem acesso a telas operacionais conforme as regras do Realtime Database. As regras começam negando acesso e estão em `database.rules.json`; `firebase.json` e `.firebaserc` apontam para o projeto `hotel-lindoia-erp`.
+O login usa e-mail e senha do PocketBase. O papel `admin` ou `viewer` é associado à conta na coleção privada `user_roles`. Os hooks do servidor negam acesso direto à coleção `hotel_state` e limitam as leituras e gravações por papel. Contas e permissões precisam ser criadas no PocketBase; credenciais e papéis antigos não são importados junto com os dados operacionais.
 
-**Atenção: as regras atuais permitem que `viewer` leia o ramo inteiro `/erp_geral/recepcao` e o ramo `/erp_geral/frigobar/operations`.** Isso inclui os registros operacionais armazenados nesses caminhos, como hospedagens, cobranças e vendas. Filtros de período ou diretórios usados pela interface limitam as consultas da tela, mas não limitam o que um usuário autenticado como `viewer` pode ler diretamente do Realtime Database. O índice `erp_geral/quartos/reservationIndex` também é legível por `viewer`; o cadastro completo de reservas e o Financeiro são restritos a `admin` pelas regras.
-
-Para liberar um usuário, crie a conta em **Firebase Authentication → Users**, copie o UID e, no Realtime Database, grave `/roles/{uid}/role` como `viewer` ou `admin`. As regras não permitem que o usuário altere o próprio papel. O catálogo da geladeira pode ser lido por usuários autenticados; dados de estoque, custos, fornecedores e patrimônio ficam no módulo de gerência.
-
-Para publicar alterações nas regras, use `firebase deploy --only database`. Não coloque senhas ou credenciais de conta de serviço no código ou no repositório.
+As telas de estoque, reservas, quartos, funcionários, tarifas e financeiro são restritas à gerência. A equipe acessa as operações necessárias por meio das rotas autenticadas do servidor; não configure permissões de leitura direta para a coleção `hotel_state`.
 
 ## Fluxo financeiro
 
@@ -49,7 +45,7 @@ Para enviar o movimento mensal ao contador, abra **Fluxo de caixa**, selecione o
 
 ## Funcionários e exclusões
 
-O menu **Funcionários** mantém o cadastro em `erp_geral/escala/staff`, separado das credenciais do Firebase Authentication. Na primeira sessão da gerência, o sistema inicializa as sete pessoas configuradas para recepção e limpeza e importa nomes históricos não cadastrados como inativos. A marca `configured` evita recriar automaticamente pessoas ou categorias excluídas. Registros de turnos e operações mantêm a referência do funcionário e o nome histórico para preservar o histórico após renomeações ou exclusões.
+O menu **Funcionários** mantém o cadastro em `erp_geral/escala/staff`, separado das contas usadas para entrar no sistema. Na primeira sessão da gerência, o sistema inicializa as sete pessoas configuradas para recepção e limpeza e importa nomes históricos não cadastrados como inativos. A marca `configured` evita recriar automaticamente pessoas ou categorias excluídas. Registros de turnos e operações mantêm a referência do funcionário e o nome histórico para preservar o histórico após renomeações ou exclusões.
 
 A gerência pode excluir registros de reservas, hospedagens, adicionais, quartos, limpezas, conferências, passagens de turno e financeiro. Exclusões relacionadas são processadas em conjunto; pagamentos e adicionais vinculados são removidos conforme a operação, e bebidas podem devolver quantidades ao estoque. Os identificadores de exclusão ajudam a impedir que uma devolução seja aplicada mais de uma vez. Excluir um pagamento individual de hospedagem conserva a hospedagem e registra a anulação; excluir recebimento de reserva ajusta o saldo devido ou remove uma cobrança ainda pendente de conciliação.
 
@@ -63,9 +59,12 @@ Instale as dependências e inicie o servidor local:
 
 ```bash
 npm install
-npm run dev
+npm run dev:netlify
 ```
+
+Antes, configure as variáveis locais e inicie o PocketBase seguindo
+[PocketBase local](pocketbase/README.md).
 
 Os scripts disponíveis incluem `npm run build`, `npm run lint` e `npm run preview`.
 
-Os testes `npm run test:operations`, `npm run test:cleaning`, `npm run test:finance`, `npm run test:inventory` e `npm run test:accounting` verificam operações, limpeza, conciliação financeira, concorrência, estoque e geração do Excel usando dados locais, sem conectar ao Firebase.
+Os testes `npm run test:operations`, `npm run test:cleaning`, `npm run test:finance`, `npm run test:inventory`, `npm run test:accounting` e `npm run test:pocketbase-import` verificam operações, limpeza, conciliação financeira, concorrência, estoque, geração do Excel e validações do importador usando dados locais.

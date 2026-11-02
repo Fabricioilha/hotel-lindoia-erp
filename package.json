@@ -18,20 +18,15 @@
     "test:inventory": "node tests/inventory.test.mjs",
     "test:checkout": "node tests/checkout.test.mjs",
     "test:checkout-runtime": "node --test tests/checkout-runtime.test.mjs",
+    "test:pocketbase-import": "node --test tests/pocketbase-import.test.mjs",
     "typecheck:server": "tsc -p tsconfig.server.json"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
-    "firebase": "^12.19.0",
-    "firebase-admin": "^14.5.0",
+    "pocketbase": "^0.28.2",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-router-dom": "^7.18.4"
-  },
-  "overrides": {
-    "jwks-rsa": {
-      "jose": "^5.10.0"
-    }
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

@@ -1,8 +1,8 @@
 import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
-import { get, runTransaction } from 'firebase/database';
+import { get, runTransaction } from './pocketbaseRealtime';
 import { minibarMovementFinanceEntry, stockPurchaseExpense } from './operationalLedger';
 import { recordOperationalExpenses, recordOperationalIncome } from './operationalIncome';
-import { withTransactionData } from './firebaseTransactions';
+import { withTransactionData } from './pocketbaseTransactions';
 import type { InventoryData, StockMovement } from '../types/inventory';
 
 const movementFingerprint = (movement: StockMovement) => JSON.stringify([
@@ -54,4 +54,3 @@ export function useMinibarFinanceSync(data: InventoryData, setError: Dispatch<Se
       });
   }, [data.movements, setError]);
 }
-

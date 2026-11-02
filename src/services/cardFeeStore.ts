@@ -1,5 +1,4 @@
-import { get, ref } from 'firebase/database';
-import { db } from '../config/firebase';
+import { db, get, ref } from './pocketbaseRealtime';
 import type { FinanceData } from '../types/finance';
 import type { GuestStay } from '../types/reception';
 

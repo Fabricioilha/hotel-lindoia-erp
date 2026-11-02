@@ -8,9 +8,10 @@ const source = readFileSync(new URL('../src/services/checkoutClient.ts', import.
 const compiled = ts.transpileModule(source, { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 function client(response, signedIn = true) {
   const exports = {}, calls = [];
+  const pb = { authStore: { token: signedIn ? 'test-token' : '' } };
   runInNewContext(compiled, {
     exports,
-    require: () => ({ auth: { currentUser: signedIn ? { getIdToken: async () => 'test-token' } : null } }),
+    require: () => ({ pb }),
     fetch: async (...args) => { calls.push(args); return response; },
   });
   return { ...exports, calls };
@@ -23,12 +24,17 @@ test('a static-site HTML response never counts as successful checkout', async ()
   assert.equal(api.calls.length, 1);
 });
 
+test('a plain-text checkout refusal is shown instead of being reported as unavailable', async () => {
+  const api = client(new Response('Forbidden', { status: 403 }));
+  await assert.rejects(api.requestCheckout(target), /perfil não tem permissão/);
+});
+
 test('checkout sends the authenticated immutable lodging identity', async () => {
   const api = client(Response.json({ ok: true }));
   await api.requestCheckout(target);
   assert.equal(api.calls[0][0], '/.netlify/functions/checkout');
   assert.equal(api.calls[0][1].method, 'POST');
-  assert.equal(api.calls[0][1].headers.Authorization, 'Bearer test-token');
+  assert.match(api.calls[0][1].headers.Authorization, /^Bearer /);
   assert.deepEqual(JSON.parse(api.calls[0][1].body), target);
 });
 

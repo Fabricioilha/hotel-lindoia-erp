@@ -1,13 +1,12 @@
 import { requestCheckout } from './checkoutClient';
-import { endAt, equalTo, get, limitToLast, onValue, orderByChild, orderByKey, query, ref, runTransaction, set, startAt, update } from 'firebase/database';
-import { db } from '../config/firebase';
+import { db, endAt, equalTo, get, limitToLast, onValue, orderByChild, orderByKey, query, ref, runTransaction, set, startAt, update } from './pocketbaseRealtime';
 import { buildAuditEvents } from '../types/audit';
 import { incomePaymentWallet, type FinanceIncome } from '../types/finance';
 import type { GuestStay, RoomCharge } from '../types/reception';
 import { roomChargeFinanceEntries } from './operationalLedger';
 import { reservationBalanceDue, reservationFinancialTotal, reservationIncomeContext, validateReservationPayments } from './reservationFinance';
 import { deleteCleaningLogTaskUpdates, renameRoomCleaningTasks, roomCleaningTaskUpdates } from './cleaningStore';
-import { withTransactionData } from './firebaseTransactions';
+import { withTransactionData } from './pocketbaseTransactions';
 import { withFinanceWriteLock } from './financeTransactions';
 import { DEFAULT_ROOM_CATEGORIES, roomCategoriesOf, type HousekeepingData, type HousekeepingRoom, type Reservation, type ReservationCollection, type ReservationDirectoryEntry, type ReservationExtra, type ReservationStatus, type RoomCategoryRecord, type RoomCleaningLog, type RoomDayPlan } from '../types/housekeeping';
 import { guestStayOccupiesToday, reservationOverlaps, reservationOverlapsStay } from './reservationAnalytics';
@@ -88,7 +87,7 @@ function validateReservationPeriod(reservation: Reservation): void {
   }
 }
 
-export const housekeepingStorageMode = 'Firebase';
+export const housekeepingStorageMode = 'PocketBase';
 
 export function subscribeHousekeeping(
   onChange: (data: HousekeepingData) => void,

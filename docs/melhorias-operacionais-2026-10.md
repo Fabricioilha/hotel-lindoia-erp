@@ -19,12 +19,12 @@ A seção de Reservas permanece para integrações futuras. Não foram introduzi
 
 Os recebimentos de hospedagem guardam valor bruto, percentual, taxa e líquido no próprio registro. A visão financeira gera as despesas de taxa a partir das entradas e materializa os registros financeiros de cartão ao salvar o Financeiro, mantendo a origem operacional como referência. Não substitua a receita bruta pelo líquido nas fórmulas existentes: isso descontaria a taxa novamente.
 
-Esta entrega está no projeto local. Para publicar, aplicar `database.rules.json` e publicar o build com as funções Netlify da mesma versão. As regras incluem a leitura das taxas pela recepção, o registro de novos recebimentos pela recepção e o índice de data do último recebimento. Não houve escrita em dados de produção nem publicação nesta validação.
+Esta entrega está no projeto local. Para publicar, aplicar as migrações e hooks do PocketBase junto com o build e as funções Netlify da mesma versão. O servidor controla o acesso às taxas e aos novos recebimentos. Não houve escrita em dados de produção nem publicação nesta validação.
 
 ## Validação
 
-83 testes automatizados aprovados, incluindo testes de domínio e de serviços com banco simulado local: taxas e centavos, persistência do líquido, edição sincronizada da conta, adiantamentos sem dupla saída, custo médio com vendas anteriores, recebimentos parciais/idempotentes, checkout e contas antigas. O validador local de regras não substitui o Firebase Emulator.
+83 testes automatizados aprovados, incluindo testes de domínio e de serviços com banco simulado local: taxas e centavos, persistência do líquido, edição sincronizada da conta, adiantamentos sem dupla saída, custo médio com vendas anteriores, recebimentos parciais/idempotentes, checkout e contas antigas. A simulação local de autorização não substitui homologação no PocketBase.
 
 TypeScript do cliente e servidor, lint dos arquivos alterados e build Vite aprovados. O build mantém o aviso de tamanho do pacote de Excel já usado no projeto. Interface financeira conferida no navegador em desktop e em um frame de 390 px, usando exclusivamente dados fictícios.
 
-Prévia reproduzível: `node node_modules/vite/bin/vite.js --config tests/ui-preview/vite.config.mjs`. O fixture substitui os serviços financeiros por memória local; não acessa Firebase. Captura: `docs/validacao/fluxo-caixa.png`.
+Prévia reproduzível: `node node_modules/vite/bin/vite.js --config tests/ui-preview/vite.config.mjs`. O fixture substitui os serviços financeiros por memória local; não acessa serviços externos. Captura: `docs/validacao/fluxo-caixa.png`.

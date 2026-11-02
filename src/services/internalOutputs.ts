@@ -1,12 +1,12 @@
 import { inventoryUnitCost } from './inventoryCost';
-import { get, onValue, ref, remove, runTransaction, set, update } from 'firebase/database';
+import { get, onValue, ref, remove, runTransaction, set, update } from './pocketbaseRealtime';
 import { useEffect, useRef, type Dispatch, type SetStateAction } from 'react';
-import { db } from '../config/firebase';
+import { db } from './pocketbaseRealtime';
 import { SALES_CATEGORY_ID, STOCK_QUANTITY_EPSILON, normalizedStockQuantity, stockCategoriesOf, type InventoryData } from '../types/inventory';
 import type { OutputCatalogItem, OutputData, OutputRecord } from '../types/outputs';
 import { invalidInventoryKey, subscribeInventoryCatalog, updateInventory, type InventoryCatalogData } from './inventoryStore';
 import { withStockProductLocks } from './frigobarStore';
-import { withTransactionData } from './firebaseTransactions';
+import { withTransactionData } from './pocketbaseTransactions';
 
 const PATH = 'erp_geral/saidas';
 
@@ -22,13 +22,13 @@ export function subscribeOutputs(onChange: (data: OutputData) => void, onError: 
     if (catalog && records) onChange({ catalog, records, catalogRevision });
   };
   const stopCatalog = onValue(ref(db, `${PATH}/catalog`), (snapshot) => {
-    const value = snapshot.val() ?? {};
+    const value = snapshot.val<Record<string, unknown>>() ?? {};
     catalogRevision = Number(value._revision) || 0;
     catalog = Object.fromEntries(Object.entries(value).filter(([key]) => !key.startsWith('_'))) as Record<string, OutputCatalogItem>;
     publish();
   }, onError);
   const stopRecords = onValue(ref(db, `${PATH}/records`), (snapshot) => {
-    records = snapshot.val() ?? {};
+    records = snapshot.val<Record<string, OutputRecord>>() ?? {};
     publish();
   }, onError);
   return () => {
@@ -53,8 +53,8 @@ export async function createOutput(record: OutputRecord): Promise<void> {
     const target = ref(db, `${PATH}/records/${record.id}`);
     if ((await get(target)).exists()) return;
     const [catalogSnapshot, recordsSnapshot] = await Promise.all([get(ref(db, `${PATH}/catalog`)), get(ref(db, `${PATH}/records`))]);
-    const catalog = catalogSnapshot.val() ?? {};
-    const records = Object.values(recordsSnapshot.val() ?? {}) as OutputRecord[];
+    const catalog = catalogSnapshot.val<Record<string, unknown>>() ?? {};
+    const records = Object.values(recordsSnapshot.val<Record<string, OutputRecord>>() ?? {});
     const items = [...grouped].map(([id, quantity]) => {
       const product = catalog[id] as OutputCatalogItem | undefined;
       if (!product || product.category === SALES_CATEGORY_ID) throw new Error('Um produto não está mais disponível para uso interno. Atualize a seleção.');
@@ -83,7 +83,7 @@ export async function syncOutputsCatalog(inventory: InventoryCatalogData): Promi
       };
     });
   const revision = inventory.revision ?? 0;
-  await withTransactionData(`${PATH}/catalog`, (reference) => runTransaction(reference, (current) => {
+  await withTransactionData(`${PATH}/catalog`, (reference) => runTransaction<Record<string, unknown>>(reference, (current) => {
     if (Number(current?._revision ?? -1) > revision) return;
     const next = { ...catalog, _revision: revision };
     return JSON.stringify(current) === JSON.stringify(next) ? undefined : next;

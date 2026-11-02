@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import ts from 'typescript';
 
-// Execute only pure domain modules. Firebase initialization and network calls are never loaded.
+// Execute only pure domain modules. Network calls are never loaded.
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const modules = new Map();
 function domainModule(path) {
@@ -29,48 +29,36 @@ const { currentOccupants, reservationOccupiesDate, stayOccupiesDate } = domainMo
 const { departureDue } = domainModule('src/services/reservationAnalytics.ts');
 const { checkoutStatus } = domainModule('netlify/lib/checkoutStatus.ts');
 
-function statusDatabase(reservations, stays = {}) {
-  const reads = [];
-  const data = {
-    'erp_geral/quartos/reservations': reservations,
-    'erp_geral/recepcao/stays': stays,
-  };
+function statusState(reservations, stays = {}) {
   return {
-    reads,
-    ref(path) {
-      const query = {
-        orderByChild() { return query; }, equalTo() { return query; },
-        orderByKey() { return query; }, startAt() { return query; }, endAt() { return query; },
-        async get() { reads.push(path); return { val: () => data[path] ?? {} }; },
-      };
-      return query;
-    },
+    quartos: { reservations },
+    recepcao: { stays, roomCharges: {} },
+    frigobar: { operations: { sales: {} } },
+    financeiro: { incomes: {}, suppressed: {} },
   };
 }
 
-test('checkout alerts exclude historical unpaid records without changing their data', async () => {
+test('checkout alerts exclude historical unpaid records without changing their data', () => {
   const old = { ...fixture().quartos.reservations.r1, checkOutDate: '2026-10-23' };
   const stays = { old: { id: 'old', roomNumber: '101', guestName: 'Antigo', status: 'hospedado', kind: 'hospede', checkInDate: '2026-10-01', nights: 2 } };
   const reservations = { r1: old };
   const before = structuredClone({ reservations, stays });
-  const db = statusDatabase(reservations, stays);
-  assert.deepEqual(await checkoutStatus(db, noon), []);
+  assert.deepEqual(checkoutStatus(statusState(reservations, stays), noon), []);
   assert.deepEqual({ reservations, stays }, before);
-  assert.ok(!db.reads.some((path) => path.includes('roomCharges') || path.includes('financeiro')));
 });
 
-test('checkout alerts select the current occupant before checking the departure date', async () => {
+test('checkout alerts select the current occupant before checking the departure date', () => {
   const older = fixture().quartos.reservations.r1;
   const current = { id: 'new', roomNumber: '101', guestName: 'Atual', status: 'hospedado', kind: 'hospede', checkInDate: '2026-10-23', checkOutDate: '2026-10-26', nights: 3 };
-  assert.deepEqual(await checkoutStatus(statusDatabase({ r1: older }, { new: current }), noon), []);
+  assert.deepEqual(checkoutStatus(statusState({ r1: older }, { new: current }), noon), []);
 });
 
-test('checkout alerts retain only the current unpaid departure, once per room', async () => {
+test('checkout alerts retain only the current unpaid departure, once per room', () => {
   const current = fixture().quartos.reservations.r1;
   const older = { ...current, id: 'old', guestName: 'Anterior', checkInDate: '2026-10-20' };
   const future = { ...current, id: 'future', roomNumber: '102', checkInDate: '2026-10-25', checkOutDate: '2026-10-26' };
   const closed = { ...current, id: 'closed', roomNumber: '103', status: 'encerrada' };
-  const result = await checkoutStatus(statusDatabase({ old: older, r1: current, future, closed }), noon);
+  const result = checkoutStatus(statusState({ old: older, r1: current, future, closed }), noon);
   assert.deepEqual(result, [{ ...target, roomNumber: '101', guestName: 'Ana', pending: 200 }]);
 });
 
@@ -222,7 +210,7 @@ test('checkout respects in-flight booking edits and cannot dirty a newer occupie
 test('cash history queries are bounded and include late settlement of an older sale', () => {
   const queries = [];
   const listeners = [];
-  const firebase = {
+  const pocketbaseDatabase = {
     ref: (_db, path) => ({ path }), orderByChild: (field) => ({ field }), startAt: (start) => ({ start }), endAt: (end) => ({ end }), equalTo: (value) => ({ value }),
     query: (reference, ...clauses) => { const q = { ...reference, ...Object.assign({}, ...clauses) }; queries.push(q); return q; },
     onValue: (q, callback) => { listeners.push({ q, callback }); return () => {}; },
@@ -230,8 +218,8 @@ test('cash history queries are bounded and include late settlement of an older s
   const module = { exports: {} };
   const js = ts.transpileModule(readFileSync(resolve(root, 'src/services/cashHistory.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS } }).outputText;
   new Function('module', 'exports', 'require', js)(module, module.exports, (name) => {
-    if (name === 'firebase/database') return firebase;
-    if (name === '../config/firebase') return { db: {} };
+    if (name === './pocketbaseRealtime') return pocketbaseDatabase;
+    if (name === '../config/pocketbase') return { pb: { authStore: { record: null } } };
     if (name === './receptionStore') return { emptyReception: () => ({ stays: {}, roomCharges: {}, cashOuts: {}, floatChecks: {}, rooms: {}, attendants: {} }) };
     throw new Error(name);
   });

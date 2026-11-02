@@ -1,5 +1,4 @@
-import { limitToLast, onValue, orderByChild, query, ref, remove, set } from 'firebase/database';
-import { db } from '../config/firebase';
+import { db, limitToLast, onValue, orderByChild, query, ref, remove, set } from './pocketbaseRealtime';
 import type { ShiftHandoff } from '../types/reception';
 
 const PATH = 'erp_geral/recepcao/shiftHandoffs';

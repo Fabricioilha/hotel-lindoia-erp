@@ -1,7 +1,6 @@
 import { inventoryUnitCost, weightedInventoryCost, effectiveStockQuantity } from './inventoryCost';
 import type { StockProduct } from '../types/inventory';
-import { get, increment, ref } from 'firebase/database';
-import { db } from '../config/firebase';
+import { db, get, increment, ref } from './pocketbaseRealtime';
 import type { StockMovement } from '../types/inventory';
 import { commitDeletion, removeFinanceEntries } from './deletionStore';
 import { deleteOutput } from './internalOutputs';

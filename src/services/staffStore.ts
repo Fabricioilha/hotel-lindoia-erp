@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
-import { get, onValue, ref, runTransaction } from 'firebase/database';
-import { db } from '../config/firebase';
+import { db, get, onValue, ref, runTransaction } from './pocketbaseRealtime';
 import { defaultStaff, findStaff, staffMembers, staffNameKey, type StaffData, type StaffMember } from '../types/staff';
 import { refreshNextMonthSchedule, updateSchedule } from './scheduleStore';
 
@@ -29,17 +28,21 @@ export function subscribeStaff(change: (data: StaffData) => void, error: (cause:
   };
 }
 
-// Only personnel data is shared with the operational team. Login accounts remain in Firebase Auth.
+// Only personnel data is shared with the operational team. Login accounts remain in PocketBase Auth.
 export async function initializeStaff(): Promise<void> {
   const existing = await get(ref(db, PATH));
-  if (existing.val()?.configured) return;
+  if (existing.val<StaffData>()?.configured) return;
   const paths = ['erp_geral/escala', 'erp_geral/recepcao/attendants', 'erp_geral/limpeza/camareiras', 'erp_geral/quartos/attendants'];
   const snapshots = await Promise.all(paths.map((path) => get(ref(db, path))));
   const staff = defaultStaff();
-  const schedule = snapshots[0].val() ?? {};
-  const historical = new Set<string>(Array.isArray(schedule.employees) ? schedule.employees : []);
+  const schedule = snapshots[0].val<{ employees?: unknown; days?: Record<string, unknown> }>() ?? {};
+  const historical = new Set<string>(Array.isArray(schedule.employees)
+    ? schedule.employees.filter((employee): employee is string => typeof employee === 'string')
+    : []);
   Object.values(schedule.days ?? {}).forEach((value) => {
-    if (Array.isArray(value)) value.forEach((shift) => { if (typeof shift?.name === 'string') historical.add(shift.name); });
+    if (Array.isArray(value)) value.forEach((shift: unknown) => {
+      if (shift && typeof shift === 'object' && 'name' in shift && typeof shift.name === 'string') historical.add(shift.name);
+    });
   });
   snapshots.slice(1).forEach((snapshot) => Object.values(snapshot.val() ?? {}).forEach((value) => {
     const name = (value as { name?: string }).name;
@@ -52,7 +55,7 @@ export async function initializeStaff(): Promise<void> {
     staff.members[id] = { id, name: name.trim(), categoryId: 'legacy', active: false };
   });
   staff.configured = true;
-  await runTransaction(ref(db, PATH), (current) => current?.configured ? undefined : staff);
+  await runTransaction<StaffData>(ref(db, PATH), (current) => current?.configured ? undefined : staff);
 }
 
 export function useStaff() {

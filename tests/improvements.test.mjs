@@ -12,7 +12,7 @@ function load(file) {
   const module = { exports: {} }; modules.set(path, module);
   const js = ts.transpileModule(readFileSync(path, 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.CommonJS } }).outputText;
   new Function('module', 'exports', 'require', js)(module, module.exports, (name) => {
-    assert.ok(name.startsWith('.'), 'Pure domain test must not access Firebase');
+    assert.ok(name.startsWith('.'), 'Pure domain test must not access external services');
     return load(resolve(dirname(path), name + '.ts'));
   });
   return module.exports;

@@ -145,7 +145,7 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
           <section className="catalog-panel">
             <div className="catalog-heading"><div><h2>Produtos disponíveis</h2><p>{products.length} {products.length === 1 ? 'produto cadastrado' : 'produtos cadastrados'}</p></div><label className="catalog-search"><span className="sr-only">Buscar produto</span><input type="search" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Buscar bebida" /></label></div>
             {!loading && products.length > 0 && !hasReceptionStock && <div className="sales-stock-notice"><span>Os produtos estão cadastrados, mas ainda não têm saldo na Geladeira - Recepção.</span>{isAdmin && <Link to="/estoque">Registrar entrada no estoque <span aria-hidden="true">→</span></Link>}</div>}
-            {loading ? <div className="sales-empty">Carregando produtos do Firebase...</div> : filteredProducts.length === 0 ? (
+            {loading ? <div className="sales-empty">Carregando produtos...</div> : filteredProducts.length === 0 ? (
               <div className="sales-empty"><strong>{products.length === 0 ? 'Nenhum produto cadastrado' : 'Nenhum produto encontrado'}</strong><p>{products.length === 0 ? 'Solicite à gerência o cadastro dos produtos da Geladeira - Recepção.' : 'Tente outro nome de produto.'}</p>{products.length === 0 && isAdmin && <Link className="sales-outline-button" to="/estoque">Abrir estoque</Link>}</div>
             ) : <div className="sales-product-grid">
               {filteredProducts.map((product) => {

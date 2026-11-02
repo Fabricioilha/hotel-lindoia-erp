@@ -447,7 +447,7 @@ export function FluxoDeCaixa() {
 
 				{error && <div className="finance-alert" role="alert">{error}<button onClick={() => setError('')} aria-label="Fechar aviso">×</button></div>}
 				{notice && <div className="finance-notice" role="status">{notice}</div>}
-				{financeStorageMode === 'Firebase' && <p className="finance-storage-notice">Dados compartilhados pelo Firebase</p>}
+				{financeStorageMode === 'PocketBase' && <p className="finance-storage-notice">Dados compartilhados pelo PocketBase</p>}
 				{!loading && financeIssues.length > 0 && <details className="finance-validation-notice"><summary>{financeIssues.length} informação(ões) precisam de correção no histórico financeiro</summary><ul>{financeIssues.map((issue, index) => <li key={`${issue.kind}-${issue.recordId}-${index}`}><span>{issue.message} <small>Registro {issue.recordId}</small></span>{issue.kind === 'payroll' ? <Link to="/financeiro/folha">Abrir folha</Link> : <button type="button" className="finance-text-button" onClick={() => openModal(issue.kind === 'income' ? 'entrada' : issue.kind === 'expense' ? 'saida' : 'transferencia', issue.recordId)}>Corrigir lançamento</button>}</li>)}</ul></details>}
 
 				{loading ? <div className="finance-empty">Carregando lançamentos...</div> : <>

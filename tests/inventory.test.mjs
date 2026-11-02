@@ -5,9 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 import ts from 'typescript';
 
-// All service imports use this local database; no Firebase app or network is loaded.
+// All service imports use this local database; no network is loaded.
 const rootDirectory = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const rules = JSON.parse(readFileSync(resolve(rootDirectory, 'database.rules.json'), 'utf8')).rules;
 const product = (id, category, locations) => ({ id, name: id === 'water' ? 'Água' : 'Sabonete', sku: id, category, unit: 'un.', minimumQuantity: 1, cost: 2, salePrice: category === 'frigobar' ? 5 : 0, locationQuantities: locations, supplierId: '', expiresAt: '', description: '', active: true, createdAt: '2026-10-14T12:00:00Z', updatedAt: '2026-10-14T12:00:00Z' });
 const fixture = () => ({ roles: { user: { role: 'admin' } }, erp_geral: { estoque: { revision: 0, products: { water: product('water', 'frigobar', { 'Almoxarifado central': 5, 'Geladeira - Recepção': 10 }), soap: product('soap', 'limpeza', { 'Almoxarifado central': 10 }) }, movements: {}, suppliers: {}, assets: {} }, frigobar: { catalog: {}, operations: { stock: {}, sales: {} } }, saidas: { catalog: {}, records: {} }, financeiro: { incomes: {}, expenses: {}, suppressed: {}, deletions: {} }, stockProductLocks: {} } });
 
@@ -28,31 +27,8 @@ function offlineStore(state = fixture()) {
     if (value?.__increment !== undefined) parent[keys.at(-1)] = Number(parent[keys.at(-1)] ?? 0) + value.__increment;
     else if (value === null) delete parent[keys.at(-1)]; else parent[keys.at(-1)] = structuredClone(value);
   }
-  function validate(path, proposed) {
-    let node = rules; const variables = {}; const parts = path.split('/').filter(Boolean); let allowed = false;
-    const applyRule = (definition, nodePath) => {
-      const evaluate = (expression) => new Function('auth', 'root', 'data', 'newData', 'now', ...Object.keys(variables), `return (${expression});`)(
-        { uid: 'user' }, snapshot(state), snapshot(state, nodePath), snapshot(proposed, nodePath), Date.now(), ...Object.values(variables));
-      if (definition['.write'] !== undefined && (definition['.write'] === true || evaluate(String(definition['.write'])))) allowed = true;
-      if (definition['.validate'] !== undefined && read(proposed, nodePath) !== null) assert.ok(evaluate(String(definition['.validate'])), `Rule validation: ${nodePath}`);
-    };
-    applyRule(node, '');
-    for (let index = 0; index < parts.length; index += 1) {
-      const segment = parts[index]; const variable = node[segment] ? undefined : Object.keys(node).find((key) => key.startsWith('$'));
-      if (!node[segment] && !variable) break;
-      if (variable) variables[variable] = segment;
-      node = node[segment] ?? node[variable]; applyRule(node, parts.slice(0, index + 1).join('/'));
-    }
-    assert.ok(allowed, `Write denied: ${path}`);
-  }
   function applyWrites(entries) {
-    const proposed = structuredClone(state);
-    entries.forEach(([path, value]) => { assert.notEqual(value, undefined, `Undefined write at ${path}`); write(proposed, path, value); });
-    const visit = (path, value) => {
-      validate(path, proposed);
-      if (value && typeof value === 'object' && value.__increment === undefined) Object.entries(value).forEach(([key, child]) => visit([path, key].filter(Boolean).join('/'), child));
-    };
-    entries.forEach(([path, value]) => visit(path, value));
+    entries.forEach(([path, value]) => assert.notEqual(value, undefined, `Undefined write at ${path}`));
     entries.forEach(([path, value]) => write(state, path, value));
   }
   const database = {
@@ -87,13 +63,13 @@ function offlineStore(state = fixture()) {
   };
   function load(file) {
     const filename = resolve(rootDirectory, file);
-    if (filename.replaceAll('\\', '/').endsWith('/config/firebase.ts')) return { db: {} };
+    if (filename.replaceAll('\\', '/').endsWith('/config/pocketbase.ts')) return { pb: { authStore: { record: null } } };
     if (filename.replaceAll('\\', '/').endsWith('/types/audit.ts')) return { buildAuditEvents: () => ({}) };
     if (modules.has(filename)) return modules.get(filename).exports;
     const module = { exports: {} }; modules.set(filename, module);
     const compiled = ts.transpileModule(readFileSync(filename, 'utf8'), { compilerOptions: { target: ts.ScriptTarget.ES2023, module: ts.ModuleKind.CommonJS } }).outputText;
     const require = (name) => {
-      if (name === 'firebase/database') return database;
+      if (name === './pocketbaseRealtime') return database;
       if (name === 'react') return { useEffect: () => {}, useRef: (value) => ({ current: value }) };
       assert.ok(name.startsWith('.'), `Unexpected import ${name}`);
       return load(resolve(dirname(filename), name + '.ts'));
@@ -239,13 +215,13 @@ test('viewer settlement validates one receipt and deletion returns sale stock on
   assert.equal(db.state.erp_geral.financeiro.suppressed['frigobar-pending'], true);
 });
 
-test('purchase removal rejects consumed stock and the rules reject negative balances', async () => {
+test('purchase removal rejects consumed stock and movement validation rejects negative quantities', async () => {
   const db = offlineStore(); const operations = db.load('src/services/inventoryOperations.ts'); const deletion = db.load('src/services/inventoryDeletion.ts');
   await operations.recordInventoryMovement(movementInput('entry', 'entrada', 2, '', 'Geladeira - Recepção'));
   const sales = db.load('src/services/frigobarStore.ts'); await sales.createFrigobarSale(saleInput('sale', 11));
   await assert.rejects(() => deletion.deleteStockMovement('entry'), /consumida/);
   assert.ok(db.state.erp_geral.estoque.movements.entry);
-  await assert.rejects(() => db.database.set({ path: 'erp_geral/estoque/products/soap/locationQuantities/Almoxarifado central' }, -1), /Rule validation/);
+  await assert.rejects(() => operations.recordInventoryMovement(movementInput('negative', 'entrada', -1, '', 'Almoxarifado central')), /quantidade válida/);
 });
 
 

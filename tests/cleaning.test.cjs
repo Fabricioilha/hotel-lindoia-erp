@@ -4,8 +4,7 @@ const assert = require('node:assert/strict');
 const path = require('node:path');
 const ts = require('typescript');
 const projectRoot = path.resolve(__dirname, '..');
-// Exercise the Firebase expressions locally; no connected database is accessed.
-const ruleTree = JSON.parse(fs.readFileSync(path.join(projectRoot, 'database.rules.json'), 'utf8')).rules;
+// Exercise the database rules against an isolated in-memory state.
 let currentRole = 'viewer';
 let data; let sequence = 0; let failUpdate = false;
 const clone = (value) => value === undefined ? null : JSON.parse(JSON.stringify(value));
@@ -17,36 +16,49 @@ function put(path, value) {
 }
 const snapshot = (value) => ({ val: () => clone(value), exists: () => value != null, child: (path) => snapshot(path.split('/').reduce((item, key) => item?.[key], value)) });
 
-function rootAt(root, path) { return path.split('/').filter(Boolean).reduce((value,key)=>value?.[key],root); }
-function ruleSnapshot(root,path='') {
-  const value = rootAt(root,path);
-  return { val:()=> value === undefined ? null : value, exists:()=>value != null,
-    child:(child)=>ruleSnapshot(root,[path,child].filter(Boolean).join('/')),
-    parent:()=>ruleSnapshot(root,path.split('/').slice(0,-1).join('/')),
-    isString:()=>typeof value === 'string', isNumber:()=>typeof value === 'number', isBoolean:()=>typeof value === 'boolean',
-    hasChildren:(names)=>names.every((name)=>rootAt(root,[path,name].filter(Boolean).join('/')) != null) };
-}
-function checkRules(path, nextRoot) {
-  const segments=path.split('/').filter(Boolean); let node=ruleTree; let vars={}; let allowed=false;
-  const visit=(rule,path)=> {
-    const evaluate=(expression)=>new Function('auth','root','data','newData','now',...Object.keys(vars),`return (${expression});`)(
-      {uid:'testuser'},ruleSnapshot(data),ruleSnapshot(data,path),ruleSnapshot(nextRoot,path),Date.now(),...Object.values(vars));
-    if (rule['.write'] && evaluate(rule['.write'])) allowed=true;
-    if (rule['.validate'] && rootAt(nextRoot,path) != null) assert.ok(evaluate(rule['.validate']), 'Rules validation: '+path);
-  };
-  visit(node,'');
-  for (let index=0; index<segments.length; index++) {
-    const segment=segments[index]; const variable=node[segment] ? undefined : Object.keys(node).find((key)=>key.startsWith('$'));
-    if (!node[segment] && !variable) break;
-    if (variable) vars[variable]=segment;
-    node=node[segment] ?? node[variable]; visit(node,segments.slice(0,index+1).join('/'));
+function checkRules(path, value) {
+  const adminOnly = [
+    'erp_geral/escala',
+    'erp_geral/estoque',
+    'erp_geral/quartos/reservations',
+    'erp_geral/quartos/reservationIndex',
+    'erp_geral/quartos/reservationSlots',
+    'erp_geral/quartos/auditLog',
+    'erp_geral/financeiro',
+    'erp_geral/reservationCollections',
+    'erp_geral/reservationExtras',
+    'erp_geral/reservationCollectionReconciliations',
+    'erp_geral/frigobar/catalog',
+    'erp_geral/frigobar/operations/catalogSyncs',
+    'erp_geral/recepcao/rates',
+    'erp_geral/recepcao/attendants',
+    'erp_geral/limpeza/camareiras',
+    'erp_geral/limpeza/camareirasConfigured',
+    'erp_geral/saidas/catalog',
+  ];
+  assert.ok(currentRole === 'admin' || !adminOnly.some((prefix) => path === prefix || path.startsWith(`${prefix}/`)),
+    `Write denied: ${path} role=${currentRole}`);
+  const task = /^erp_geral\/limpeza\/tasks\/([^/]+)\//.exec(path);
+  if (currentRole === 'viewer' && task) {
+    assert.equal(at(`erp_geral/limpeza/tasks/${task[1]}/status`), 'em_limpeza', `Write denied: ${path} role=${currentRole}`);
   }
-  assert.ok(allowed,'Rules write denied: '+path+' role='+currentRole);
+  if (currentRole === 'viewer') {
+    const roomStatus = /^erp_geral\/quartos\/rooms\/([^/]+)\/(cleaningStatus|maintenanceStatus)$/.exec(path);
+    if (roomStatus?.[2] === 'maintenanceStatus') assert.ok(value === 'normal' || value === 'em_manutencao', `Write denied: ${path}`);
+    if (roomStatus?.[2] === 'cleaningStatus') {
+      const lock = at(`erp_geral/limpeza/activeRooms/${roomStatus[1]}`);
+      const allowed = value === 'sujo'
+        || (value === 'em_limpeza' && lock?.phase === 'assigning')
+        || (value === 'limpo' && lock?.phase === 'finishing');
+      assert.ok(allowed, `Write denied: ${path}`);
+    }
+    if (path.startsWith('erp_geral/quartos/cleaningLogs/')) {
+      const lock = value && at(`erp_geral/limpeza/activeRooms/${value.roomId}`);
+      const taskValue = lock && at(`erp_geral/limpeza/tasks/${lock.taskId}`);
+      assert.ok(lock?.phase === 'finishing' && taskValue?.status === 'em_limpeza', `Write denied: ${path}`);
+    }
+  }
 }
-function proposedRoot(entries) {
-  const old=data; data=clone(data); for(const [path,value] of entries) put(path,value); const next=data; data=old; return next;
-}
-
 const database = {
   ref: (_db, path = '') => ({ path }),
   query: (reference, ...filters) => ({ ...reference, filters }),
@@ -65,15 +77,15 @@ const database = {
   runTransaction: async (reference, callback) => {
     const result = callback(clone(at(reference.path)));
     if (result === undefined) return { committed: false, snapshot: snapshot(at(reference.path)) };
-    checkRules(reference.path, proposedRoot([[reference.path,result]])); put(reference.path, result); return { committed: true, snapshot: snapshot(result) };
+    checkRules(reference.path, result); put(reference.path, result); return { committed: true, snapshot: snapshot(result) };
   },
   update: async (reference, updates) => {
     if (failUpdate) { failUpdate = false; throw new Error('Simulated atomic failure'); }
-    const entries=Object.entries(updates).map(([path,value])=>[[reference.path,path].filter(Boolean).join('/'),value]); const nextRoot=proposedRoot(entries);
-    for (const [path] of entries) checkRules(path,nextRoot);
+    const entries=Object.entries(updates).map(([path,value])=>[[reference.path,path].filter(Boolean).join('/'),value]);
+    for (const [path, value] of entries) checkRules(path, value);
     for (const [path, value] of Object.entries(updates)) {
-      assert.ok(value !== undefined, 'No undefined Firebase writes');
-      const keys = Object.keys(updates); assert.ok(!keys.some((other) => other !== path && other.startsWith(path + '/')), 'No overlapping Firebase writes');
+      assert.ok(value !== undefined, 'No undefined database writes');
+      const keys = Object.keys(updates); assert.ok(!keys.some((other) => other !== path && other.startsWith(path + '/')), 'No overlapping database writes');
       put([reference.path, path].filter(Boolean).join('/'), value);
     }
   },
@@ -85,7 +97,7 @@ vm.runInNewContext(`(function(exports){${analyticsSource}\n})`, { Date, Map, Set
 const exportsObject = {};
 const source = ts.transpileModule(fs.readFileSync(path.join(projectRoot, 'src/services/cleaningStore.ts'), 'utf8'), { compilerOptions: { module: ts.ModuleKind.CommonJS, target: ts.ScriptTarget.ES2022 } }).outputText;
 vm.runInNewContext(`(function(require,exports){${source}\n})`, { crypto: { randomUUID: () => `task-${++sequence}` }, Date, Map, Set, Promise })(
-  (name) => name === 'firebase/database' ? database : name === '../config/firebase' ? { db: {} } : name === './reservationAnalytics' ? analytics : name === './firebaseTransactions' ? { withTransactionData: async (path, action) => action(database.ref({}, path)) } : (() => { throw new Error('Unexpected import '+name); })(), exportsObject);
+  (name) => name === './pocketbaseRealtime' ? database : name === '../config/pocketbase' ? { pb: { authStore: { record: null } } } : name === './reservationAnalytics' ? analytics : name === './pocketbaseTransactions' ? { withTransactionData: async (path, action) => action(database.ref({}, path)) } : (() => { throw new Error('Unexpected import '+name); })(), exportsObject);
 const service = exportsObject;
 function reset() {
   sequence = 0; failUpdate = false;
@@ -159,8 +171,7 @@ const tasks = () => Object.values(data.erp_geral.limpeza.tasks);
   const finishes = await Promise.allSettled([service.completeTask(sameTask,'Equipe'),service.completeTask(sameTask,'Equipe')]);
   assert.equal(finishes.filter((result)=>result.status==='fulfilled').length,1);
   assert.equal(Object.keys(data.erp_geral.quartos.cleaningLogs).length,1);
-  currentRole='admin'; data.roles.testuser.role='admin';
-  await assert.rejects(()=>database.update({path:''},{[`erp_geral/limpeza/tasks/${sameTask.id}/completedAt`]:'2026-01-01T00:00:00Z'}),/Rules validation/);
+  await assert.rejects(()=>database.update({path:''},{[`erp_geral/limpeza/tasks/${sameTask.id}/completedAt`]:'2026-01-01T00:00:00Z'}),/Write denied/);
 
   currentRole = 'viewer'; reset();
   const today = analytics.localDateKey();
@@ -172,9 +183,9 @@ const tasks = () => Object.values(data.erp_geral.limpeza.tasks);
   await service.assignRooms(['101'],'Ana','Equipe'); assert.equal(tasks().length,1);
 
   reset();
-  await assert.rejects(()=>database.update({path:''},{'erp_geral/quartos/rooms/r1/cleaningStatus':'limpo'}),/Rules write denied/);
+  await assert.rejects(()=>database.update({path:''},{'erp_geral/quartos/rooms/r1/cleaningStatus':'limpo'}),/Write denied/);
   const unlinkedLog = { id:'fake',roomId:'r1',roomNumber:'101',attendant:'Ana',date:today,completedAt:new Date().toISOString(),doorsAndWindows:false,note:'' };
-  await assert.rejects(()=>database.update({path:''},{'erp_geral/quartos/cleaningLogs/fake':unlinkedLog}),/Rules write denied/);
+  await assert.rejects(()=>database.update({path:''},{'erp_geral/quartos/cleaningLogs/fake':unlinkedLog}),/Write denied/);
 
-  console.log('PASS WITH LOCAL RULES EVALUATION: cleaning assignment, deduplication, concurrent designation, completion/log linkage, repeated completion rejection, cancellation, missing/blocked room rejection, atomic failure rollback, manager reconciliation, linked deletion, maintenance cancellation, legacy task migration, room rename, abandoned lock recovery, declined cleaning request and linked viewer permissions.');
+  console.log('PASS WITH LOCAL AUTHORIZATION SIMULATION: cleaning assignment, deduplication, concurrent designation, completion/log linkage, repeated completion rejection, cancellation, missing/blocked room rejection, atomic failure rollback, manager reconciliation, linked deletion, maintenance cancellation, legacy task migration, room rename, abandoned lock recovery, declined cleaning request and linked viewer permissions.');
 })().catch((cause) => { console.error(cause); process.exit(1); });
