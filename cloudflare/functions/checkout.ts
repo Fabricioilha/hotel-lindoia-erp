@@ -1,5 +1,5 @@
 import { checkoutStatus } from '../lib/checkoutStatus';
-import { commitState, readState, requestToken, superuserClient, verifyUser } from '../lib/pocketbase';
+import { commitState, readState, requestToken, superuserClient, verifyUser, type BackendEnv } from '../lib/pocketbase';
 import { applyCheckout, hotelDate, type CheckoutState, type CheckoutTarget } from '../../src/services/checkoutPolicy';
 import { stayCheckOutDate } from '../../src/services/reservationAnalytics';
 import type { Reservation, ReservationDirectoryEntry } from '../../src/types/housekeeping';
@@ -20,15 +20,15 @@ function changedBranches(previous: CheckoutState, next: CheckoutState): Record<s
   return updates;
 }
 
-export default async (request: Request) => {
+export default async (request: Request, env: BackendEnv) => {
   if (!['POST', 'GET'].includes(request.method)) return Response.json({ error: 'Método não permitido.' }, { status: 405 });
   try {
     const token = requestToken(request);
     if (!token) return Response.json({ error: 'Sessão inválida. Entre novamente.' }, { status: 401 });
-    const user = await verifyUser(token);
+    const user = await verifyUser(env, token);
 
     if (request.method === 'GET') {
-      const client = await superuserClient();
+      const client = await superuserClient(env);
       const current = await readState(client, 'erp_geral');
       const state = getHotelState(current.value);
       const url = new URL(request.url);
@@ -61,13 +61,15 @@ export default async (request: Request) => {
       return Response.json(checkoutStatus(state, new Date()), { headers: { 'Cache-Control': 'no-store' } });
     }
 
-    const target = await request.json() as CheckoutTarget;
-    if (!['stay', 'reservation'].includes(target.sourceType) || typeof target.sourceId !== 'string'
+    let target: CheckoutTarget;
+    try { target = await request.json() as CheckoutTarget; }
+    catch { return Response.json({ error: 'JSON inválido.' }, { status: 400 }); }
+    if (!target || !['stay', 'reservation'].includes(target.sourceType) || typeof target.sourceId !== 'string'
       || !target.sourceId || /[.#$[\]/]/.test(target.sourceId)) {
       return Response.json({ error: 'Hospedagem inválida. Atualize a tela e tente novamente.' }, { status: 400 });
     }
 
-    const client = await superuserClient();
+    const client = await superuserClient(env);
     const now = new Date();
     for (let attempt = 0; attempt < 5; attempt++) {
       const current = await readState(client, 'erp_geral');
@@ -86,7 +88,7 @@ export default async (request: Request) => {
     }
     return Response.json({ error: 'Os dados mudaram várias vezes. Atualize a tela e tente novamente.' }, { status: 409 });
   } catch (cause) {
-    const status = cause && typeof cause === 'object' && 'status' in cause && typeof cause.status === 'number' ? cause.status : 409;
+    const status = cause && typeof cause === 'object' && 'status' in cause && typeof cause.status === 'number' && cause.status >= 400 && cause.status <= 599 ? cause.status : 409;
     return Response.json({ error: cause instanceof Error ? cause.message : 'Não foi possível liberar o quarto.' }, { status });
   }
 };

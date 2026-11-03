@@ -59,12 +59,12 @@ Em outro terminal:
 ```sh
 cd /home/fabricio/Downloads/hotel-lindoia-erp
 export VITE_POCKETBASE_URL=http://127.0.0.1:8090
-npm run dev:netlify
+npm run dev:cloudflare
 ```
 
-O endereço é injetado no frontend apenas para conectar ao serviço local. Para as
-funções Netlify locais, configure também `POCKETBASE_SUPERUSER_EMAIL` e
-`POCKETBASE_SUPERUSER_PASSWORD` no mesmo terminal. Nunca coloque credenciais no
+O endereço é injetado no frontend apenas para conectar ao serviço local. Para a API local do Worker, configure `POCKETBASE_URL`,
+`POCKETBASE_SUPERUSER_EMAIL` e `POCKETBASE_SUPERUSER_PASSWORD` em `.dev.vars`
+na raiz do ERP, usando a instância de testes. Nunca coloque credenciais no
 código, nos arquivos servidos pelo navegador ou no repositório.
 
 Antes de validar a operação:
@@ -84,7 +84,7 @@ O PocketBase 0.41.1 roda na VM como o serviço `pocketbase` (systemd), em
 `/opt/pocketbase`, servido em `https://137-131-244-154.sslip.io` com certificado
 Let's Encrypt emitido pelo próprio PocketBase. O IP público (137.131.244.154) é
 reservado na Oracle e deve permanecer associado à VM; se mudar, o domínio
-`sslip.io` (`<ip com hífens>.sslip.io`) e as variáveis do Netlify precisam mudar junto. Requer ingress TCP 80 e 443 na
+`sslip.io` (`<ip com hífens>.sslip.io`) e as variáveis da Cloudflare precisam mudar junto. Requer ingress TCP 80 e 443 na
 Security List da VCN (a tela de ingress da Oracle) e liberação equivalente no
 firewall da VM.
 
@@ -102,6 +102,7 @@ Para o aplicativo usar este servidor:
 export VITE_POCKETBASE_URL=https://137-131-244-154.sslip.io
 ```
 
-No Netlify, defina `VITE_POCKETBASE_URL` e, para as funções, `POCKETBASE_URL`
-com o mesmo endereço, além de `POCKETBASE_SUPERUSER_EMAIL` e
-`POCKETBASE_SUPERUSER_PASSWORD`. Nunca versione chaves SSH (`*.key`).
+Na Cloudflare, defina `VITE_POCKETBASE_URL` no build e `POCKETBASE_URL`
+no runtime com o mesmo endereço. Configure `POCKETBASE_SUPERUSER_EMAIL` e
+`POCKETBASE_SUPERUSER_PASSWORD` como secrets de runtime, conforme
+[Publicação na Cloudflare](../docs/publicar-cloudflare.md). Nunca versione chaves SSH (`*.key`).

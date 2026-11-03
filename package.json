@@ -5,8 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "dev:netlify": "npx --yes netlify-cli dev",
-    "deploy:netlify": "npx --yes netlify-cli deploy --prod",
     "build": "tsc -b && tsc -p tsconfig.server.json && vite build",
     "lint": "eslint .",
     "test:operations": "node tests/operations.test.mjs",
@@ -17,12 +15,14 @@
     "test:cleaning": "node tests/cleaning.test.cjs",
     "test:inventory": "node tests/inventory.test.mjs",
     "test:checkout": "node tests/checkout.test.mjs",
-    "test:checkout-runtime": "node --test tests/checkout-runtime.test.mjs",
     "test:pocketbase-import": "node --test tests/pocketbase-import.test.mjs",
     "typecheck:server": "tsc -p tsconfig.server.json",
-    "build:cloudflare": "npm run build && node scripts/prepare-cloudflare.mjs",
-    "deploy:cloudflare": "npm run test:cloudflare && npm run build:cloudflare && npx --yes wrangler@4 pages deploy dist --project-name hotel-lindoia-erp",
-    "test:cloudflare": "node --test tests/cloudflare.test.mjs"
+    "test:cloudflare": "node --test tests/cloudflare.test.mjs",
+    "deploy:workers": "npm run deploy:cloudflare",
+    "build:cloudflare": "npm run build",
+    "deploy:cloudflare": "npm run test:cloudflare && npm run build && wrangler deploy",
+    "dev:cloudflare": "npm run build && wrangler dev",
+    "test:checkout-client": "node --test tests/checkout-client.test.mjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",
@@ -47,6 +47,7 @@
     "tailwindcss": "^4.3.3",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.69.0",
-    "vite": "^8.3.0"
+    "vite": "^8.3.0",
+    "wrangler": "^4.156.2"
   }
 }

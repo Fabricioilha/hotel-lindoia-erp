@@ -32,7 +32,7 @@ test('a plain-text checkout refusal is shown instead of being reported as unavai
 test('checkout sends the authenticated immutable lodging identity', async () => {
   const api = client(Response.json({ ok: true }));
   await api.requestCheckout(target);
-  assert.equal(api.calls[0][0], '/.netlify/functions/checkout');
+  assert.equal(api.calls[0][0], '/api/checkout');
   assert.equal(api.calls[0][1].method, 'POST');
   assert.match(api.calls[0][1].headers.Authorization, /^Bearer /);
   assert.deepEqual(JSON.parse(api.calls[0][1].body), target);

@@ -1,5 +1,0 @@
-{
-  "version": 1,
-  "include": ["/.netlify/functions/checkout"],
-  "exclude": []
-}

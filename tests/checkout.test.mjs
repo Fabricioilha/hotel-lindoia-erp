@@ -27,7 +27,7 @@ function domainModule(path) {
 const { applyCheckout, checkoutPending, dueCheckouts, hotelDate } = domainModule('src/services/checkoutPolicy.ts');
 const { currentOccupants, reservationOccupiesDate, stayOccupiesDate } = domainModule('src/services/occupantDirectory.ts');
 const { departureDue } = domainModule('src/services/reservationAnalytics.ts');
-const { checkoutStatus } = domainModule('netlify/lib/checkoutStatus.ts');
+const { checkoutStatus } = domainModule('cloudflare/lib/checkoutStatus.ts');
 
 function statusState(reservations, stays = {}) {
   return {

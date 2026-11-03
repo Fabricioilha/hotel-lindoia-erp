@@ -1,4 +1,4 @@
-import { commitState, readState, superuserClient } from '../lib/pocketbase';
+import { commitState, readState, superuserClient, type BackendEnv } from '../lib/pocketbase';
 import { applyCheckout, checkoutPending, dueCheckouts, type CheckoutState } from '../../src/services/checkoutPolicy';
 
 function changedBranches(previous: CheckoutState, next: CheckoutState): Record<string, unknown> {
@@ -12,9 +12,8 @@ function changedBranches(previous: CheckoutState, next: CheckoutState): Record<s
   return updates;
 }
 
-export default async () => {
-  const client = await superuserClient();
-  const now = new Date();
+export default async (env: BackendEnv, now = new Date()) => {
+  const client = await superuserClient(env);
   for (let attempt = 0; attempt < 5; attempt++) {
     const current = await readState(client, 'erp_geral');
     const previous = (current.value ?? {}) as CheckoutState;
@@ -51,6 +50,3 @@ export default async () => {
   }
 };
 
-// Retry through the departure afternoon after transient failures or payment.
-// 15:00–02:59 UTC is 12:00–23:59 in São Paulo; dueCheckouts checks the hotel date.
-export const config = { schedule: '*/5 0-2,15-23 * * *' };

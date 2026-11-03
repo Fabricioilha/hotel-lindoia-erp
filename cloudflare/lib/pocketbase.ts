@@ -5,14 +5,20 @@ export interface StateResponse {
   versions: Record<string, number | null>;
 }
 
-function baseUrl(): string {
-  const value = process.env.POCKETBASE_URL;
+export interface BackendEnv {
+  POCKETBASE_URL: string;
+  POCKETBASE_SUPERUSER_EMAIL: string;
+  POCKETBASE_SUPERUSER_PASSWORD: string;
+}
+
+function baseUrl(env: BackendEnv): string {
+  const value = env.POCKETBASE_URL;
   if (!value) throw new Error('Configure POCKETBASE_URL no servidor.');
   return value;
 }
 
-export function pocketbaseClient(token?: string): PocketBase {
-  const client = new PocketBase(baseUrl());
+export function pocketbaseClient(env: BackendEnv, token?: string): PocketBase {
+  const client = new PocketBase(baseUrl(env));
   client.autoCancellation(false);
   if (token) client.authStore.save(token, null);
   return client;
@@ -23,22 +29,22 @@ export function requestToken(request: Request): string | null {
   return authorization.startsWith('Bearer ') ? authorization.slice(7).trim() || null : null;
 }
 
-export async function verifyUser(token: string): Promise<{ id: string; role: 'admin' | 'viewer' }> {
-  const client = pocketbaseClient(token);
+export async function verifyUser(env: BackendEnv, token: string): Promise<{ id: string; role: 'admin' | 'viewer' }> {
+  const client = pocketbaseClient(env, token);
   const profile = await client.send<{ id: string; role: string }>('/api/hotel/me', {});
   if (profile.role !== 'admin' && profile.role !== 'viewer') {
-    throw new Error('Seu perfil não tem permissão para acessar o checkout.');
+    throw Object.assign(new Error('Seu perfil não tem permissão para acessar o checkout.'), { status: 403 });
   }
   return { id: profile.id, role: profile.role };
 }
 
-export async function superuserClient(): Promise<PocketBase> {
-  const email = process.env.POCKETBASE_SUPERUSER_EMAIL;
-  const password = process.env.POCKETBASE_SUPERUSER_PASSWORD;
+export async function superuserClient(env: BackendEnv): Promise<PocketBase> {
+  const email = env.POCKETBASE_SUPERUSER_EMAIL;
+  const password = env.POCKETBASE_SUPERUSER_PASSWORD;
   if (!email || !password) {
     throw new Error('Configure POCKETBASE_SUPERUSER_EMAIL e POCKETBASE_SUPERUSER_PASSWORD no servidor.');
   }
-  const client = pocketbaseClient();
+  const client = pocketbaseClient(env);
   await client.collection('_superusers').authWithPassword(email, password);
   return client;
 }

@@ -18,14 +18,14 @@ async function checkoutResponse<T>(response: Response): Promise<T> {
 
 export async function checkoutQuery<T>(query = '', signal?: AbortSignal): Promise<T> {
   const token = pb.authStore.token;
-  const response = await fetch(`/.netlify/functions/checkout${query}`, { signal, headers: { Authorization: `Bearer ${token ?? ''}` } });
+  const response = await fetch(`/api/checkout${query}`, { signal, headers: { Authorization: `Bearer ${token ?? ''}` } });
   return checkoutResponse<T>(response);
 }
 
 export async function requestCheckout(target: CheckoutTarget): Promise<void> {
   const token = pb.authStore.token;
   if (!token) throw new Error('Entre novamente para liberar o quarto.');
-  const response = await fetch('/.netlify/functions/checkout', {
+  const response = await fetch('/api/checkout', {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` }, body: JSON.stringify(target),
   });
   await checkoutResponse(response);

@@ -1,0 +1,21 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "hotel-lindoia-erp",
+  "main": "cloudflare/worker.ts",
+  "compatibility_date": "2026-11-02",
+  "workers_dev": true,
+  "keep_vars": true,
+  "assets": {
+    "directory": "./dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "run_worker_first": [
+      "/api/*"
+    ]
+  },
+  "triggers": {
+    "crons": [
+      "*/5 0-2,15-23 * * *"
+    ]
+  }
+}
