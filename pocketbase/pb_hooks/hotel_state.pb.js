@@ -155,6 +155,8 @@ routerAdd("POST", "/api/hotel/state/commit", (event) => {
   ]
   const viewerWritablePath = (path) => viewerCleaningPath(path)
     || viewerWritablePrefixes.some((prefix) => path.startsWith(prefix + "/"))
+    // A venda da geladeira baixa o saldo com uma transação no nó do estoque.
+    || path === "erp_geral/frigobar/operations/stock"
   const stateValue = (entries, path, before) => {
     const parts = path.split("/")
     const root = parts.slice(0, 2).join("/")

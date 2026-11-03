@@ -302,8 +302,9 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
               {[...byMethod.keys()].filter((method) => method !== 'prepaid').length === 0 ? <p className="cx-muted">Nenhuma entrada neste dia.</p> : <ul className="cx-methods">
                 {[...byMethod.entries()].filter(([method]) => method !== 'prepaid').map(([method, value]) => <li key={method}><span>{PAYMENT_METHOD_LABELS[method]}</span><strong>{money(value)}</strong></li>)}
               </ul>}
+              </>}
 
-              <h3>Lançamentos</h3>
+              <h3>{isAdmin ? 'Lançamentos' : 'Entradas do plantão'}</h3>
               {day.entries.length === 0 ? <p className="cx-muted">Nenhum lançamento neste dia.</p> : <ul className="cx-list">
                 {day.entries.sort((a, b) => a.time.localeCompare(b.time)).map((entry, position) => <li key={`${entry.time}-${position}`}>
                   <span className="cx-time">{timeOf(entry.time)}</span>
@@ -312,7 +313,6 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
                 </li>)}
               </ul>}
 
-              </>}
               <h3>Saídas de caixa</h3>
               {day.cashOuts.length === 0 ? <p className="cx-muted">Nenhuma retirada neste dia.</p> : <ul className="cx-list">
                 {day.cashOuts.sort((a, b) => a.time.localeCompare(b.time)).map((item) => <li key={item.id}><span className="cx-time">{timeOf(item.time)}</span><span>{item.reason}{item.note ? ` · ${item.note}` : ''}</span><strong>− {money(item.amount)}{item.remove && <button type="button" className="cx-delete" onClick={item.remove}>Excluir</button>}</strong></li>)}

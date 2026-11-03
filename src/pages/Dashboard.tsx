@@ -873,8 +873,9 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
               ? `${typeDescription.split(' · ')[0]} · ${room.bedCount} ${room.bedCount === 1 ? 'cama' : 'camas'}`
               : typeDescription;
             const awaitingCheckout = !historical && occupant && !occupant.rotativo && departureDue(occupant.checkOutDate, now);
-            const status = awaitingCheckout ? 'checkout' : occupant ? 'occupied' : inMaintenance ? 'maintenance' : 'free';
-            const statusLabel = status === 'checkout' ? 'Saída pendente' : status === 'occupied' ? historical && occupant?.sourceType === 'reservation' && reservations[occupant.sourceId]?.status === 'confirmada' ? 'Reservado' : 'Ocupado' : status === 'maintenance' ? 'Em manutenção' : 'Livre';
+            const awaitingCleaning = !historical && !occupant && !inMaintenance && !isCleaning && Boolean(room) && room?.cleaningStatus !== 'limpo';
+            const status = awaitingCheckout ? 'checkout' : occupant ? 'occupied' : inMaintenance ? 'maintenance' : isCleaning ? 'cleaning' : awaitingCleaning ? 'dirty' : 'free';
+            const statusLabel = status === 'dirty' ? 'Aguardando limpeza' : status === 'cleaning' ? 'Em limpeza' : status === 'checkout' ? 'Saída pendente' : status === 'occupied' ? historical && occupant?.sourceType === 'reservation' && reservations[occupant.sourceId]?.status === 'confirmada' ? 'Reservado' : 'Ocupado' : status === 'maintenance' ? 'Em manutenção' : 'Livre';
             const unavailable = Boolean(inMaintenance || (!occupant && room && room.cleaningStatus !== 'limpo') || (!occupant && isCleaning));
             const cleaningLabel = isCleaning ? ', em limpeza' : '';
             const occupantCharges = occupant ? chargesForOccupant(occupant) : [];
@@ -1084,8 +1085,9 @@ function ClockIcon() {
   return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></svg>;
 }
 
-function RoomStatusIcon({ status }: { status: 'occupied' | 'free' | 'maintenance' | 'cleaning' | 'checkout' }) {
+function RoomStatusIcon({ status }: { status: 'occupied' | 'free' | 'maintenance' | 'cleaning' | 'checkout' | 'dirty' }) {
   if (status === 'checkout') return <ClockIcon />;
+  if (status === 'dirty') status = 'cleaning';
   const path = status === 'occupied'
     ? <><circle cx="12" cy="8" r="3" /><path d="M5.5 20a6.5 6.5 0 0 1 13 0" /></>
     : status === 'free'

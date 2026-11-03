@@ -142,6 +142,7 @@
 .dashboard-room.is-occupied { border-left-color: #c52e43; }
 .dashboard-room.is-free { border-left-color: #39845d; }
 .dashboard-room.is-maintenance { border-left-color: #b78332; }
+.dashboard-room.is-dirty { border-left-color: #b78332; }
 .dashboard-room.is-cleaning { border-left-color: #b78332; background: #fffaf0; }
 .dashboard-room-top { display: flex; align-items: center; justify-content: space-between; gap: 5px; }
 .dashboard-room-top strong { display: flex; align-items: center; gap: 5px; color: var(--brand-ink); font-size: 0.9375rem; }
@@ -152,6 +153,7 @@
 .dashboard-room-status.is-occupied { color: #b22a3e; background: #fff0f2; }
 .dashboard-room-status.is-free { color: #247146; background: #eaf6ee; }
 .dashboard-room-status.is-maintenance { color: #946313; background: #fbf3e4; }
+.dashboard-room-status.is-dirty { color: #946313; background: #fbf3e4; }
 .dashboard-room.is-checkout { border-left-color: #b78332; }
 .dashboard-room-status.is-checkout { color: #795018; background: #fff1d6; }
 .dashboard-room-checkout-notice { margin-bottom: 14px; padding: 12px; border: 1px solid #e7d6b2; border-radius: 6px; color: #684d20; background: #fff3d7; }

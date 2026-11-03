@@ -82,7 +82,7 @@ export function applyCheckout(state: CheckoutState, target: CheckoutTarget, now:
     if (state.quartos?.reservationSlots?.[room.id]) clearSlots(state.quartos.reservationSlots[room.id] as Record<string, unknown>);
   }
   const anotherOccupant = [...Object.values(state.quartos?.reservations ?? {}), ...Object.values(state.recepcao?.stays ?? {})]
-    .some((other) => other.status === 'hospedado' && other.roomNumber.trim() === room!.number.trim() && other.checkInDate <= hotelDate(now));
+    .some((other) => other.id !== source.id && other.status === 'hospedado' && other.roomNumber.trim() === room!.number.trim() && other.checkInDate <= hotelDate(now));
   if (!anotherOccupant) room.cleaningStatus = 'sujo';
   for (const task of Object.values(state.limpeza?.tasks ?? {})) {
     if (!anotherOccupant && task.status === 'em_limpeza' && (task.roomId === room.id || task.roomNumber.trim() === room.number.trim())) {
