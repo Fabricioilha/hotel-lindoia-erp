@@ -19,7 +19,10 @@
     "test:checkout": "node tests/checkout.test.mjs",
     "test:checkout-runtime": "node --test tests/checkout-runtime.test.mjs",
     "test:pocketbase-import": "node --test tests/pocketbase-import.test.mjs",
-    "typecheck:server": "tsc -p tsconfig.server.json"
+    "typecheck:server": "tsc -p tsconfig.server.json",
+    "build:cloudflare": "npm run build && node scripts/prepare-cloudflare.mjs",
+    "deploy:cloudflare": "npm run test:cloudflare && npm run build:cloudflare && npx --yes wrangler@4 pages deploy dist --project-name hotel-lindoia-erp",
+    "test:cloudflare": "node --test tests/cloudflare.test.mjs"
   },
   "dependencies": {
     "exceljs": "^4.4.0",

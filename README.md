@@ -51,6 +51,13 @@ A gerência pode excluir registros de reservas, hospedagens, adicionais, quartos
 
 Excluir um produto remove seu histórico de estoque e lançamentos financeiros gerados por esse histórico; vendas independentes já registradas permanecem. Excluir uma movimentação desfaz as quantidades correspondentes e remove seus lançamentos associados. Os eventos de auditoria ajudam a acompanhar alterações, mas não são uma trilha inviolável contra uma conta de gerência comprometida.
 
+## Publicação do front-end na Cloudflare
+
+Veja [Publicação na Cloudflare Pages](docs/publicar-cloudflare.md). Use
+`npm run build:cloudflare` para gerar `dist` com a ponte de checkout.
+PocketBase permanece na Oracle; nesta etapa, o checkout e seu agendamento
+continuam no Netlify, que precisa permanecer ativo.
+
 ## Desenvolvimento
 
 Para publicar o sistema completo no Netlify, incluindo o checkout manual e automático, siga [Publicação no Netlify](docs/publicar-netlify.md). Use `npm run deploy:netlify` depois de vincular o site e configurar as credenciais do servidor.
