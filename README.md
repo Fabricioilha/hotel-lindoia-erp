@@ -1,5 +1,5 @@
 # Hotel Lindoia ERP
-
+feito por Fabrício Nascimento
 Aplicação web para apoiar a operação do Hotel Lindoia: reservas e quartos, recepção, limpeza, estoque, vendas da geladeira, escala e controle financeiro.
 
 ## Funcionalidades
