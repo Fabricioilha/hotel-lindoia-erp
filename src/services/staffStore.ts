@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { db, get, onValue, ref, runTransaction } from './pocketbaseRealtime';
 import { defaultStaff, findStaff, staffMembers, staffNameKey, type StaffData, type StaffMember } from '../types/staff';
-import { refreshNextMonthSchedule, updateSchedule } from './scheduleStore';
+import { updateSchedule } from './scheduleStore';
 
 const PATH = 'erp_geral/escala/staff';
 let staffSnapshot = defaultStaff();
@@ -72,7 +72,7 @@ export async function updateStaff(mutate: (current: StaffData) => StaffData): Pr
     if (Object.values(staff.members).some((member) => !staff.categories[member.categoryId])) throw new Error('Classifique os funcionários antes de excluir a categoria.');
     const names = Object.values(staff.members).map((member) => staffNameKey(member.name));
     if (new Set(names).size !== names.length) throw new Error('Já existe um funcionário com esse nome.');
-    return refreshNextMonthSchedule({ ...schedule, staff, employees: staffMembers(staff).map((member) => member.name) });
+    return { ...schedule, staff, employees: staffMembers(staff).map((member) => member.name) };
   });
 }
 

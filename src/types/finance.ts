@@ -199,6 +199,16 @@ export const EXPENSE_CATEGORIES = [
   'Outros',
 ];
 
+export const CARD_CATEGORY_PREFIX = 'Cartão';
+
+export function cardCategoryName(bank: string, holder: string) {
+  return `${CARD_CATEGORY_PREFIX} ${bank.trim()} · ${holder.trim()}`;
+}
+
+export function isCardCategory(category: string) {
+  return category.startsWith(`${CARD_CATEGORY_PREFIX} `) && category.includes(' · ');
+}
+
 export const WALLET_LABELS: Record<FinanceWallet, string> = {
   cash: 'Caixa físico',
   bank: 'Banco',

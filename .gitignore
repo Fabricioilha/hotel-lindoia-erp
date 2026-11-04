@@ -42,3 +42,5 @@ ssh-key-*
 # Cloudflare local state
 .wrangler/
 .dev.vars*
+
+acessar a VM.txt
