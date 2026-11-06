@@ -301,6 +301,85 @@ test('unchanged derived stay and cash-out sources are not copied when editing an
   assert.ok(Object.keys(writes[0]).every((path) => path.endsWith('/e1')));
 });
 
+test('management cash collection remains in the hotel wallet and is not an expense', () => {
+  const collection = { id: 'c1', date: '2026-10-14', amount: 50, reason: 'Recolhido pela Gerência', note: '', attendant: 'Equipe', createdAt: stamp };
+  const ordinary = { ...collection, id: 'c2', reason: 'Farmácia', amount: 10 };
+  const staleExpense = { ...expense(), id: 'caixa-c1', paidCash: 50 };
+  const view = ledger.withOperationalFinance(data({ expenses: { 'caixa-c1': staleExpense } }), { stays: {}, roomCharges: {}, cashOuts: { c1: collection, c2: ordinary }, sales: {} });
+  assert.equal(view.expenses['caixa-c1'], undefined);
+  assert.equal(view.expenses['caixa-c2'].paidCash, 10);
+  assert.equal(analytics.monthlyFinanceSummary(view, '2026-10').closingBalances.cash, 90);
+});
+
+test('correcting a cash-out to and from a collection updates its financial expense', async () => {
+  const state = db();
+  const item = { id: 'c1', date: '2026-10-14', amount: 50, reason: 'Farmácia', note: '', attendant: 'Equipe', createdAt: stamp };
+  state.erp_geral.recepcao.cashOuts.c1 = item;
+  state.erp_geral.financeiro.expenses['caixa-c1'] = ledger.cashOutFinanceEntry(item);
+  const { load } = isolatedDomain(state);
+  const edits = load('src/services/cashEdits.ts');
+  await edits.updateCashOut('c1', { amount: 50, reason: 'Recolhido pela Gerência', note: 'cofre' });
+  assert.equal(state.erp_geral.financeiro.expenses['caixa-c1'], undefined);
+  assert.equal(state.erp_geral.recepcao.cashOuts.c1.note, 'cofre');
+  await edits.updateCashOut('c1', { amount: 25, reason: 'Farmácia', note: '' });
+  assert.equal(state.erp_geral.financeiro.expenses['caixa-c1'].paidCash, 25);
+});
+
+test('cash-flow cannot separately override an operational cash-out, and stale correction is rejected', async () => {
+  const state = db();
+  const item = { id: 'c1', date: '2026-10-14', amount: 50, reason: 'Farmácia', note: '', attendant: 'Equipe', createdAt: stamp };
+  state.erp_geral.recepcao.cashOuts.c1 = item;
+  const { load } = isolatedDomain(state);
+  const store = load('src/services/financeStore.ts');
+  await assert.rejects(store.updateFinance((current) => ({ ...current, expenses: { ...current.expenses, 'caixa-c1': { ...current.expenses['caixa-c1'], plannedAmount: 20 } } })), /formulário próprio/);
+  assert.equal(state.erp_geral.recepcao.cashOuts.c1.amount, 50);
+  const edits = load('src/services/cashEdits.ts');
+  await assert.rejects(edits.updateCashOut('c1', { amount: 20, reason: 'Farmácia', note: '' }, { ...item, amount: 40 }), /mudou em outra sessão/);
+  await edits.updateCashOut('c1', { amount: 20, reason: 'Farmácia', note: 'correção', date: '2026-10-15', attendant: 'Gerência' }, item);
+  assert.equal(state.erp_geral.recepcao.cashOuts.c1.amount, 20);
+  assert.equal(state.erp_geral.recepcao.cashOuts.c1.date, '2026-10-15');
+  assert.equal(state.erp_geral.recepcao.cashOuts.c1.attendant, 'Gerência');
+  assert.equal((await store.loadFinanceForMonth('2026-10')).expenses['caixa-c1'].paidCash, 20);
+  assert.equal((await store.loadFinanceForMonth('2026-10')).expenses['caixa-c1'].dueDate, '2026-10-15');
+});
+
+test('collection confirmation is invalidated when its details change', () => {
+  const collections = domain.load('src/services/cashCollections.ts');
+  const item = { id: 'c1', date: '2026-10-14', amount: 50, reason: 'Recolhido pela Gerência', note: '', attendant: 'Equipe', createdAt: stamp };
+  const acks = { c1: { signature: collections.cashCollectionSignature(item), acknowledgedAt: stamp, acknowledgedBy: 'manager' } };
+  assert.equal(collections.pendingCashCollections({ c1: item }, {}).length, 1);
+  assert.equal(collections.pendingCashCollections({ c1: item }, acks).length, 0);
+  assert.equal(collections.pendingCashCollections({ c1: { ...item, amount: 60 } }, acks).length, 1);
+  assert.equal(collections.pendingCashCollections({ c1: { ...item, reason: 'Farmácia' } }, acks).length, 0);
+});
+
+test('cleaning reports stay pending until reviewed and changes require a new review', () => {
+  const concerns = domain.load('src/services/cleaningConcerns.ts');
+  const log = { id: 'log1', roomId: 'r1', roomNumber: '101', attendant: 'Ana', completedAt: stamp, reportedBy: 'Equipe', usageConcern: true };
+  const acks = { log1: { signature: concerns.cleaningConcernSignature(log), acknowledgedAt: stamp, acknowledgedBy: 'manager' } };
+  assert.equal(concerns.pendingCleaningConcerns({ log1: log }, {}).length, 1);
+  assert.equal(concerns.pendingCleaningConcerns({ log1: log }, acks).length, 0);
+  assert.equal(concerns.pendingCleaningConcerns({ log1: { ...log, roomNumber: '102' } }, acks).length, 1);
+  assert.equal(concerns.pendingCleaningConcerns({ log1: { ...log, usageConcern: false } }, acks).length, 0);
+});
+
+test('OYO reconciliation follows the report and rejects stale or invalid edits', async () => {
+  const state = db();
+  const { load } = isolatedDomain(state);
+  const oyo = load('src/services/oyoReconciliation.ts');
+  const record = { revenue: 1000, costs: 200, adjustments: 10, priorBalance: -100, reportedShare: 700, collectedByHotel: 600, paidToHotel: 20, paidToOyo: 30, updatedAt: stamp };
+  assert.deepEqual(oyo.calculateOyoReconciliation(record), { calculatedShare: 710, share: 700, difference: -10, received: 590, balance: 110 });
+  assert.equal(oyo.calculateOyoReconciliation({ ...record, collectedByHotel: 800 }).balance, -90);
+  const report = { revenue: 81925.60, costs: 20535.75, adjustments: 0, priorBalance: -22828.98, reportedShare: 33301.36, collectedByHotel: 52977.37, paidToHotel: 0, paidToOyo: 0, updatedAt: stamp };
+  assert.deepEqual(oyo.calculateOyoReconciliation(report), { calculatedShare: 38560.87, share: 33301.36, difference: -5259.51, received: 52977.37, balance: -19676.01 });
+  await oyo.saveOyoReconciliation('2026-10', record, null);
+  assert.deepEqual(state.erp_geral.financeiro.oyoReconciliations['2026-10'], record);
+  await assert.rejects(oyo.saveOyoReconciliation('2026-10', { ...record, revenue: 999 }, null), /outra sessão/);
+  await assert.rejects(oyo.saveOyoReconciliation('2026-10', { ...record, costs: -1 }, record), /Confira/);
+  await oyo.saveOyoReconciliation('2026-10', { ...record, revenue: 999 }, record);
+  assert.equal(state.erp_geral.financeiro.oyoReconciliations['2026-10'].revenue, 999);
+});
+
 test('old payroll editors automatically preserve history and add only the new paid difference', async () => {
   const prior = payroll({ dueDate: '2026-10-31', paidCash: 40 });
   const state = db({ payroll: { p1: prior } });

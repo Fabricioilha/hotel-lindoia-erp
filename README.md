@@ -20,6 +20,8 @@ Os links entre o painel, **Gerenciar quartos**, **Reservas e hospedagens** e **C
 
 As tarefas das camareiras e o estado de limpeza do quarto são relacionados: designar uma limpeza marca o quarto em limpeza; concluir registra a camareira no histórico e marca o quarto limpo; cancelar deixa o quarto sujo. Conclusões pela gerência também atualizam a tarefa correspondente. As permissões e gravações são verificadas pelos hooks do PocketBase, que precisam acompanhar a publicação do aplicativo.
 
+Ao concluir uma tarefa, a equipe pode escolher **Concluir e relatar indícios de uso**. O relato fica no histórico da limpeza e aparece no painel da gerência até ser conferido; alterações relevantes no registro exigem nova confirmação. O alerta é uma indicação para verificar hospedagens e caixa, não prova de irregularidade. Como a identificação da camareira é escolhida na tarefa e o registro pode ser feito pela equipe, esse mecanismo não substitui contas individuais, conferência independente ou controles físicos.
+
 A busca de `/reservas` abre, por padrão, com os check-ins de hoje. Os campos **Check-in de** e **Até** permitem escolher o período. A tela consulta reservas e hospedagens da recepção pela data de check-in selecionada e busca recebimentos, cobranças e adicionais relacionados às reservas exibidas. O resumo de ocupação usa o índice operacional de reservas; a ocupação do painel administrativo também considera os quartos cadastrados.
 
 ## Dados e permissões
@@ -38,6 +40,12 @@ O Fluxo de Caixa combina lançamentos financeiros salvos com dados derivados de 
 - **Resultado de caixa** considera as entradas do hotel, despesas e folha pagas com caixa ou banco, e valores enviados à OYO. Transferências entre caixa e banco não alteram esse resultado.
 - O histórico de pré-pagos mostra os valores brutos registrados como pagos à OYO. O cartão **Pré-Pagos (Retidos - OYO)** mostra o saldo da carteira OYO após os lançamentos e compensações registrados; o sistema não calcula comissões nem o acerto líquido com a OYO.
 - Em pagamentos combinados, a parcela recebida pelo hotel aparece nas entradas do hotel e a parcela pré-paga fica no histórico da OYO.
+
+Na aba **OYO**, consulte pré-pagos e repasses separados do resumo. A conciliação mensal editável recebe os totais e a participação do hotel (A) informados pela OYO, compara A com a soma das linhas e calcula o acerto após valores recebidos e pagamentos entre as partes. Eventuais diferenças devem ser esclarecidas com a OYO, sem presumir sua origem. Informe saldo anterior e ajustes com sinal negativo quando representarem débitos. O saldo da carteira de pré-pagos não representa o acerto líquido do relatório. A conciliação é informativa: não cria nem altera movimentos no financeiro, e deve ser conferida com o relatório e os lançamentos reais.
+
+Em **Saída de caixa**, o motivo **Recolhido pela Gerência** registra a passagem do dinheiro do plantão para o cofre. O valor reduz a conferência do plantão, mas não gera despesa nem reduz o saldo do caixa físico do hotel, que inclui o cofre. O painel da gerência mantém o alerta até a confirmação; corrigir os dados do recolhimento exige nova confirmação. Em **Conferir caixa**, a gerência pode corrigir o motivo e o valor, inclusive convertendo entre recolhimento e despesa. As despesas originadas no plantão também podem ser corrigidas no Fluxo de caixa usando o formulário específico, que atualiza a saída original e o financeiro juntos.
+
+No formulário financeiro dessas despesas, a gerência também pode corrigir a data operacional e o nome do plantonista; o horário original de registro permanece preservado. Recolhimentos, por não serem despesas, devem ser corrigidos em **Conferir caixa**.
 
 Despesas e folha mantêm cada pagamento com data, carteira e valor. Vencimento, competência e pagamento são informações independentes. Ao corrigir um total pago, a diferença é registrada na data informada, preservando as parcelas anteriores. Datas de pagamentos antigos sem histórico aparecem identificadas e podem ser confirmadas ou corrigidas pela gerência.
 

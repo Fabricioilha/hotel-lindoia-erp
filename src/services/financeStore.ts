@@ -228,6 +228,9 @@ async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData
   Object.entries(next.expenses).forEach(([id, entry]) => {
     const previous = current.expenses[id];
     if (JSON.stringify(entry) === JSON.stringify(previous)) return;
+    if (id.startsWith('caixa-') && (raw.cashOuts as Record<string, unknown>)[id.slice('caixa-'.length)]) {
+      throw new Error('Esta despesa pertence a uma saída do plantão. Corrija a saída pelo formulário próprio para atualizar o caixa e o financeiro juntos.');
+    }
     if (JSON.stringify(entry.payments) === JSON.stringify(previous?.payments)) {
       next.expenses[id] = withExpensePaymentTotals(previous, entry, entry.paidDate || paymentDate, operationId);
     }

@@ -1,5 +1,5 @@
 import { incomePaymentWallet, type FinanceData, type FinanceExpense, type FinanceIncome, type FinancePaymentMethod } from '../types/finance';
-import { extraTotal, stayBreakfastDays, stayBreakfastTotal, stayDailyAmount, stayTaxPayments, type CashOut, type GuestStay, type RoomCharge, type StayExtra } from '../types/reception';
+import { MANAGEMENT_COLLECTION_REASON, extraTotal, stayBreakfastDays, stayBreakfastTotal, stayDailyAmount, stayTaxPayments, type CashOut, type GuestStay, type RoomCharge, type StayExtra } from '../types/reception';
 import type { FrigobarSale } from '../types/frigobar';
 import type { ReservationCollection } from '../types/housekeeping';
 import type { Reservation } from '../types/housekeeping';
@@ -204,6 +204,10 @@ export function withOperationalFinance(data: FinanceData, sources: OperationalFi
       collection.amount, collection.paymentMethod, [`Reserva ${collection.reservationId}`, collection.actor, reservation?.guestName].filter(Boolean).join(' · '), collection.createdAt));
   }));
   Object.values(sources.cashOuts).forEach((cashOut) => {
+    if (cashOut.reason === MANAGEMENT_COLLECTION_REASON) {
+      delete expenses[`caixa-${cashOut.id}`];
+      return;
+    }
     const entry = cashOutFinanceEntry(cashOut);
     if (data.suppressed[entry.id]) return;
     const saved = expenses[entry.id];

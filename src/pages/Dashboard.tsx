@@ -1,5 +1,7 @@
 import { StayAccount } from '../components/StayAccount';
 import { cashShiftDate } from '../services/cashShiftDate';
+import { acknowledgeCashCollection, subscribeCashCollections } from '../services/cashCollections';
+import { acknowledgeCleaningConcern, subscribeCleaningConcerns } from '../services/cleaningConcerns';
 import { checkoutQuery, requestCheckout } from '../services/checkoutClient';
 import { currentOccupants, stayOccupiesDate, reservationOccupiesDate } from '../services/occupantDirectory';
 import { lazy, Suspense, useEffect, useMemo, useState, type FormEvent } from 'react';
@@ -14,11 +16,11 @@ import { emptyCleaning, subscribeActiveCleaningTasks, subscribeDashboardCleaning
 import { subscribeInventoryProducts } from '../services/inventoryStore';
 import { useInternalOutputSync } from '../services/internalOutputs';
 import type { CleaningData, CleaningTask } from '../types/cleaning';
-import { FOLIO_PAYMENT_METHODS, ROOM_TYPE_LABELS, stayBreakfastDays, stayDailyAmount, weekdayKey, type GuestStay, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge, type RoomChargeKind, type StayKind } from '../types/reception';
+import { FOLIO_PAYMENT_METHODS, ROOM_TYPE_LABELS, stayBreakfastDays, stayDailyAmount, weekdayKey, type CashOut, type GuestStay, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge, type RoomChargeKind, type StayKind } from '../types/reception';
 import { PAYMENT_METHOD_LABELS, type FinancePaymentMethod } from '../types/finance';
 import type { StockProduct } from '../types/inventory';
 import type { FrigobarData } from '../types/frigobar';
-import { roomCategoryDescription, roomCategoryGuestCounts, type HousekeepingRoom, type ReservationDirectoryEntry, type RoomCategoryRecord } from '../types/housekeeping';
+import { roomCategoryDescription, roomCategoryGuestCounts, type HousekeepingRoom, type ReservationDirectoryEntry, type RoomCategoryRecord, type RoomCleaningLog } from '../types/housekeeping';
 import type { ReceptionEntryContext } from './caixa/CaixaRecepcao';
 import { ActionCard } from '../components/ui/ActionCard';
 import { PanelModalProvider } from '../components/ui/PanelModalContext';
@@ -65,6 +67,42 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   const [boardReceptionLoadedKey, setBoardReceptionLoadedKey] = useState('');
   const [clock, setClock] = useState(() => Date.now());
   const [checkoutAlertError, setCheckoutAlertError] = useState('');
+  const [cashCollections, setCashCollections] = useState<CashOut[]>([]);
+  const [cashCollectionError, setCashCollectionError] = useState('');
+  const [acknowledgingCollection, setAcknowledgingCollection] = useState('');
+  const [cleaningConcerns, setCleaningConcerns] = useState<RoomCleaningLog[]>([]);
+  const [cleaningConcernError, setCleaningConcernError] = useState('');
+  const [acknowledgingConcern, setAcknowledgingConcern] = useState('');
+  useEffect(() => {
+    if (userRole !== 'admin') return;
+    return subscribeCashCollections(setCashCollections, (cause) => setCashCollectionError(`Não foi possível carregar os recolhimentos: ${cause.message}`));
+  }, [userRole]);
+  async function acknowledgeCollection(item: CashOut) {
+    setCashCollectionError('');
+    setAcknowledgingCollection(item.id);
+    try {
+      await acknowledgeCashCollection(item);
+    } catch (cause) {
+      setCashCollectionError(cause instanceof Error ? cause.message : 'Não foi possível confirmar o recolhimento.');
+    } finally {
+      setAcknowledgingCollection('');
+    }
+  }
+  useEffect(() => {
+    if (userRole !== 'admin') return;
+    return subscribeCleaningConcerns(setCleaningConcerns, (cause) => setCleaningConcernError(`Não foi possível carregar os relatos de limpeza: ${cause.message}`));
+  }, [userRole]);
+  async function acknowledgeConcern(log: RoomCleaningLog) {
+    setCleaningConcernError('');
+    setAcknowledgingConcern(log.id);
+    try {
+      await acknowledgeCleaningConcern(log);
+    } catch (cause) {
+      setCleaningConcernError(cause instanceof Error ? cause.message : 'Não foi possível confirmar a conferência.');
+    } finally {
+      setAcknowledgingConcern('');
+    }
+  }
   const [checkoutAlerts, setCheckoutAlerts] = useState<{ sourceType: 'stay' | 'reservation'; sourceId: string; roomNumber: string; guestName: string; pending: number }[]>([]);
   useEffect(() => {
     const controller = new AbortController();
@@ -335,6 +373,17 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
         </section>
 
         {checkoutAlertError && <p className="dashboard-checkout-warning" role="status">{checkoutAlertError}</p>}
+        {cashCollectionError && <div className="notice notice-error" role="alert">{cashCollectionError}</div>}
+        {cleaningConcernError && <div className="notice notice-error" role="alert">{cleaningConcernError}</div>}
+        {userRole === 'admin' && cleaningConcerns.length > 0 && <div className="notice notice-error" role="status">
+          <strong>Indícios de uso relatados pela limpeza — conferir hospedagens e caixa</strong>
+          {cleaningConcerns.map((log) => <p key={log.id}>Quarto {log.roomNumber} · {log.attendant} · {new Date(log.completedAt).toLocaleString('pt-BR')} · informado por {log.reportedBy || 'Equipe'} · <Link to={`/quartos?room=${encodeURIComponent(log.roomNumber)}`}>Consultar quarto</Link> · <Link to="/conferir-caixa">Conferir caixa</Link> <button type="button" disabled={Boolean(acknowledgingConcern)} onClick={() => void acknowledgeConcern(log)}>{acknowledgingConcern === log.id ? 'Confirmando...' : 'OK, conferido'}</button></p>)}
+          <p>Relato para apuração, não prova de irregularidade.</p>
+        </div>}
+        {userRole === 'admin' && cashCollections.length > 0 && <div className="notice notice-error" role="status">
+          <strong>Recolhimentos de caixa aguardando confirmação</strong>
+          {cashCollections.map((item) => <p key={item.id}>{new Date(item.createdAt).toLocaleString('pt-BR')} · {item.attendant} · {money(item.amount)}{item.note ? ` · ${item.note}` : ''} <button type="button" disabled={Boolean(acknowledgingCollection)} onClick={() => void acknowledgeCollection(item)}>{acknowledgingCollection === item.id ? 'Confirmando...' : 'OK, conferido'}</button></p>)}
+        </div>}
         {checkoutAlerts.length > 0 && <div className="notice notice-error" role="alert"><strong>Saídas de hoje com pendências — conferir antes do checkout:</strong>{checkoutAlerts.map((item) => <p key={`${item.sourceType}-${item.sourceId}`}>Quarto {item.roomNumber} · {item.guestName} · {money(item.pending)} pendentes. Confira a hospedagem com a gerência e as vendas a cobrar. <button type="button" onClick={() => setActiveTool('geladeira')}>Conferir geladeira</button></p>)}</div>}
         {syncError && <div className="notice notice-error" role="alert">{syncError}</div>}
         {displayedNotice && <div key={displayedNotice.id} className="dashboard-toast" role="status"><span aria-hidden="true">✓</span>{displayedNotice.message}</div>}

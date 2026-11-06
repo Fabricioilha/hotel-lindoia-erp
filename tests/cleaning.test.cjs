@@ -121,6 +121,15 @@ const tasks = () => Object.values(data.erp_geral.limpeza.tasks);
   assert.equal(tasks().length, 0); assert.equal(Object.keys(data.erp_geral.quartos.cleaningLogs).length, 0); assert.equal(data.erp_geral.quartos.rooms.r1.cleaningStatus, 'sujo');
 
   currentRole='viewer'; reset();
+  await service.assignRooms(['101'], 'Ana', 'Equipe');
+  await service.completeTask(tasks()[0], 'Equipe', true);
+  const concernLog = Object.values(data.erp_geral.quartos.cleaningLogs)[0];
+  assert.equal(concernLog.usageConcern, true);
+  assert.equal(concernLog.reportedBy, 'Equipe');
+  assert.equal(concernLog.attendant, 'Ana');
+  assert.equal(data.erp_geral.quartos.rooms.r1.cleaningStatus, 'limpo');
+
+  currentRole='viewer'; reset();
   const concurrent = await Promise.allSettled([service.assignRooms(['101'], 'Ana', 'Gerência'), service.assignRooms(['101'], 'Bea', 'Gerência')]);
   assert.equal(concurrent.filter((result) => result.status === 'fulfilled').length, 1);
   assert.equal(tasks().length, 1); assert.equal(tasks()[0].status, 'em_limpeza');

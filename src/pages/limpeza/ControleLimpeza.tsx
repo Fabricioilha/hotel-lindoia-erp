@@ -117,8 +117,9 @@ export function ControleLimpeza({ userRole }: { userRole: UserRole }) {
     }, `${list.length === 1 ? `Quarto ${list[0]} designado` : `Quartos ${list.join(', ')} designados`} para ${chosen}.`);
   }
 
-  function finish(task: CleaningTask) {
-    void run(() => completeTask(task, actor), `Quarto ${task.roomNumber} concluído por ${task.camareira}.`);
+  function finish(task: CleaningTask, usageConcern = false) {
+    if (usageConcern && !window.confirm(`Informar à gerência indícios de uso do quarto ${task.roomNumber} que precisam de conferência? Isso não significa que houve irregularidade.`)) return;
+    void run(() => completeTask(task, actor, usageConcern), `Quarto ${task.roomNumber} concluído por ${task.camareira}.${usageConcern ? ' A gerência será avisada para conferir.' : ''}`);
   }
 
   function cancel(task: CleaningTask) {
@@ -201,6 +202,7 @@ export function ControleLimpeza({ userRole }: { userRole: UserRole }) {
             <div className="clean-task-actions">
               {isAdmin && <Link className="clean-link" to={`/quartos?room=${encodeURIComponent(task.roomNumber)}`}>Ver quarto</Link>}
               <button type="button" className="clean-done" disabled={saving} onClick={() => finish(task)}>✓ Concluir limpeza</button>
+              <button type="button" className="clean-link" disabled={saving} onClick={() => finish(task, true)}>Concluir e relatar indícios de uso</button>
               <button type="button" className="clean-link" disabled={saving} onClick={() => cancel(task)}>Cancelar</button>
               {isAdmin && <button disabled={saving} onClick={() => { if (window.confirm(`Excluir a limpeza do quarto ${task.roomNumber}?`)) void run(() => deleteCleaningTask(task.id), 'Registro excluído.'); }}>Excluir</button>}
             </div>

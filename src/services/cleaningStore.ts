@@ -201,7 +201,7 @@ async function releaseClaim(roomId: string, claim: string): Promise<void> {
   await withTransactionData(`${PATH}/activeRooms/${roomId}`, (reference) => runTransaction(reference, (current: CleaningClaim | null) => current?.taskId === claim && current.phase === 'assigning' ? null : undefined, { applyLocally: false }));
 }
 
-async function finishTask(task: CleaningTask, actor: string, status: 'concluido' | 'cancelado'): Promise<void> {
+async function finishTask(task: CleaningTask, actor: string, status: 'concluido' | 'cancelado', usageConcern = false): Promise<void> {
   const [taskSnapshot, roomsSnapshot] = await Promise.all([
     get(ref(db, `${PATH}/tasks/${task.id}`)), get(ref(db, ROOMS_PATH)),
   ]);
@@ -219,7 +219,10 @@ async function finishTask(task: CleaningTask, actor: string, status: 'concluido'
     const latest = await get(ref(db, `${PATH}/tasks/${task.id}`));
     if (latest.child('status').val() !== 'em_limpeza') throw new Error('Esta limpeza já foi concluída ou cancelada. Atualize a tela.');
     const completedAt = new Date().toISOString();
-    const log = status === 'concluido' ? cleaningLog(currentTask, room, completedAt) : undefined;
+    const log = status === 'concluido' ? {
+      ...cleaningLog(currentTask, room, completedAt),
+      ...(usageConcern ? { usageConcern: true, reportedBy: actor } : {}),
+    } : undefined;
     const updates: Record<string, unknown> = {
       ...taskCompletionUpdates(currentTask, status, actor, completedAt, log?.id),
       [`${PATH}/tasks/${currentTask.id}/roomId`]: room.id,
@@ -239,8 +242,8 @@ async function finishTask(task: CleaningTask, actor: string, status: 'concluido'
   }
 }
 
-export async function completeTask(task: CleaningTask, actor: string): Promise<void> {
-  await finishTask(task, actor, 'concluido');
+export async function completeTask(task: CleaningTask, actor: string, usageConcern = false): Promise<void> {
+  await finishTask(task, actor, 'concluido', usageConcern);
 }
 
 export async function cancelTask(task: CleaningTask, actor: string): Promise<void> {

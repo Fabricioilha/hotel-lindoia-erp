@@ -2,7 +2,7 @@ import { buildAuditEvents } from '../types/audit';
 import { incomePaymentWallet, type FinanceExpense, type FinanceIncome, type FinancePaymentMethod } from '../types/finance';
 import type { FrigobarSale } from '../types/frigobar';
 import type { MinibarPaymentMethod } from '../types/inventory';
-import { CASH_OUT_REASONS, stayPayments, type CashOut, type GuestStay, type RoomCharge, type StayReceipt } from '../types/reception';
+import { CASH_OUT_REASONS, MANAGEMENT_COLLECTION_REASON, stayPayments, type CashOut, type GuestStay, type RoomCharge, type StayReceipt } from '../types/reception';
 import { frigobarFinanceEntry, roomChargeFinanceEntries, stayFinanceEntries, stayOyoFeeExpense, cashOutFinanceEntry } from './operationalLedger';
 import { financeDateKeyFromTimestamp, isFinanceDateKey } from './financePayments';
 import { db, get, ref, update } from './pocketbaseRealtime';
@@ -170,19 +170,32 @@ export async function updateFrigobarSaleMethod(saleId: string, method: FinancePa
 }
 
 /** Corrige valor, motivo e observação de uma saída de caixa e a despesa correspondente. */
-export async function updateCashOut(id: string, changes: Pick<CashOut, 'amount' | 'reason' | 'note'>): Promise<void> {
+export async function updateCashOut(id: string, changes: Pick<CashOut, 'amount' | 'reason' | 'note'> & Partial<Pick<CashOut, 'date' | 'attendant'>>, expected?: CashOut): Promise<void> {
   assertAmount(changes.amount);
   if (!CASH_OUT_REASONS.includes(changes.reason)) throw new Error('Escolha o motivo da saída.');
   const snapshot = await get(ref(db, `${RECEPTION}/cashOuts/${id}`));
   if (!snapshot.exists()) throw new Error('Esta saída já foi excluída. Atualize a lista antes de editar.');
   const cashOut = snapshot.val() as CashOut;
-  const next: CashOut = { ...cashOut, amount: cents(changes.amount) / 100, reason: changes.reason, note: changes.note.trim(), ...staffReference(cashOut.attendant) };
+  if (expected && JSON.stringify(cashOut) !== JSON.stringify(expected)) throw new Error('Esta saída mudou em outra sessão. Feche e reabra o formulário.');
+  const date = changes.date ?? cashOut.date;
+  const attendant = (changes.attendant ?? cashOut.attendant).trim();
+  if (!isFinanceDateKey(date) || !attendant) throw new Error('Informe uma data válida e o plantonista responsável.');
+  const { employeeId: _employeeId, ...withoutEmployeeId } = cashOut;
+  void _employeeId;
+  const staff = staffReference(attendant);
+  const next: CashOut = { ...withoutEmployeeId, ...(attendant === cashOut.attendant && cashOut.employeeId ? { employeeId: cashOut.employeeId } : {}), ...staff, amount: cents(changes.amount) / 100, reason: changes.reason, note: changes.note.trim(), date, attendant };
   const timestamp = new Date().toISOString();
   const expenseId = `caixa-${id}`;
   const updates: Record<string, unknown> = { [`${RECEPTION}/cashOuts/${id}`]: next };
   const before: Record<string, FinanceExpense> = {};
   const after: Record<string, FinanceExpense> = {};
-  if (!(await readSuppressed())[expenseId]) {
+  if (next.reason === MANAGEMENT_COLLECTION_REASON) {
+    const saved = (await get(ref(db, `${FINANCE}/expenses/${expenseId}`))).val() as FinanceExpense | null;
+    if (saved) {
+      before[expenseId] = saved;
+      updates[`${FINANCE}/expenses/${expenseId}`] = null;
+    }
+  } else if (!(await readSuppressed())[expenseId]) {
     const saved = (await get(ref(db, `${FINANCE}/expenses/${expenseId}`))).val() as FinanceExpense | null;
     const expense = { ...cashOutFinanceEntry(next), createdAt: saved?.createdAt ?? cashOut.createdAt, updatedAt: timestamp };
     updates[`${FINANCE}/expenses/${expenseId}`] = expense;

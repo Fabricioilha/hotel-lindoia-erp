@@ -127,6 +127,8 @@ export interface RoomDayPlan {
 }
 
 export interface RoomCleaningLog {
+  usageConcern?: boolean;
+  reportedBy?: string;
   employeeId?: string;
   id: string;
   roomId: string;

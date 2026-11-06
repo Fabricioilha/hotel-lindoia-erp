@@ -151,7 +151,8 @@ export interface CashOut {
 }
 
 export const BREAKFAST_EXPENSE_CATEGORY = 'Café da Manhã';
-export const CASH_OUT_REASONS = [BREAKFAST_EXPENSE_CATEGORY, 'Farmácia', 'Material de limpeza', 'Manutenção', 'Outros'];
+export const MANAGEMENT_COLLECTION_REASON = 'Recolhido pela Gerência';
+export const CASH_OUT_REASONS = [BREAKFAST_EXPENSE_CATEGORY, 'Farmácia', 'Material de limpeza', 'Manutenção', 'Outros', MANAGEMENT_COLLECTION_REASON];
 // Motivos antigos que passaram a ser registrados como Café da Manhã.
 export const LEGACY_BREAKFAST_CATEGORIES = ['Mercado', 'Padaria'];
 

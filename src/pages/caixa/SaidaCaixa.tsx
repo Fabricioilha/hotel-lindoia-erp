@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react';
 import type { UserRole } from '../../types';
-import { CASH_OUT_REASONS, type CashOut } from '../../types/reception';
+import { CASH_OUT_REASONS, MANAGEMENT_COLLECTION_REASON, type CashOut } from '../../types/reception';
 import { operationalDateKey } from '../../services/cashShiftDate';
 import { saveCashOut, subscribeTodayCashOuts } from '../../services/receptionStore';
 import { BackToPanel } from '../../components/ui/BackToPanel';
@@ -61,7 +61,7 @@ export function SaidaCaixa({ userRole }: { userRole: UserRole }) {
       <header className="cx-title">
         <p className="cx-eyebrow">PLANTÃO <span>/</span> CAIXA</p>
         <h1>Saída de caixa</h1>
-        <p>Use quando retirar dinheiro do caixa para uma compra (café da manhã, farmácia...). Guarde o comprovante.</p>
+        <p>Registre compras ou dinheiro recolhido pela gerência. Guarde os comprovantes das compras.</p>
       </header>
       {error && <div className="cx-alert" role="alert">{error}</div>}
       {notice && <div className="cx-success" role="status">{notice}</div>}
@@ -73,7 +73,8 @@ export function SaidaCaixa({ userRole }: { userRole: UserRole }) {
         <div className="cx-field">Motivo
           <div className="cx-chips">{CASH_OUT_REASONS.map((item) => <button key={item} type="button" className={`cx-chip ${reason === item ? 'is-on' : ''}`} onClick={() => setReason(item)}>{item}</button>)}</div>
         </div>
-        <label className="cx-field">O que foi comprado? (opcional)
+        {reason === MANAGEMENT_COLLECTION_REASON && <p className="cx-muted">O recolhimento reduz o caixa do plantão, mas permanece no caixa físico do hotel: é uma transferência para o cofre, não uma despesa.</p>}
+        <label className="cx-field">Observação (opcional)
           <textarea rows={2} value={note} onChange={(event) => setNote(event.target.value)} maxLength={300} placeholder="Ex.: leite, pão e café para o café da manhã" />
         </label>
         <p className="cx-who">Plantonista: <strong>{attendant}</strong></p>
