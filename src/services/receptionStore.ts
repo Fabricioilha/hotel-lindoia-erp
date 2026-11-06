@@ -361,6 +361,7 @@ export async function convertRotativoToDaily(rotativo: GuestStay, dailyStay: Gue
 export async function deleteStay(stay: GuestStay): Promise<void> {
   const [staySnapshot, chargeSnapshot] = await Promise.all([get(ref(db, `${PATH}/stays`)), get(ref(db, `${PATH}/roomCharges`))]);
   const stays = Object.values(staySnapshot.val() ?? {}) as GuestStay[];
+  if (!stays.some((item) => item.id === stay.id)) throw new Error('Esta hospedagem não existe mais. Atualize a tela antes de excluir.');
   const ids = new Set([stay.id]);
   let previousSize = 0;
   while (previousSize !== ids.size) {
@@ -374,7 +375,6 @@ export async function deleteStay(stay: GuestStay): Promise<void> {
     removeFinanceEntries(updates, stayFinanceEntryIds({ ...item, voidedPayments: undefined }));
     removeFinanceEntries(updates, [`recepcao-${item.id}-oyo-fee`], 'expenses');
   });
-  if (!Object.keys(updates).length) return;
   const stock: Record<string, number> = {};
   charges.forEach((charge) => {
     removeChargeUpdates(updates, charge);

@@ -651,7 +651,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
 
       {modal && (
         <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setModal(null); }}>
-          <section className="stock-modal" role="dialog" aria-modal="true" aria-labelledby="stock-modal-title">
+          <section className={`stock-modal${modal === 'checkout' ? ' stock-checkout-modal' : ''}`} role="dialog" aria-modal="true" aria-labelledby="stock-modal-title">
             {storageError && modal !== 'categorias' && <div className="notice notice-error stock-modal-error" role="alert">{storageError}</div>}
             {modal === 'produto' && <ProductForm product={data.products[editingId]} suppliers={suppliers} saving={saving} canViewFinancials={canViewFinancials} onClose={() => setModal(null)} onSubmit={saveProduct} />}
             {modal === 'categorias' && <CategoriesManager categories={customCategoriesOf(data)} usage={products.reduce<Record<string, number>>((all, product) => ({ ...all, [product.category]: (all[product.category] ?? 0) + 1 }), {})} saving={saving} error={storageError} onClose={() => setModal(null)} onAdd={(name) => void changeCategories((list) => [...list, { id: newId(), name }], 'Categoria criada.')} onRename={(id, name) => void changeCategories((list) => list.map((item) => item.id === id ? { ...item, name } : item), 'Categoria atualizada.')} onRemove={removeCategory} />}

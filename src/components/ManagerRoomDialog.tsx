@@ -2,6 +2,8 @@ import { StayAccount } from './StayAccount';
 import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { releaseOccupiedRoom, saveHousekeepingRoom, subscribeReservationCollections, subscribeReservationExtras, subscribeReservationRecord, updateRoomMaintenanceStatus } from '../services/housekeepingStore';
+import { deleteReservation } from '../services/hospitalityDeletion';
+import { deleteStay } from '../services/receptionStore';
 import { emptyFinance, subscribeReservationPaymentIncomes } from '../services/financeStore';
 import { reservationBalanceDue, reservationFinancialTotal } from '../services/reservationFinance';
 import { PAYMENT_METHOD_LABELS, type FinanceData } from '../types/finance';
@@ -42,6 +44,7 @@ export function ManagerRoomDialog({ number, room, receptionRoom, occupant, stay,
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [confirmRelease, setConfirmRelease] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const closeButton = useRef<HTMLButtonElement>(null);
   const reservationId = occupant?.sourceType === 'reservation' ? occupant.sourceId : '';
   const blocked = room?.maintenanceStatus === 'em_manutencao';
@@ -115,6 +118,26 @@ export function ManagerRoomDialog({ number, room, receptionRoom, occupant, stay,
     } finally { setSaving(false); }
   }
 
+  async function removeOccupant() {
+    if (!occupant) return;
+    setSaving(true);
+    setError('');
+    try {
+      if (occupant.sourceType === 'stay') {
+        if (!stay || stay.id !== occupant.sourceId) throw new Error('Hospedagem indisponível. Atualize o painel antes de excluir.');
+        await deleteStay(stay);
+      } else {
+        if (!reservation || reservation.id !== occupant.sourceId) throw new Error('Reserva indisponível. Atualize o painel antes de excluir.');
+        await deleteReservation(reservation);
+      }
+      onSaved(`${occupant.sourceType === 'stay' ? 'Hospedagem' : 'Reserva'} e lançamentos vinculados excluídos.`);
+      onClose();
+    } catch (cause) {
+      setConfirmDelete(false);
+      setError(cause instanceof Error ? cause.message : 'Não foi possível excluir o registro.');
+    } finally { setSaving(false); }
+  }
+
   const reservationTotal = reservation ? reservationFinancialTotal(reservation, extras) : 0;
   const balance = reservation ? reservationBalanceDue(reservation, finance.incomes, extras, collections, finance.suppressed) : 0;
   const chargeTotal = charges.reduce((total, charge) => total + charge.amount, 0);
@@ -156,19 +179,23 @@ export function ManagerRoomDialog({ number, room, receptionRoom, occupant, stay,
       </div>}
       {stay && <StayAccount stay={stay} charges={charges} attendant="Gerência" onSaved={onSaved} />}
       {error && <p className="dashboard-room-charge-error" role="alert">{error}</p>}
-      {confirmRelease ? <div className="manager-room-release-confirm">
+      {confirmDelete ? <div className="manager-room-release-confirm">
+        <p>Excluir {occupant?.sourceType === 'stay' ? 'a hospedagem' : 'a reserva'} de <strong>{occupant?.name}</strong>? Esta ação remove também os recebimentos e adicionais vinculados e pode devolver bebidas ao estoque. Não use para um check-out: essa operação não preserva os lançamentos.</p>
+        <div className="dashboard-room-charge-actions"><button type="button" className="dashboard-room-charge-cancel" disabled={saving} onClick={() => setConfirmDelete(false)}>Voltar</button><button type="button" className="dashboard-room-charge-submit" disabled={saving} onClick={() => void removeOccupant()}>{saving ? 'Excluindo…' : 'Confirmar exclusão'}</button></div>
+      </div> : confirmRelease ? <div className="manager-room-release-confirm">
         <p>Fazer o check-out de <strong>{occupant?.name}</strong>? O quarto {number} ficará como “Aguardando limpeza” e os pagamentos registrados serão preservados.</p>
         <div className="dashboard-room-charge-actions"><button type="button" className="dashboard-room-charge-cancel" disabled={saving} onClick={() => setConfirmRelease(false)}>Voltar</button><button type="button" className="dashboard-room-charge-submit" disabled={saving} onClick={() => void checkOut()}>{saving ? 'Realizando check-out…' : 'Confirmar check-out'}</button></div>
       </div> : <div className="manager-room-actions">
         {occupant && <Link className="dashboard-room-charge-submit" to={bookingLink}>Editar {occupant.sourceType === 'stay' ? 'hospedagem' : 'reserva'}</Link>}
         {occupant && <button type="button" className="dashboard-room-charge-cancel" disabled={saving} onClick={() => setConfirmRelease(true)}>Fazer check-out</button>}
+        {occupant && <button type="button" className="dashboard-room-charge-cancel" disabled={saving || (occupant.sourceType === 'stay' ? !stay || stay.id !== occupant.sourceId : !reservation || reservation.id !== occupant.sourceId)} onClick={() => setConfirmDelete(true)}>Excluir {occupant.sourceType === 'stay' ? 'hospedagem' : 'reserva'}</button>}
         {occupant?.sourceType === 'reservation' && financialLoaded && balance + Math.max(0, chargeTotal - chargesPaid) > 0.005 && <Link className="dashboard-room-charge-cancel" to={`${bookingLink}&action=checkout`}>Receber saldo no check-out</Link>}
         <button type="button" className="dashboard-room-charge-cancel" disabled={saving || Boolean(occupant)} onClick={() => void changeAvailability()}>{saving ? 'Salvando…' : blocked ? 'Liberar bloqueio do quarto' : 'Bloquear quarto'}</button>
         <Link className="dashboard-room-charge-cancel" to={`/quartos?${context}`}>Gerência de quartos</Link>
         <Link className="dashboard-room-charge-cancel" to={`/limpeza?${context}`}>Limpeza por camareiras</Link>
         {!occupant && <Link className="dashboard-room-charge-cancel" to={bookingLink}>Reservas e hospedagens</Link>}
       </div>}
-      {occupant && !confirmRelease && <p className="manager-room-help">Faça o check-out para liberar a ocupação (o quarto fica aguardando limpeza) antes de bloquear o quarto.</p>}
+      {occupant && !confirmRelease && !confirmDelete && <p className="manager-room-help">Faça o check-out para liberar a ocupação (o quarto fica aguardando limpeza) antes de bloquear o quarto. Exclua apenas registros lançados por engano.</p>}
       {!occupant && <p className="manager-room-help">A limpeza e o bloqueio são acompanhados também na Gerência de quartos e na Limpeza por camareiras.</p>}
     </section>
   </div>;

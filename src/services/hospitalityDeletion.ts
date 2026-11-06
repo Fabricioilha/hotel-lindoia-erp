@@ -20,7 +20,7 @@ async function removeHospitality(target: { reservationId: string } | { room: Hou
   const room = 'room' in target ? target.room : null;
   const reservationId = 'reservationId' in target ? target.reservationId : '';
   const reservations = Object.values(housekeeping.reservations ?? {}).filter((item) => room ? item.roomId === room.id : item.id === reservationId);
-  if (!room && !reservations.length) return;
+  if (!room && !reservations.length) throw new Error('Esta reserva não existe mais. Atualize a tela antes de excluir.');
   const ids = new Set(reservations.map((item) => item.id));
   const incomes = Object.values(snapshots[1].val() ?? {}) as FinanceIncome[];
   const stays = (Object.values(snapshots[5].val() ?? {}) as GuestStay[]).filter((item) => room && item.roomNumber === room.number);

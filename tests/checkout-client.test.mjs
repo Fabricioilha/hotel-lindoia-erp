@@ -24,6 +24,22 @@ test('a static-site HTML response never counts as successful checkout', async ()
   assert.equal(api.calls.length, 1);
 });
 
+test('a missing checkout route explains that deletion is separate and never performs a fallback write', async () => {
+  for (const response of [
+    new Response('<html>Not found</html>', { status: 404, headers: { 'Content-Type': 'text/html' } }),
+    Response.json({ error: 'Rota não encontrada.' }, { status: 404 }),
+  ]) {
+    const api = client(response);
+    await assert.rejects(api.requestCheckout(target), /Nenhuma hospedagem foi encerrada.*Excluir hospedagem/);
+    assert.equal(api.calls.length, 1);
+  }
+});
+
+test('a specific backend 404 remains visible instead of being mistaken for a missing route', async () => {
+  const api = client(Response.json({ error: 'Hospedagem não encontrada.' }, { status: 404 }));
+  await assert.rejects(api.requestCheckout(target), /Hospedagem não encontrada/);
+});
+
 test('a plain-text checkout refusal is shown instead of being reported as unavailable', async () => {
   const api = client(new Response('Forbidden', { status: 403 }));
   await assert.rejects(api.requestCheckout(target), /perfil não tem permissão/);

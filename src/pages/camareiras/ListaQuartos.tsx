@@ -444,7 +444,7 @@ function CleaningEditor({ room, attendants, assignedTask, due, onCancel, onSave 
 	}
 
 	return <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
-		<section className="stock-modal housekeeping-modal" role="dialog" aria-modal="true" aria-labelledby="cleaning-editor-title">
+		<section className="stock-modal housekeeping-modal cleaning-editor-modal" role="dialog" aria-modal="true" aria-labelledby="cleaning-editor-title">
 			<form onSubmit={submit}>
 				<ModalHeading eyebrow="CONCLUSÃO DE TAREFA" title={`Limpeza do quarto ${room.number}`} onClose={onCancel} id="cleaning-editor-title" />
 				<label className="schedule-field"><span>Camareira responsável</span><select required value={attendant} onChange={(event) => setAttendant(event.target.value)}><option value="" disabled>Selecione a camareira</option>{attendants.map((item) => <option value={item.name} key={item.id}>{item.name}</option>)}</select></label>

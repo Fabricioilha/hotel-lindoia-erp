@@ -467,6 +467,45 @@ const viewOf = (domain, state) => domain.load('src/services/operationalLedger.ts
   stays: state.erp_geral.recepcao.stays, roomCharges: state.erp_geral.recepcao.roomCharges, cashOuts: state.erp_geral.recepcao.cashOuts,
   sales: state.erp_geral.frigobar.operations.sales });
 
+test('deleting an erroneous reception stay removes linked financial data without checkout or touching other stays', async () => {
+  const state = db();
+  const stay = editableStay({ dailyMethod: 'cash' });
+  state.erp_geral.recepcao.stays = { s: stay, other: editableStay({ id: 'other', roomNumber: '102' }) };
+  state.erp_geral.recepcao.roomCharges.c1 = { id: 'c1', sourceType: 'stay', sourceId: 's', kind: 'cama_extra', payments: { p1: { amount: 10, method: 'cash' } } };
+  state.erp_geral.financeiro.incomes['recepcao-s-diaria'] = receipt('recepcao-s-diaria', '2026-10-14', 100);
+  state.erp_geral.financeiro.incomes['room-charge-c1-p1'] = receipt('room-charge-c1-p1', '2026-10-14', 10);
+  const { load } = isolatedDomain(state);
+  const service = load('src/services/receptionStore.ts');
+  await service.deleteStay(stay);
+  assert.equal(state.erp_geral.recepcao.stays.s, undefined);
+  assert.equal(state.erp_geral.recepcao.stays.other.roomNumber, '102');
+  assert.equal(state.erp_geral.recepcao.roomCharges.c1, undefined);
+  assert.equal(state.erp_geral.financeiro.incomes['recepcao-s-diaria'], undefined);
+  assert.equal(state.erp_geral.financeiro.suppressed['recepcao-s-diaria'], true);
+  assert.equal(state.erp_geral.financeiro.suppressed['room-charge-c1-p1'], true);
+  await assert.rejects(service.deleteStay(stay), /não existe mais/);
+});
+
+test('deleting a reservation releases only its own slots and linked records', async () => {
+  const state = db();
+  const reservation = { id: 'r1', roomId: 'room1', roomNumber: '101', guestName: 'Teste' };
+  state.erp_geral.quartos = { reservations: { r1: reservation, r2: { ...reservation, id: 'r2' } }, reservationIndex: { r1: {}, r2: {} }, reservationSlots: { room1: { '2026-10-14': 'r1', '2026-10-15': 'r2' } } };
+  state.erp_geral.reservationCollections = { r1: { c1: { id: 'c1' } } };
+  state.erp_geral.reservationExtras = { r1: { e1: { id: 'e1' } } };
+  state.erp_geral.financeiro.incomes['reservation-r1-initial'] = receipt('reservation-r1-initial', '2026-10-14', 100);
+  const { load } = isolatedDomain(state);
+  const service = load('src/services/hospitalityDeletion.ts');
+  await service.deleteReservation(reservation);
+  assert.equal(state.erp_geral.quartos.reservations.r1, undefined);
+  assert.equal(state.erp_geral.quartos.reservations.r2.id, 'r2');
+  assert.equal(state.erp_geral.quartos.reservationSlots.room1['2026-10-14'], undefined);
+  assert.equal(state.erp_geral.quartos.reservationSlots.room1['2026-10-15'], 'r2');
+  assert.equal(state.erp_geral.financeiro.incomes['reservation-r1-initial'], undefined);
+  assert.equal(state.erp_geral.financeiro.suppressed['reservation-r1-checkout-c1'], true);
+  assert.equal(state.erp_geral.reservationExtras.r1.e1, undefined);
+  await assert.rejects(service.deleteReservation(reservation), /não existe mais/);
+});
+
 test('manager stay edit moves a stored receipt to the new payment method even after a cash-flow override', async () => {
   const state = db({ incomes: { 'recepcao-s-diaria': { ...receipt('recepcao-s-diaria', '2026-10-14', 100, 'credit'), operationalOverride: true } } });
   state.erp_geral.recepcao.stays.s = editableStay({ receiptsInitialized: true, receipts: { 'recepcao-s-diaria': storedReceipt() } });

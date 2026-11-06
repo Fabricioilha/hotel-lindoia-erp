@@ -16,6 +16,8 @@ As telas `/reservas` e `/quartos` usam os dados de `erp_geral/quartos` e são de
 
 A grade do painel da gerência reúne reservas e hospedagens da recepção. Ao clicar no quarto, o gerente consulta o hóspede, período, valores e limpeza responsável, abre a edição do registro correspondente, faz o checkout ou remove um bloqueio de manutenção. O checkout conserva os recebimentos e deixa o quarto aguardando limpeza. Quartos ocupados precisam ter a hospedagem encerrada antes de serem bloqueados.
 
+Para um cadastro feito por engano, o gerente pode usar **Excluir hospedagem** ou **Excluir reserva** no detalhe do quarto, após conferir a confirmação. A exclusão remove também os lançamentos vinculados; não substitui o checkout de uma hospedagem real, que preserva os recebimentos. A exclusão não depende do serviço de checkout.
+
 Os links entre o painel, **Gerenciar quartos**, **Reservas e hospedagens** e **Controle de Limpeza de Quartos** conservam o contexto do quarto. A edição também está disponível para reservas já hospedadas; nome, quarto, datas e correções de recebimentos atualizam o índice de ocupação e o Fluxo de Caixa. Recebimentos de checkout mantêm seus identificadores, e pagamentos anulados não voltam a aparecer ao editar.
 
 As tarefas das camareiras e o estado de limpeza do quarto são relacionados: designar uma limpeza marca o quarto em limpeza; concluir registra a camareira no histórico e marca o quarto limpo; cancelar deixa o quarto sujo. Conclusões pela gerência também atualizam a tarefa correspondente. As permissões e gravações são verificadas pelos hooks do PocketBase, que precisam acompanhar a publicação do aplicativo.
