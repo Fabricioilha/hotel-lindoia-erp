@@ -1,6 +1,6 @@
 :root {
-  --dialog-width: 80vw;
-  --dialog-height: 80dvh;
+  --dialog-gutter: clamp(8px, 2.5vw, 24px);
+  --dialog-max-height: calc(100dvh - 2 * var(--dialog-gutter));
   --modal-navy: #142b4d;
   --modal-navy-action: #183c66;
   --modal-navy-hover: #244e7d;
@@ -16,14 +16,30 @@
 /* Shared sizing for standard dialogs; specialized room dialogs keep their own dimensions. */
 html body :is([role="dialog"][aria-modal="true"]:not(.reception-overlay):not(.float-gate):not(.dashboard-room-charge-modal):not(.dashboard-room-choice), .reception-overlay > .reception-modal, .float-gate > .float-box) {
   box-sizing: border-box;
-  width: var(--dialog-width) !important;
+  width: min(var(--dialog-max-width, 960px), calc(100vw - 2 * var(--dialog-gutter))) !important;
   min-width: 0 !important;
-  max-width: var(--dialog-width) !important;
-  height: var(--dialog-height) !important;
+  max-width: calc(100vw - 2 * var(--dialog-gutter)) !important;
+  height: auto !important;
   min-height: 0 !important;
-  max-height: var(--dialog-height) !important;
+  max-height: var(--dialog-max-height) !important;
   overflow-y: auto !important;
   overscroll-behavior: contain;
+}
+
+html body :is(.float-gate > .float-box, .cx-handoff-modal, .stock-modal.schedule-modal, .stock-modal.checkout-modal) {
+  --dialog-max-width: 540px;
+}
+
+html body .finance-modal:not(.finance-expense-modal) {
+  --dialog-max-width: 680px;
+}
+
+html body .finance-expense-modal {
+  --dialog-max-width: 880px;
+}
+
+html body .dashboard-tool-modal {
+  --dialog-max-width: 1380px;
 }
 
 html body :is(.modal-backdrop, .finance-modal-backdrop, .dashboard-room-charge-backdrop, .dashboard-tool-backdrop, .cx-modal-backdrop, .float-gate, .reception-overlay) {

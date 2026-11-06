@@ -5,7 +5,9 @@ import { findStaff, staffMembers } from '../../types/staff';
 import { useEffect, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import type { UserRole } from '../../types';
-import { PAYMENT_METHOD_LABELS, type FinancePaymentMethod } from '../../types/finance';
+import { PAYMENT_METHOD_LABELS, incomePaymentWallet, type FinancePaymentMethod } from '../../types/finance';
+import { updateCashOut, updateFrigobarSaleMethod, updateRoomChargePayment, updateStayReceipts } from '../../services/cashEdits';
+import { existingStayReceipts } from '../../services/stayReceipts';
 import type { MinibarPaymentMethod } from '../../types/inventory';
 import { CASH_OUT_REASONS, FLOAT_AMOUNT, roomChargePayments, stayPayments, stayTotals, type CashOut, type ReceptionData } from '../../types/reception';
 import type { FrigobarData } from '../../types/frigobar';
@@ -28,8 +30,20 @@ const parseMoney = (value: string) => {
   return Number(trimmed.includes(',') ? trimmed.replace(/\./g, '').replace(',', '.') : trimmed);
 };
 
-interface Entry { time: string; kind: 'stay' | 'sale' | 'room-charge'; remove?: () => void; title: string; detail: string; total: number; payments: { method: FinancePaymentMethod; amount: number }[] }
-interface Day { date: string; entries: Entry[]; cashOuts: { id: string; time: string; reason: string; note: string; amount: number; remove?: () => void }[] }
+interface EditLine { id: string; label: string; method: FinancePaymentMethod; amount: number; date: string }
+interface EditTarget {
+  title: string;
+  lines: EditLine[];
+  editAmount: boolean;
+  editDate: boolean;
+  methods: FinancePaymentMethod[];
+  save: (lines: EditLine[]) => Promise<void>;
+}
+interface Entry { time: string; kind: 'stay' | 'sale' | 'room-charge'; remove?: () => void; edit?: EditTarget; title: string; detail: string; total: number; payments: { method: FinancePaymentMethod; amount: number }[] }
+interface CashOutRow { id: string; time: string; reason: string; note: string; amount: number; remove?: () => void; edit?: () => void }
+interface Day { date: string; entries: Entry[]; cashOuts: CashOutRow[] }
+const ALL_METHODS = (Object.keys(PAYMENT_METHOD_LABELS) as FinancePaymentMethod[]).filter((method) => incomePaymentWallet(method));
+const SALE_METHODS: FinancePaymentMethod[] = ['cash', 'pix', 'debit', 'credit'];
 
 export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
   const { data: staff } = useStaff();
@@ -60,7 +74,44 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
   const [correctionReason, setCorrectionReason] = useState('');
   const [correctionNote, setCorrectionNote] = useState('');
   const [savingCorrection, setSavingCorrection] = useState(false);
+  const [editing, setEditing] = useState<EditTarget | null>(null);
+  const [editLines, setEditLines] = useState<EditLine[]>([]);
+  const [cashOutEdit, setCashOutEdit] = useState<{ id: string; amount: string; reason: string; note: string } | null>(null);
+  const [savingEdit, setSavingEdit] = useState(false);
 
+  function openEdit(target: EditTarget) {
+    setError('');
+    setNotice('');
+    setEditLines(target.lines.map((line) => ({ ...line })));
+    setEditing(target);
+  }
+
+  async function runEdit(action: () => Promise<void>, close: () => void) {
+    setSavingEdit(true);
+    setError('');
+    setNotice('');
+    try {
+      await action();
+      close();
+      setNotice('Lançamento corrigido. O Fluxo de caixa já reflete a alteração.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível salvar a correção.');
+    } finally {
+      setSavingEdit(false);
+    }
+  }
+
+  function submitEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (editing) void runEdit(() => editing.save(editLines), () => setEditing(null));
+  }
+
+  function submitCashOutEdit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!cashOutEdit) return;
+    const amount = parseMoney(cashOutEdit.amount);
+    void runEdit(() => updateCashOut(cashOutEdit.id, { amount, reason: cashOutEdit.reason, note: cashOutEdit.note }), () => setCashOutEdit(null));
+  }
   function removeRecord(message: string, action: () => Promise<void>) {
     if (!window.confirm(message)) return;
     setError('');
@@ -142,10 +193,19 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
   // Plantões noturnos atravessam a meia-noite: o movimento conta no dia em que o turno começou.
   const shiftDay = cashShiftDate;
 
+  const stayEdit = (stay: (typeof data.stays)[string], receipts: ReturnType<typeof existingStayReceipts>[string][]): EditTarget => ({
+    title: `Corrigir recebimento · Quarto ${stay.roomNumber}`,
+    lines: receipts.map((receipt) => ({ id: receipt.id, label: receipt.label, method: receipt.method, amount: receipt.amount, date: receipt.date })),
+    editAmount: true,
+    editDate: true,
+    methods: ALL_METHODS,
+    save: (lines) => updateStayReceipts(stay.id, Object.fromEntries(lines.map((line) => [line.id, { method: line.method, amount: line.amount, date: line.date }]))),
+  });
+
   Object.values(data.stays).forEach((stay) => {
     if (stay.receiptsInitialized || stay.receipts) {
       Object.values(stay.receipts ?? {}).filter((receipt) => !stay.voidedPayments?.[receipt.id] && (findStaff(staff, receipt.attendant)?.name ?? receipt.attendant) === attendant).forEach((receipt) => {
-        dayOf(shiftDay(receipt.receivedAt)).entries.push({ time: receipt.receivedAt, kind: 'stay', title: 'Recebimento · Quarto ' + stay.roomNumber, detail: stay.guestName + ' · ' + receipt.label, total: receipt.amount, payments: [{ method: receipt.method, amount: receipt.amount }] });
+        dayOf(shiftDay(receipt.receivedAt)).entries.push({ time: receipt.receivedAt, kind: 'stay', edit: isAdmin ? stayEdit(stay, [receipt]) : undefined, title: 'Recebimento · Quarto ' + stay.roomNumber, detail: stay.guestName + ' · ' + receipt.label, total: receipt.amount, payments: [{ method: receipt.method, amount: receipt.amount }] });
       });
       return;
     }
@@ -153,6 +213,7 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
     dayOf(shiftDay(stay.createdAt)).entries.push({
       time: stay.createdAt,
       kind: 'stay',
+      edit: isAdmin ? stayEdit(stay, Object.values(existingStayReceipts(stay))) : undefined,
       remove: isAdmin ? () => removeRecord(`Excluir o lançamento do quarto ${stay.roomNumber}? As diárias convertidas, adicionais e receitas relacionadas também serão removidos.`, () => deleteStay(stay)) : undefined,
       title: `${stay.kind === 'periodo' ? 'Rotativo' : 'Hóspede'} · Quarto ${stay.roomNumber}`,
       detail: stay.kind === 'periodo' ? `${stay.hours ?? 4} hora(s)` : stay.guestName,
@@ -164,6 +225,15 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
     dayOf(shiftDay(charge.createdAt)).entries.push({
       time: charge.createdAt,
       kind: 'room-charge',
+      edit: isAdmin ? {
+        title: `Corrigir pagamento do adicional · Quarto ${charge.roomNumber}`,
+        lines: Object.entries(charge.payments ?? {}).filter(([id]) => !charge.voidedPayments?.[`room-charge-${charge.id}-${id}`])
+          .map(([id, payment], index) => ({ id, label: `Pagamento ${index + 1}`, method: payment.method, amount: payment.amount, date: charge.date })),
+        editAmount: false,
+        editDate: false,
+        methods: ALL_METHODS,
+        save: async (lines) => { for (const line of lines) await updateRoomChargePayment(charge.id, line.id, line.method); },
+      } : undefined,
       remove: isAdmin ? () => removeRecord('Excluir este adicional do quarto? O financeiro será recalculado e bebidas serão devolvidas ao estoque.', () => deleteRoomCharge(charge)) : undefined,
       title: `${charge.kind === 'cafe_avulso' ? 'Café da manhã' : charge.kind === 'cama_extra' ? 'Cama extra' : charge.kind === 'bebida' ? (charge.productName ?? 'Bebida') : 'Hóspede extra'} · Quarto ${charge.roomNumber}`,
       detail: charge.kind === 'bebida'
@@ -178,6 +248,14 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
     dayOf(shiftDay(when)).entries.push({
       time: when,
       kind: 'sale',
+      edit: isAdmin && sale.settlement !== 'cobrar_no_checkout' && sale.paymentMethod ? {
+        title: 'Corrigir pagamento da geladeira',
+        lines: [{ id: sale.id, label: 'Venda da geladeira', method: FRIGOBAR_METHODS[sale.paymentMethod as MinibarPaymentMethod], amount: sale.amount, date: shiftDay(when) }],
+        editAmount: false,
+        editDate: false,
+        methods: SALE_METHODS,
+        save: (lines) => updateFrigobarSaleMethod(sale.id, lines[0].method),
+      } : undefined,
       remove: isAdmin ? () => removeRecord(`Excluir esta venda da geladeira (${money(sale.amount)})? Os itens voltam ao saldo da geladeira e a receita no Financeiro também será removida.`, () => deleteFrigobarSale(sale)) : undefined,
       title: sale.settlement === 'cobrar_no_checkout' ? 'Geladeira · a cobrar no checkout' : 'Venda da geladeira',
       detail: sale.items.map((item) => `${item.quantity}× ${item.productName}`).join(', ') + (sale.settlement === 'cobrar_no_checkout' ? ` · pendente ${money(sale.amount)}` : ''),
@@ -186,7 +264,7 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
     });
   });
   Object.values(data.cashOuts).filter((item) => (findStaff(staff, item.attendant, item.employeeId)?.name ?? item.attendant) === attendant).forEach((item) => {
-    dayOf(item.date).cashOuts.push({ id: item.id, time: item.createdAt, reason: item.reason, note: item.note, amount: item.amount, remove: isAdmin ? () => removeRecord(`Excluir a saída de caixa de ${money(item.amount)} (${item.reason})? A despesa no Financeiro também será removida.`, () => deleteCashOut(item.id)) : undefined });
+    dayOf(item.date).cashOuts.push({ id: item.id, time: item.createdAt, reason: item.reason, note: item.note, amount: item.amount, edit: isAdmin ? () => { setError(''); setNotice(''); setCashOutEdit({ id: item.id, amount: item.amount.toFixed(2).replace('.', ','), reason: item.reason, note: item.note }); } : undefined, remove: isAdmin ? () => removeRecord(`Excluir a saída de caixa de ${money(item.amount)} (${item.reason})? A despesa no Financeiro também será removida.`, () => deleteCashOut(item.id)) : undefined });
   });
   const currentKey = shiftDay(clock);
   dayOf(currentKey);
@@ -309,13 +387,13 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
                 {day.entries.sort((a, b) => a.time.localeCompare(b.time)).map((entry, position) => <li key={`${entry.time}-${position}`}>
                   <span className="cx-time">{timeOf(entry.time)}</span>
                   <span><strong>{entry.title}</strong><small>{entry.detail}{entry.payments.length > 0 ? ` · ${entry.payments.map((payment) => `${PAYMENT_METHOD_LABELS[payment.method]} ${money(payment.amount)}`).join(' + ')}` : ''}</small></span>
-                  <strong>{money(entry.total)}{entry.remove && <button type="button" className="cx-delete" onClick={entry.remove}>Excluir</button>}</strong>
+                  <strong>{money(entry.total)}{entry.edit && <button type="button" className="cx-edit" onClick={() => openEdit(entry.edit!)}>Editar</button>}{entry.remove && <button type="button" className="cx-delete" onClick={entry.remove}>Excluir</button>}</strong>
                 </li>)}
               </ul>}
 
               <h3>Saídas de caixa</h3>
               {day.cashOuts.length === 0 ? <p className="cx-muted">Nenhuma retirada neste dia.</p> : <ul className="cx-list">
-                {day.cashOuts.sort((a, b) => a.time.localeCompare(b.time)).map((item) => <li key={item.id}><span className="cx-time">{timeOf(item.time)}</span><span>{item.reason}{item.note ? ` · ${item.note}` : ''}</span><strong>− {money(item.amount)}{item.remove && <button type="button" className="cx-delete" onClick={item.remove}>Excluir</button>}</strong></li>)}
+                {day.cashOuts.sort((a, b) => a.time.localeCompare(b.time)).map((item) => <li key={item.id}><span className="cx-time">{timeOf(item.time)}</span><span>{item.reason}{item.note ? ` · ${item.note}` : ''}</span><strong>− {money(item.amount)}{item.edit && <button type="button" className="cx-edit" onClick={item.edit}>Editar</button>}{item.remove && <button type="button" className="cx-delete" onClick={item.remove}>Excluir</button>}</strong></li>)}
               </ul>}
             </div>
           </details>
@@ -331,6 +409,27 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
           <label className="cx-field">Dinheiro deixado no caixa (R$)<input inputMode="decimal" value={cashLeft} onChange={(event) => setCashLeft(event.target.value)} required autoFocus /></label>
           {parseMoney(cashLeft) !== FLOAT_AMOUNT && <label className="cx-field">Justificativa da diferença<textarea rows={3} value={handoffJustification} onChange={(event) => setHandoffJustification(event.target.value)} maxLength={300} required /></label>}
           <footer><button type="button" className="cx-secondary" disabled={savingHandoff} onClick={() => setEndingTurn(false)}>Continuar no turno</button><button type="submit" className="cx-primary" disabled={savingHandoff}>{savingHandoff ? 'Encerrando…' : 'Confirmar encerramento'}</button></footer>
+        </form>
+      </div>}
+      {editing && <div className="cx-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingEdit) setEditing(null); }}>
+        <form className="cx-handoff-modal" role="dialog" aria-modal="true" aria-labelledby="cx-edit-title" onSubmit={submitEdit}>
+          <div><p className="cx-eyebrow">CORREÇÃO DA GERÊNCIA</p><h2 id="cx-edit-title">{editing.title}</h2><p>A alteração é gravada no lançamento original e refletida no Fluxo de caixa.</p></div>
+          {editLines.map((line, index) => <fieldset key={line.id} className="cx-edit-line">
+            <legend>{line.label}</legend>
+            <label className="cx-field">Forma de pagamento<select value={line.method} onChange={(event) => setEditLines(editLines.map((item, position) => position === index ? { ...item, method: event.target.value as FinancePaymentMethod } : item))}>{editing.methods.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}</select></label>
+            {editing.editAmount && <label className="cx-field">Valor (R$)<input inputMode="decimal" defaultValue={line.amount.toFixed(2).replace('.', ',')} onChange={(event) => { const amount = parseMoney(event.target.value); setEditLines(editLines.map((item, position) => position === index ? { ...item, amount } : item)); }} required /></label>}
+            {editing.editDate && <label className="cx-field">Data do recebimento<input type="date" max={localDateKey()} value={line.date} onChange={(event) => setEditLines(editLines.map((item, position) => position === index ? { ...item, date: event.target.value } : item))} required /></label>}
+          </fieldset>)}
+          <footer><button type="button" className="cx-secondary" disabled={savingEdit} onClick={() => setEditing(null)}>Cancelar</button><button type="submit" className="cx-primary" disabled={savingEdit}>{savingEdit ? 'Salvando…' : 'Salvar correção'}</button></footer>
+        </form>
+      </div>}
+      {cashOutEdit && <div className="cx-modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingEdit) setCashOutEdit(null); }}>
+        <form className="cx-handoff-modal" role="dialog" aria-modal="true" aria-labelledby="cx-cashout-edit-title" onSubmit={submitCashOutEdit}>
+          <div><p className="cx-eyebrow">CORREÇÃO DA GERÊNCIA</p><h2 id="cx-cashout-edit-title">Corrigir saída de caixa</h2><p>A despesa correspondente no Fluxo de caixa é atualizada junto.</p></div>
+          <label className="cx-field">Valor (R$)<input inputMode="decimal" value={cashOutEdit.amount} onChange={(event) => setCashOutEdit({ ...cashOutEdit, amount: event.target.value })} required /></label>
+          <label className="cx-field">Motivo<select value={cashOutEdit.reason} onChange={(event) => setCashOutEdit({ ...cashOutEdit, reason: event.target.value })}>{CASH_OUT_REASONS.map((reason) => <option key={reason}>{reason}</option>)}</select></label>
+          <label className="cx-field">Observação<input value={cashOutEdit.note} maxLength={300} onChange={(event) => setCashOutEdit({ ...cashOutEdit, note: event.target.value })} /></label>
+          <footer><button type="button" className="cx-secondary" disabled={savingEdit} onClick={() => setCashOutEdit(null)}>Cancelar</button><button type="submit" className="cx-primary" disabled={savingEdit}>{savingEdit ? 'Salvando…' : 'Salvar correção'}</button></footer>
         </form>
       </div>}
     </div>

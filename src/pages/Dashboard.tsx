@@ -979,12 +979,12 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
         </header>
         {!selectedOccupant.rotativo && departureDue(selectedOccupant.checkOutDate, now) && <p className="dashboard-room-checkout-notice" role="status">Saída prevista para {selectedOccupant.checkOutDate.split('-').reverse().join('/')} às 12h. O encerramento ainda precisa ser confirmado; confira a conta e libere o quarto para limpeza.</p>}
         <button type="button" className="dashboard-room-release-button" disabled={savingCharge} onClick={() => {
-          if (!window.confirm('Encerrar a hospedagem e liberar o quarto para limpeza?')) return;
+          if (!window.confirm(`Fazer o check-out do quarto ${selectedOccupant.roomNumber}? O quarto ficará aguardando limpeza.`)) return;
           setSavingCharge(true); setChargeError('');
           void requestCheckout({ sourceType: selectedOccupant.sourceType, sourceId: selectedOccupant.sourceId })
-            .then(() => { setSelectedOccupant(null); onChargeSaved('Quarto liberado para limpeza.'); })
+            .then(() => { setSelectedOccupant(null); onChargeSaved(`Check-out realizado. Quarto ${selectedOccupant.roomNumber} aguardando limpeza.`); })
             .catch((cause) => setChargeError(cause.message)).finally(() => setSavingCharge(false));
-        }}><span aria-hidden="true">↗</span>{savingCharge ? 'Liberando…' : 'Liberar quarto para limpeza'}</button>
+        }}><span aria-hidden="true">↗</span>{savingCharge ? 'Realizando check-out…' : 'Fazer check-out'}</button>
         {selectedOccupant.sourceType === 'stay' && stays[selectedOccupant.sourceId] && <StayAccount stay={stays[selectedOccupant.sourceId]} charges={chargesForOccupant(selectedOccupant)} attendant={attendant} onSaved={onChargeSaved} />}
         <fieldset className="dashboard-room-charge-types">
           <legend>O que deseja fazer?</legend>

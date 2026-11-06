@@ -1,4 +1,4 @@
-import { addStayReceipt, initializeStayReceipts } from './stayReceipts';
+import { addStayReceipt, changedStayPaymentMethods, initializeStayReceipts, withSyncedReceiptMethods } from './stayReceipts';
 import { snapshotStayCardFees } from './cardFeeStore';
 import type { FinancePaymentMethod } from '../types/finance';
 import { db, endAt, equalTo, get, increment, onValue, orderByChild, query, ref, remove, runTransaction, set, startAt, update } from './pocketbaseRealtime';
@@ -222,8 +222,9 @@ export async function updateStayAndFinance(stay: GuestStay): Promise<void> {
 
   const previous = snapshot.val() as GuestStay;
   const voidedPayments = { ...previous.voidedPayments, ...stay.voidedPayments };
-  const updatedStay = { ...stay, ...staffReference(stay.attendant),
-    ...(Object.keys(voidedPayments).length ? { voidedPayments } : {}) };
+  const updatedStay = await snapshotStayCardFees(withSyncedReceiptMethods(previous, { ...stay, ...staffReference(stay.attendant),
+    ...(Object.keys(voidedPayments).length ? { voidedPayments } : {}) }));
+  const methodChangedIds = new Set(changedStayPaymentMethods(previous, updatedStay));
   const previousIds = stayFinanceEntryIds({ ...previous, voidedPayments: undefined });
   const nextEntries = stayFinanceEntries(updatedStay);
   const allIncomeIds = new Set([...previousIds, ...stayFinanceEntryIds({ ...updatedStay, voidedPayments: undefined })]);
@@ -246,7 +247,7 @@ export async function updateStayAndFinance(stay: GuestStay): Promise<void> {
     if (entry) {
       if (suppressed[id] || voidedPayments[id]) return;
       const saved = savedIncomes[id];
-      updates[`erp_geral/financeiro/incomes/${id}`] = saved?.operationalOverride
+      updates[`erp_geral/financeiro/incomes/${id}`] = saved?.operationalOverride && !methodChangedIds.has(id)
         ? { ...reservationIncomeContext(saved, previous, updatedStay), updatedAt: timestamp }
         : { ...entry, createdAt: saved?.createdAt ?? entry.createdAt, updatedAt: timestamp };
     } else {

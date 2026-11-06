@@ -381,3 +381,131 @@ test('a failed financial deletion releases its pending claim and can be retried'
   assert.equal(state.erp_geral.financeiro.suppressed.receipt1, true);
   assert.equal(state.erp_geral.financeiro.deletions['payment-receipt1'].status, 'done');
 });
+
+const editableStay = (extra = {}) => ({ id: 's', kind: 'hospede', checkInDate: '2026-10-14', nights: 1, dailyRate: 100, dailyMethod: 'credit', roomNumber: '101', guestName: 'Teste', attendant: 'Equipe', status: 'hospedado', hasBreakfast: false, breakfastRate: 0, taxAmount: 0, taxMethod: 'cash', extras: [], note: '', createdAt: stamp, ...extra });
+const storedReceipt = (extra = {}) => ({ id: 'recepcao-s-diaria', date: '2026-10-14', receivedAt: stamp, createdAt: stamp, attendant: 'Equipe', amount: 100, method: 'credit', label: 'Diária', category: 'Diária', cardFeeRate: 3, cardFeeAmount: 3, netAmount: 97, ...extra });
+const viewOf = (domain, state) => domain.load('src/services/operationalLedger.ts').withOperationalFinance(state.erp_geral.financeiro, {
+  stays: state.erp_geral.recepcao.stays, roomCharges: state.erp_geral.recepcao.roomCharges, cashOuts: state.erp_geral.recepcao.cashOuts,
+  sales: state.erp_geral.frigobar.operations.sales });
+
+test('manager stay edit moves a stored receipt to the new payment method even after a cash-flow override', async () => {
+  const state = db({ incomes: { 'recepcao-s-diaria': { ...receipt('recepcao-s-diaria', '2026-10-14', 100, 'credit'), operationalOverride: true } } });
+  state.erp_geral.recepcao.stays.s = editableStay({ receiptsInitialized: true, receipts: { 'recepcao-s-diaria': storedReceipt() } });
+  const domain = isolatedDomain(state);
+  await domain.load('src/services/receptionStore.ts').updateStayAndFinance(editableStay({ dailyMethod: 'pix', receiptsInitialized: true, receipts: { 'recepcao-s-diaria': storedReceipt() } }));
+  const saved = state.erp_geral.recepcao.stays.s.receipts['recepcao-s-diaria'];
+  assert.equal(saved.method, 'pix');
+  assert.equal(saved.cardFeeRate, undefined);
+  assert.equal(state.erp_geral.financeiro.incomes['recepcao-s-diaria'].items[0].paymentMethod, 'pix');
+  assert.equal(state.erp_geral.financeiro.incomes['recepcao-s-diaria'].wallet, 'bank');
+  assert.equal(viewOf(domain, state).incomes['recepcao-s-diaria'].items[0].paymentMethod, 'pix');
+});
+
+test('cash review corrections reach the cash flow for receipts, legacy stays, extra charges, fridge sales and cash outs', async () => {
+  const state = db({ incomes: { 'recepcao-legacy-diaria': { ...receipt('recepcao-legacy-diaria', '2026-10-14', 100, 'cash'), operationalOverride: true } } });
+  const { stays, roomCharges, cashOuts } = state.erp_geral.recepcao;
+  stays.s = editableStay({ receiptsInitialized: true, receipts: { 'recepcao-s-diaria': storedReceipt() } });
+  stays.legacy = editableStay({ id: 'legacy', dailyMethod: 'cash' });
+  roomCharges.c1 = { id: 'c1', roomNumber: '101', sourceType: 'stay', sourceId: 's', kind: 'cama_extra', guestName: 'Teste', amount: 30, days: 1, date: '2026-10-14', payments: { p1: { method: 'cash', amount: 30 } }, attendant: 'Equipe', createdAt: stamp };
+  cashOuts.o1 = { id: 'o1', date: '2026-10-14', amount: 15, reason: 'Outros', note: '', attendant: 'Equipe', createdAt: stamp };
+  state.erp_geral.frigobar.operations.sales.f1 = { id: 'f1', items: [{ productId: 'a', productName: 'Água', quantity: 1, unit: 'un', unitPrice: 5 }], amount: 5, settlement: 'pago_na_recepcao', paymentMethod: 'dinheiro', roomNumber: '101', guestName: 'Teste', actor: 'Equipe', createdAt: stamp };
+  const domain = isolatedDomain(state);
+  const edits = domain.load('src/services/cashEdits.ts');
+  await edits.updateStayReceipts('s', { 'recepcao-s-diaria': { method: 'cash', amount: 100, date: '2026-10-14' } }, '2026-10-20');
+  await edits.updateStayReceipts('legacy', { 'recepcao-legacy-diaria': { method: 'pix', amount: 100, date: '2026-10-14' } }, '2026-10-20');
+  await edits.updateRoomChargePayment('c1', 'p1', 'debit');
+  await edits.updateFrigobarSaleMethod('f1', 'credit');
+  await edits.updateCashOut('o1', { amount: 20, reason: 'Farmácia', note: 'Ajuste' });
+  const view = viewOf(domain, state);
+  assert.equal(state.erp_geral.recepcao.stays.s.receipts['recepcao-s-diaria'].cardFeeRate, undefined);
+  assert.equal(view.incomes['recepcao-s-diaria'].items[0].paymentMethod, 'cash');
+  assert.equal(view.incomes['recepcao-legacy-diaria'].items[0].paymentMethod, 'pix');
+  assert.equal(state.erp_geral.recepcao.stays.legacy.receiptsInitialized, true);
+  assert.equal(view.incomes['room-charge-c1-p1'].items[0].paymentMethod, 'debit');
+  assert.equal(view.incomes['frigobar-f1'].items[0].paymentMethod, 'credit');
+  assert.equal(view.expenses['caixa-o1'].paidCash, 20);
+  assert.equal(view.expenses['caixa-o1'].category, 'Farmácia');
+  await assert.rejects(edits.updateStayReceipts('s', { 'recepcao-s-diaria': { method: 'cash', amount: 500, date: '2026-10-14' } }, '2026-10-20'), /ultrapassar/);
+  await assert.rejects(edits.updateStayReceipts('s', { 'recepcao-s-diaria': { method: 'cash', amount: 100, date: '2026-12-31' } }, '2026-10-20'), /data válida/);
+});
+
+test('manager purchases: cash and pix debit the wallet at once, card only debits when paid', () => {
+  const purchases = domain.load('src/services/purchases.ts');
+  assert.deepEqual(purchases.purchaseImmediatePayment('cash', 80), { paidCash: 80, paidBank: 0 });
+  assert.deepEqual(purchases.purchaseImmediatePayment('pix', 80), { paidCash: 0, paidBank: 80 });
+  assert.deepEqual(purchases.purchaseImmediatePayment('card', 80), { paidCash: 0, paidBank: 0 });
+  const card = 'Cartão Nubank · Ana';
+  const entry = { id: 'p-card', type: 'entrada', productName: 'Sabão', quantity: 2, unitPrice: 10, unit: 'un', entryPayment: 'cartao', entryCard: card, createdAt: stamp };
+  const onCard = ledger.stockPurchaseExpense(entry);
+  assert.equal(onCard.purchaseMethod, 'card');
+  assert.equal(onCard.cardCategory, card);
+  assert.equal(onCard.category, 'Estoque');
+  assert.equal(onCard.paidCash + onCard.paidBank, 0);
+  assert.equal(purchases.isPendingCardPurchase(onCard), true);
+  const pix = ledger.stockPurchaseExpense({ ...entry, id: 'p-pix', entryPayment: 'banco', paidDate: '2026-10-14' });
+  assert.equal(pix.purchaseMethod, 'pix');
+  assert.equal(pix.paidBank, 20);
+  assert.equal(ledger.stockPurchaseExpense({ ...entry, id: 'p-cash', entryPayment: 'caixa' }).purchaseMethod, 'cash');
+  const before = analytics.balancesAtDate(data({ expenses: { [onCard.id]: onCard }, openingBalances: { '2026-10': { cash: 100, bank: 100, oyo: 0 } } }), '2026-10-31');
+  const paid = payments.withExpensePaymentTotals(onCard, { ...onCard, paidBank: 20, operationalOverride: true }, '2026-10-20', 'pay-card');
+  assert.equal(purchases.isPendingCardPurchase(paid), false);
+  const after = analytics.balancesAtDate(data({ expenses: { [paid.id]: paid }, openingBalances: { '2026-10': { cash: 100, bank: 100, oyo: 0 } } }), '2026-10-31');
+  assert.equal(after.bank, before.bank - 20);
+  assert.equal(after.cash, before.cash);
+});
+
+test('finance edits initialize all legacy stay receipts and propagate methods to the reception record', async () => {
+  const state = db();
+  state.erp_geral.recepcao.stays.s = editableStay({ dailyMethod: 'cash', hasBreakfast: true, breakfastCount: 1, breakfastDays: 1, breakfastRate: 20, breakfastMethod: 'cash' });
+  const isolated = isolatedDomain(state);
+  const store = isolated.load('src/services/financeStore.ts');
+  await store.updateFinance((current) => {
+    const entry = current.incomes['recepcao-s-diaria'];
+    return { ...current, incomes: { ...current.incomes, [entry.id]: { ...entry, wallet: 'bank', items: [{ ...entry.items[0], paymentMethod: 'pix' }], operationalOverride: true } } };
+  });
+  const stay = state.erp_geral.recepcao.stays.s;
+  assert.equal(stay.receiptsInitialized, true);
+  assert.equal(stay.receipts['recepcao-s-diaria'].method, 'pix');
+  assert.equal(stay.dailyMethod, 'pix');
+  assert.equal(stay.receipts['recepcao-s-cafe'].amount, 20);
+  assert.equal(viewOf(isolated, state).incomes['recepcao-s-diaria'].items[0].paymentMethod, 'pix');
+});
+
+test('finance edits of a room charge update the source without allowing overpayment or mixed payments', async () => {
+  const state = db();
+  state.erp_geral.recepcao.roomCharges.c1 = { id: 'c1', roomNumber: '101', sourceType: 'stay', sourceId: 's', kind: 'cama_extra', guestName: 'Teste', amount: 30, days: 1, date: '2026-10-14', payments: { p1: { method: 'cash', amount: 20 }, p2: { method: 'pix', amount: 10 } }, attendant: 'Equipe', createdAt: stamp };
+  const isolated = isolatedDomain(state);
+  const store = isolated.load('src/services/financeStore.ts');
+  const edit = (transform) => store.updateFinance((current) => {
+    const id = 'room-charge-c1-p1';
+    return { ...current, incomes: { ...current.incomes, [id]: transform(current.incomes[id]) } };
+  });
+  await edit((entry) => ({ ...entry, wallet: 'bank', items: [{ ...entry.items[0], paymentMethod: 'debit' }], operationalOverride: true }));
+  assert.equal(state.erp_geral.recepcao.roomCharges.c1.payments.p1.method, 'debit');
+  await assert.rejects(edit((entry) => ({ ...entry, amount: 25, items: [{ ...entry.items[0], amount: 25 }] })), /ultrapassar/);
+  await assert.rejects(edit((entry) => ({ ...entry, items: [{ ...entry.items[0], amount: 10 }, { ...entry.items[0], id: 'second', amount: 10, paymentMethod: 'cash' }] })), /única forma/);
+  assert.equal(state.erp_geral.recepcao.roomCharges.c1.payments.p1.amount, 20);
+});
+
+test('card corrections preserve historical rates, recalculate fees and keep partial receipts partial', async () => {
+  const state = db({ cardFeeSchedule: { old: { effectiveAt: '2026-01-01T00:00:00Z', credit: 5, debit: 1 } } });
+  state.erp_geral.recepcao.stays.s = editableStay({ receiptsInitialized: true, receipts: { 'recepcao-s-diaria': storedReceipt({ amount: 40, cardFeeRate: 3, cardFeeAmount: 1.2, netAmount: 38.8 }) } });
+  const isolated = isolatedDomain(state);
+  await isolated.load('src/services/cashEdits.ts').updateStayReceipts('s', { 'recepcao-s-diaria': { method: 'credit', amount: 50, date: '2026-10-14' } }, '2026-10-20');
+  const corrected = state.erp_geral.recepcao.stays.s.receipts['recepcao-s-diaria'];
+  assert.equal(corrected.cardFeeRate, 3);
+  assert.equal(corrected.cardFeeAmount, 1.5);
+  assert.equal(corrected.netAmount, 48.5);
+  await isolated.load('src/services/receptionStore.ts').updateStayAndFinance({ ...state.erp_geral.recepcao.stays.s, guestName: 'Outro nome' });
+  assert.equal(state.erp_geral.recepcao.stays.s.receipts['recepcao-s-diaria'].amount, 50);
+  assert.equal(state.erp_geral.financeiro.incomes['recepcao-s-diaria'].amount, 50);
+});
+
+test('card category subscription reads only category metadata', () => {
+  const state = db({ expenseCategories: ['Cartão Banco · Titular'], categoryAliases: { expense: {} } });
+  const isolated = isolatedDomain(state);
+  let categories;
+  isolated.load('src/services/financeStore.ts').subscribeExpenseCategories((value) => { categories = value; }, (error) => { throw error; });
+  assert.ok(categories.includes('Cartão Banco · Titular'));
+  assert.deepEqual(isolated.listeners.map((item) => item.path).sort(), ['erp_geral/financeiro/categoryAliases', 'erp_geral/financeiro/expenseCategories']);
+});

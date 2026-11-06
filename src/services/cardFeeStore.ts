@@ -4,17 +4,31 @@ import type { GuestStay } from '../types/reception';
 
 // Keep the agreed rate and net receipt on the operational record itself.
 export async function snapshotStayCardFees(stay: GuestStay): Promise<GuestStay> {
-  const pending = Object.values(stay.receipts ?? {}).filter((receipt) => receipt.cardFeeRate === undefined && ['credit', 'debit'].includes(receipt.method));
-  if (!pending.length) return stay;
-  const snapshot = await get(ref(db, 'erp_geral/financeiro/cardFeeSchedule'));
-  const schedule = Object.values((snapshot.val() ?? {}) as NonNullable<FinanceData['cardFeeSchedule']>).sort((a, b) => b.effectiveAt.localeCompare(a.effectiveAt));
+  const all = Object.values(stay.receipts ?? {});
+  const needsSchedule = all.some((receipt) => receipt.cardFeeRate === undefined && ['credit', 'debit'].includes(receipt.method));
+  const schedule = needsSchedule
+    ? Object.values(((await get(ref(db, 'erp_geral/financeiro/cardFeeSchedule'))).val() ?? {}) as NonNullable<FinanceData['cardFeeSchedule']>).sort((a, b) => b.effectiveAt.localeCompare(a.effectiveAt))
+    : [];
   const receipts = { ...stay.receipts };
-  for (const receipt of pending) {
-    const rates = schedule.find((rate) => rate.effectiveAt <= receipt.createdAt);
-    const rate = rates?.[receipt.method as 'credit' | 'debit'] ?? 0;
+  let changed = false;
+  for (const receipt of all) {
+    if (receipt.method !== 'credit' && receipt.method !== 'debit') {
+      if (receipt.cardFeeRate !== undefined || receipt.cardFeeAmount !== undefined || receipt.netAmount !== undefined) {
+        const { cardFeeRate: _rate, cardFeeAmount: _fee, netAmount: _net, ...rest } = receipt;
+        void _rate; void _fee; void _net;
+        receipts[receipt.id] = rest;
+        changed = true;
+      }
+      continue;
+    }
+    const rates = receipt.cardFeeRate === undefined ? schedule.find((item) => item.effectiveAt <= receipt.createdAt) : undefined;
+    const rate = receipt.cardFeeRate ?? rates?.[receipt.method] ?? 0;
     const gross = Math.round(receipt.amount * 100);
     const fee = Math.round(gross * rate / 100);
-    receipts[receipt.id] = { ...receipt, cardFeeRate: rate, cardFeeAmount: fee / 100, netAmount: (gross - fee) / 100 };
+    if (receipt.cardFeeRate !== rate || receipt.cardFeeAmount !== fee / 100 || receipt.netAmount !== (gross - fee) / 100) {
+      receipts[receipt.id] = { ...receipt, cardFeeRate: rate, cardFeeAmount: fee / 100, netAmount: (gross - fee) / 100 };
+      changed = true;
+    }
   }
-  return { ...stay, receipts };
+  return changed ? { ...stay, receipts } : stay;
 }

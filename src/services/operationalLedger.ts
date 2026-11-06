@@ -73,6 +73,7 @@ export function stayFinanceEntryIds(stay: GuestStay): string[] {
   const prefix = `recepcao-${stay.id}-`;
   return [...new Set([
     ...Object.keys(stayFinanceEntries(stay)),
+    ...Object.keys(stay.receipts ?? {}),
     ...stayTaxPayments(stay).map((payment) => `${prefix}${payment.id}`),
   ])];
 }
@@ -148,6 +149,8 @@ export function stockPurchaseExpense(movement: StockMovement): FinanceExpense | 
     id, dueDate, category: 'Estoque', plannedAmount: amount,
     paidCash: movement.entryPayment === 'caixa' ? amount : 0,
     paidBank: movement.entryPayment === 'banco' ? amount : 0,
+    ...(movement.entryPayment === 'caixa' ? { purchaseMethod: 'cash' as const } : movement.entryPayment === 'banco' ? { purchaseMethod: 'pix' as const }
+      : movement.entryPayment === 'cartao' ? { purchaseMethod: 'card' as const, ...(movement.entryCard ? { cardCategory: movement.entryCard } : {}) } : {}),
     note: [`Entrada de estoque: ${movement.quantity} ${movement.unit} de ${movement.productName}`, movement.reference, movement.note,
       movement.entryPayment ? '' : 'Pagamento não informado no movimento histórico; confira a compra.'].filter(Boolean).join(' · '),
     createdAt: movement.createdAt, updatedAt: movement.createdAt,

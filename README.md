@@ -41,6 +41,10 @@ O Fluxo de Caixa combina lançamentos financeiros salvos com dados derivados de 
 
 Despesas e folha mantêm cada pagamento com data, carteira e valor. Vencimento, competência e pagamento são informações independentes. Ao corrigir um total pago, a diferença é registrada na data informada, preservando as parcelas anteriores. Datas de pagamentos antigos sem histórico aparecem identificadas e podem ser confirmadas ou corrigidas pela gerência.
 
+Para registrar uma compra, selecione sua categoria e a forma de pagamento na despesa ou na entrada de estoque. Dinheiro e Pix debitam a carteira na data da compra; cartão mantém a compra pendente, vinculada ao cartão cadastrado em **Configurações**, sem debitar as carteiras. Quando a fatura for paga, edite a despesa e registre o pagamento em dinheiro ou pelo banco. Não lance o mesmo pagamento novamente como outra despesa.
+
+Em **Conferir caixa**, a gerência pode corrigir recebimentos, adicionais, vendas da geladeira e saídas. As correções atualizam os registros financeiros correspondentes; os recebimentos parciais continuam parciais.
+
 Para enviar o movimento mensal ao contador, abra **Fluxo de caixa**, selecione o **Mês do resumo e da planilha** e clique em **Baixar planilha mensal (.xlsx)**. O arquivo inclui resumo, entradas, saídas, pré-pagos OYO, transferências e contas/folha, com conferência de saldo por carteira. A exportação usa o mês completo independentemente dos filtros da consulta. Consulte a [análise do financeiro e do estoque](docs/revisao-financeiro-estoque.md) para conhecer os critérios e as correções aplicadas.
 
 ## Funcionários e exclusões

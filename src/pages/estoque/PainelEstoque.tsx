@@ -5,6 +5,8 @@ import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { SidebarSlotContext } from '../../components/layout/sidebarSlot';
 import { subscribeInventory, updateInventory } from '../../services/inventoryStore';
+import { subscribeExpenseCategories } from '../../services/financeStore';
+import { isCardCategory } from '../../types/finance';
 import { mergeProductRegistration, recordInventoryMovement } from '../../services/inventoryOperations';
 import { DateInput } from '../../components/ui/DateInput';
 import { useMinibarFinanceSync } from '../../services/minibarFinanceSync';
@@ -129,6 +131,12 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
 
   useMinibarFinanceSync(data, setStorageError);
 
+  const [cards, setCards] = useState<string[]>([]);
+  useEffect(() => {
+    if (!canViewFinancials) return;
+    return subscribeExpenseCategories((categories) => setCards(categories.filter(isCardCategory)),
+      (cause) => setStorageError(`Não foi possível carregar os cartões: ${cause.message}`));
+  }, [canViewFinancials]);
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const productId = params.get('produto');
@@ -462,12 +470,14 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
     }
 
     const entryUnitPrice = movementType === 'entrada' && canViewFinancials ? Number(form.get('entryUnitPrice') || 0) : inventoryUnitCost(selectedProduct);
-    const entryPayment = String(form.get('entryPayment') ?? 'pendente') as 'pendente' | 'caixa' | 'banco';
+    const entryPayment = String(form.get('entryPayment') ?? 'pendente') as 'pendente' | 'caixa' | 'banco' | 'cartao';
+    const entryCard = String(form.get('entryCard') ?? '').trim();
+    if (movementType === 'entrada' && entryPayment === 'cartao' && !cards.includes(entryCard)) { setStorageError('Selecione o cartão utilizado na compra.'); return; }
     setSaving(true); setStorageError('');
     void recordInventoryMovement({
       id: movementOperationId, productId: movementProductId, type: movementType, quantity, fromLocation, toLocation,
       unitPrice: entryUnitPrice, reference, note, actor, createdAt: new Date().toISOString(),
-      ...(movementType === 'entrada' ? { entryPayment, ...(entryPayment !== 'pendente' ? { paidDate: localDateValue(new Date()) } : {}) } : {}),
+      ...(movementType === 'entrada' ? { entryPayment, ...(entryPayment === 'cartao' ? { entryCard } : {}), ...(entryPayment !== 'pendente' && entryPayment !== 'cartao' ? { paidDate: localDateValue(new Date()) } : {}) } : {}),
     }).then(() => {
       setModal(null); setMovementOperationId(newId());
       setNotice(movementType === 'entrada' ? entryUnitPrice * quantity > 0 ? 'Entrada registrada. A compra será conciliada no Financeiro.' : 'Entrada registrada.' : 'Movimentação registrada.');
@@ -655,6 +665,7 @@ export function PainelEstoque({ actor = 'Equipe', canViewFinancials = true }: { 
                 movementType={movementType}
                 actor={actor}
                 canViewFinancials={canViewFinancials}
+                cards={cards}
                 saving={saving}
                 onProductChange={(id) => {
                   setMovementProductId(id);
@@ -923,7 +934,7 @@ function AssetForm({ asset, saving, canViewFinancials, onClose, onSubmit }: { as
 }
 
 function MovementForm({
-  products, product, selectedProductId, movementType, actor, saving, canViewFinancials, onProductChange, onTypeChange, onClose, onSubmit,
+  products, product, selectedProductId, movementType, actor, saving, canViewFinancials, cards, onProductChange, onTypeChange, onClose, onSubmit,
 }: {
   products: StockProduct[];
   product?: StockProduct;
@@ -932,12 +943,14 @@ function MovementForm({
   actor: string;
   saving: boolean;
   canViewFinancials: boolean;
+  cards: string[];
   onProductChange: (id: string) => void;
   onTypeChange: (type: MovementType) => void;
   onClose: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const [minibarSettlement, setMinibarSettlement] = useState<MinibarSettlement>('pago_na_recepcao');
+  const [entryPayment, setEntryPayment] = useState('pendente');
   const productLocations = product ? Object.keys(product.locationQuantities) : [];
   const locations = Array.from(new Set([...STOCK_LOCATIONS, ...productLocations]));
   const source = movementType === 'consumo_frigobar'
@@ -966,7 +979,8 @@ function MovementForm({
     <label className="form-field"><span>{isCount ? 'Quantidade contada *' : 'Quantidade *'} {product && `(${product.unit})`}</span><input name="quantity" type="number" min="0" step="any" required defaultValue="" placeholder={isCount ? 'Saldo físico' : '0'} /></label>
     {isInbound && canViewFinancials && <>
       <label className="form-field"><span>Preço de entrada / unidade (R$)</span><input key={product?.id} name="entryUnitPrice" type="number" min="0" step="0.01" defaultValue={product?.cost ?? 0} /></label>
-      <label className="form-field"><span>Pagamento da compra</span><select name="entryPayment" defaultValue="pendente"><option value="pendente">A pagar (pendente)</option><option value="caixa">Pago em dinheiro (caixa)</option><option value="banco">Pago pelo banco</option></select></label>
+      <label className="form-field"><span>Pagamento da compra</span><select name="entryPayment" value={entryPayment} onChange={(event) => setEntryPayment(event.target.value)}><option value="pendente">A pagar (pendente)</option><option value="caixa">Pago em dinheiro (caixa)</option><option value="banco">Pago pelo banco / Pix</option><option value="cartao">Cartão (debita ao pagar o cartão)</option></select></label>
+      {entryPayment === 'cartao' && <label className="form-field"><span>Cartão *</span><select name="entryCard" required defaultValue=""><option value="" disabled>{cards.length ? 'Selecione o cartão' : 'Nenhum cartão cadastrado'}</option>{cards.map((card) => <option key={card} value={card}>{card}</option>)}</select></label>}
       <p className="form-hint form-wide">A compra será lançada como despesa "Estoque" no Financeiro e o preço de entrada do produto será atualizado.</p>
     </>}
     {canViewFinancials && movementType === 'consumo_frigobar' && <label className="form-field"><span>Preço cobrado / unidade</span><input value={money(product?.salePrice ?? 0)} readOnly /></label>}

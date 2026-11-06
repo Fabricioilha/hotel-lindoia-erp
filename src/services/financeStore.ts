@@ -1,4 +1,5 @@
 import { withCardFees } from './cardFees';
+import { existingStayReceipts, withReceiptPaymentMethod } from './stayReceipts';
 import { validatePayrollAdvances } from './payrollAdvances';
 import { db, endAt, get, limitToLast, onValue, orderByChild, orderByKey, query, ref, startAt, update as updateDatabase } from './pocketbaseRealtime';
 import { buildAuditEvents } from '../types/audit';
@@ -91,6 +92,24 @@ function financeView(values: Record<string, unknown>, includeOperations: boolean
     reservationCollections: values.reservationCollections ?? {}, movements: values.movements ?? {}, reservations: values.reservations ?? {},
   } as OperationalFinanceSources) : data);
   return includeOperations ? { ...view, stays: (values.stays ?? {}) as FinanceData['stays'] } : view;
+}
+
+export function subscribeExpenseCategories(onChange: (categories: string[]) => void, onError: (error: Error) => void): () => void {
+  let categories: unknown;
+  let aliases: unknown;
+  const emit = () => {
+    if (categories === undefined || aliases === undefined) return;
+    onChange(normalizeFinance({ expenseCategories: categories, categoryAliases: aliases }).expenseCategories);
+  };
+  const stopCategories = onValue(ref(db, 'erp_geral/financeiro/expenseCategories'), (snapshot) => {
+    categories = snapshot.val() ?? [];
+    emit();
+  }, onError);
+  const stopAliases = onValue(ref(db, 'erp_geral/financeiro/categoryAliases'), (snapshot) => {
+    aliases = snapshot.val() ?? {};
+    emit();
+  }, onError);
+  return () => { stopCategories(); stopAliases(); };
 }
 
 export async function loadFinanceForMonth(month: string): Promise<FinanceData> {
@@ -256,18 +275,31 @@ async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData
     if (entry.generatedFromIncome && !next.expenses[entry.id]) updates[`erp_geral/financeiro/expenses/${entry.id}`] = null;
   }
   for (const source of Object.values((raw.stays ?? {}) as Record<string, import('../types/reception').GuestStay>)) {
-    for (const receipt of Object.values(source.receipts ?? {})) {
+    const sourceReceipts = existingStayReceipts(source);
+    let initialized = Boolean(source.receiptsInitialized || source.receipts);
+    let updatedMethods = source;
+    let receiptsChanged = false;
+    for (const receipt of Object.values(sourceReceipts)) {
       const previous = current.incomes[receipt.id];
       const edited = next.incomes[receipt.id];
       if (!edited || JSON.stringify(previous) === JSON.stringify(edited)) continue;
       const items = edited.items ?? [];
       if (items.length === 0) throw new Error('Informe ao menos uma forma de pagamento.');
+      if (!initialized) {
+        updates['erp_geral/recepcao/stays/' + source.id + '/receiptsInitialized'] = true;
+        for (const [id, existing] of Object.entries(sourceReceipts)) {
+          if (id !== receipt.id) updates['erp_geral/recepcao/stays/' + source.id + '/receipts/' + id] = existing;
+        }
+        initialized = true;
+      }
       const receivedAt = edited.date === receipt.date ? receipt.receivedAt : new Date(edited.date + 'T12:00:00-03:00').toISOString();
+      sourceReceipts[receipt.id] = { ...receipt, receivedAt };
+      receiptsChanged = true;
       const { cardFeeRate: _rate, cardFeeAmount: _fee, netAmount: _net, ...baseReceipt } = receipt;
       void _rate; void _fee; void _net;
       updates['erp_geral/recepcao/stays/' + source.id + '/receipts/' + receipt.id] = { ...baseReceipt, amount: items.length > 1 ? items[0].amount : edited.amount, method: items[0].paymentMethod, date: edited.date, receivedAt, label: items[0].description, category: edited.category,
         ...(items[0].cardFeeRate !== undefined ? { cardFeeRate: items[0].cardFeeRate, cardFeeAmount: items[0].cardFeeAmount, netAmount: items[0].netAmount } : {}) };
-      updates['erp_geral/recepcao/stays/' + source.id + '/lastReceiptAt'] = [source.lastReceiptAt ?? '', receivedAt].sort().at(-1);
+      if (items.length === 1 && receipt.method !== items[0].paymentMethod) updatedMethods = withReceiptPaymentMethod(updatedMethods, receipt.id, items[0].paymentMethod);
       // Vários meios de pagamento: o primeiro mantém o recebimento original e os demais viram recebimentos próprios da hospedagem.
       if (items.length > 1) {
         updates['erp_geral/financeiro/incomes/' + receipt.id] = { ...edited, amount: items[0].amount, items: [items[0]] };
@@ -280,6 +312,30 @@ async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData
           updates['erp_geral/financeiro/incomes/' + extraId] = { ...editedBase, id: extraId, amount: item.amount, items: [{ ...item, id: extraId }] };
         });
       }
+    }
+    if (receiptsChanged) updates[`erp_geral/recepcao/stays/${source.id}/lastReceiptAt`] = Object.values(sourceReceipts)
+      .filter((receipt) => !source.voidedPayments?.[receipt.id]).map((receipt) => receipt.receivedAt).sort().at(-1) ?? null;
+    for (const key of ['dailyMethod', 'dailySplit', 'breakfastMethod', 'breakfastSplit', 'taxMethod', 'taxSplit', 'extras'] as const) {
+      if (JSON.stringify(source[key]) !== JSON.stringify(updatedMethods[key])) updates[`erp_geral/recepcao/stays/${source.id}/${key}`] = updatedMethods[key] ?? null;
+    }
+  }
+  for (const charge of Object.values((raw.roomCharges ?? {}) as Record<string, import('../types/reception').RoomCharge>)) {
+    let changed = false;
+    const newPayments = { ...charge.payments };
+    for (const [paymentId, payment] of Object.entries(charge.payments ?? {})) {
+      const id = `room-charge-${charge.id}-${paymentId}`;
+      const edited = next.incomes[id];
+      if (!edited || JSON.stringify(current.incomes[id]) === JSON.stringify(edited)) continue;
+      const items = edited.items ?? [];
+      if (items.length !== 1) throw new Error('Edite o pagamento do adicional usando uma única forma de pagamento.');
+      newPayments[paymentId] = { ...payment, method: items[0].paymentMethod, amount: edited.amount };
+      changed = true;
+    }
+    if (!changed) continue;
+    const total = Object.entries(newPayments).reduce((sum, [id, payment]) => charge.voidedPayments?.[`room-charge-${charge.id}-${id}`] ? sum : sum + Math.round(payment.amount * 100), 0);
+    if (total > Math.round(charge.amount * 100)) throw new Error('Os pagamentos não podem ultrapassar o valor do adicional.');
+    for (const [paymentId, payment] of Object.entries(newPayments)) {
+      if (JSON.stringify(payment) !== JSON.stringify(charge.payments?.[paymentId])) updates[`erp_geral/recepcao/roomCharges/${charge.id}/payments/${paymentId}`] = payment;
     }
   }
   changedRecords('transfers', current.transfers, next.transfers);

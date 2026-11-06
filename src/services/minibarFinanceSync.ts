@@ -7,7 +7,7 @@ import type { InventoryData, StockMovement } from '../types/inventory';
 
 const movementFingerprint = (movement: StockMovement) => JSON.stringify([
   movement.type, movement.quantity, movement.unitPrice, movement.settlement, movement.paymentMethod, movement.settledAt,
-  movement.entryPayment, movement.paidDate,
+  movement.entryPayment, movement.entryCard, movement.paidDate,
 ]);
 
 export async function syncStockMovementFinance(movement: StockMovement): Promise<void> {

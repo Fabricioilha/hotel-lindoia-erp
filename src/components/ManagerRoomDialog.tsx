@@ -101,16 +101,17 @@ export function ManagerRoomDialog({ number, room, receptionRoom, occupant, stay,
     } finally { setSaving(false); }
   }
 
-  async function releaseStay() {
-    if (occupant?.sourceType !== 'stay') return;
+  async function checkOut() {
+    if (!occupant) return;
     setSaving(true);
     setError('');
     try {
-      await releaseOccupiedRoom({ stayId: occupant.sourceId, roomId: room?.id });
-      onSaved(`Hospedagem encerrada. Quarto ${number} liberado para limpeza.`);
+      await releaseOccupiedRoom(occupant.sourceType === 'stay' ? { stayId: occupant.sourceId, roomId: room?.id } : { reservationId: occupant.sourceId, roomId: room?.id });
+      onSaved(`Check-out realizado. Quarto ${number} aguardando limpeza.`);
       onClose();
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Não foi possível liberar o quarto.');
+      setConfirmRelease(false);
+      setError(cause instanceof Error ? cause.message : 'Não foi possível realizar o check-out.');
     } finally { setSaving(false); }
   }
 
@@ -156,18 +157,18 @@ export function ManagerRoomDialog({ number, room, receptionRoom, occupant, stay,
       {stay && <StayAccount stay={stay} charges={charges} attendant="Gerência" onSaved={onSaved} />}
       {error && <p className="dashboard-room-charge-error" role="alert">{error}</p>}
       {confirmRelease ? <div className="manager-room-release-confirm">
-        <p>Encerrar a hospedagem de <strong>{occupant?.name}</strong> e liberar o quarto para limpeza? Os pagamentos registrados serão preservados.</p>
-        <div className="dashboard-room-charge-actions"><button type="button" className="dashboard-room-charge-cancel" disabled={saving} onClick={() => setConfirmRelease(false)}>Voltar</button><button type="button" className="dashboard-room-charge-submit" disabled={saving} onClick={() => void releaseStay()}>{saving ? 'Liberando…' : 'Confirmar liberação'}</button></div>
+        <p>Fazer o check-out de <strong>{occupant?.name}</strong>? O quarto {number} ficará como “Aguardando limpeza” e os pagamentos registrados serão preservados.</p>
+        <div className="dashboard-room-charge-actions"><button type="button" className="dashboard-room-charge-cancel" disabled={saving} onClick={() => setConfirmRelease(false)}>Voltar</button><button type="button" className="dashboard-room-charge-submit" disabled={saving} onClick={() => void checkOut()}>{saving ? 'Realizando check-out…' : 'Confirmar check-out'}</button></div>
       </div> : <div className="manager-room-actions">
         {occupant && <Link className="dashboard-room-charge-submit" to={bookingLink}>Editar {occupant.sourceType === 'stay' ? 'hospedagem' : 'reserva'}</Link>}
-        {occupant?.sourceType === 'reservation' && <Link className="dashboard-room-charge-cancel" to={`${bookingLink}&action=checkout`}>Liberar quarto / checkout</Link>}
-        {occupant?.sourceType === 'stay' && <button type="button" className="dashboard-room-charge-cancel" disabled={saving} onClick={() => setConfirmRelease(true)}>Liberar quarto</button>}
+        {occupant && <button type="button" className="dashboard-room-charge-cancel" disabled={saving} onClick={() => setConfirmRelease(true)}>Fazer check-out</button>}
+        {occupant?.sourceType === 'reservation' && financialLoaded && balance + Math.max(0, chargeTotal - chargesPaid) > 0.005 && <Link className="dashboard-room-charge-cancel" to={`${bookingLink}&action=checkout`}>Receber saldo no check-out</Link>}
         <button type="button" className="dashboard-room-charge-cancel" disabled={saving || Boolean(occupant)} onClick={() => void changeAvailability()}>{saving ? 'Salvando…' : blocked ? 'Liberar bloqueio do quarto' : 'Bloquear quarto'}</button>
         <Link className="dashboard-room-charge-cancel" to={`/quartos?${context}`}>Gerência de quartos</Link>
         <Link className="dashboard-room-charge-cancel" to={`/limpeza?${context}`}>Limpeza por camareiras</Link>
         {!occupant && <Link className="dashboard-room-charge-cancel" to={bookingLink}>Reservas e hospedagens</Link>}
       </div>}
-      {occupant && !confirmRelease && <p className="manager-room-help">Finalize o checkout para liberar a ocupação antes de bloquear o quarto.</p>}
+      {occupant && !confirmRelease && <p className="manager-room-help">Faça o check-out para liberar a ocupação (o quarto fica aguardando limpeza) antes de bloquear o quarto.</p>}
       {!occupant && <p className="manager-room-help">A limpeza e o bloqueio são acompanhados também na Gerência de quartos e na Limpeza por camareiras.</p>}
     </section>
   </div>;

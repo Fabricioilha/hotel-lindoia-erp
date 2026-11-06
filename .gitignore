@@ -44,3 +44,6 @@ ssh-key-*
 .dev.vars*
 
 acessar a VM.txt
+
+# Cópia local para comparação
+/hotel-lindoia-erp Argon/

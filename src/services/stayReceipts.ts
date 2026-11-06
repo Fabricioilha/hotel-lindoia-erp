@@ -18,6 +18,20 @@ export function initializeStayReceipts(stay: GuestStay, date: string, paid: bool
   return { ...stay, receiptsInitialized: true, receipts, ...(paid ? { lastReceiptAt: new Date(receivedAt).toISOString() } : {}) };
 }
 
+export function withReceiptPaymentMethod(stay: GuestStay, id: string, method: FinancePaymentMethod): GuestStay {
+  const suffix = id.startsWith(`recepcao-${stay.id}-`) ? id.slice(`recepcao-${stay.id}-`.length) : '';
+  if (suffix === 'diaria') return { ...stay, dailyMethod: method };
+  if (suffix === 'diaria-2' && stay.dailySplit) return { ...stay, dailySplit: { ...stay.dailySplit, method } };
+  if (suffix === 'cafe') return { ...stay, breakfastMethod: method };
+  if (suffix === 'cafe-2' && stay.breakfastSplit) return { ...stay, breakfastSplit: { ...stay.breakfastSplit, method } };
+  if (suffix === 'taxa') return { ...stay, taxMethod: method };
+  if (suffix === 'taxa-2' && stay.taxSplit) return { ...stay, taxSplit: { ...stay.taxSplit, method } };
+  if (suffix.startsWith('extra-') && stay.extras?.some((extra) => extra.id === suffix.slice(6))) {
+    return { ...stay, extras: stay.extras.map((extra) => extra.id === suffix.slice(6) ? { ...extra, method } : extra) };
+  }
+  return stay;
+}
+
 export function addStayReceipt(stay: GuestStay, input: { id: string; amount: number; method: FinancePaymentMethod; date: string; attendant: string }, now = new Date().toISOString()): GuestStay {
   if (stay.receipts?.[input.id]) return stay;
   const amount = Math.round(input.amount * 100) / 100;
@@ -40,4 +54,28 @@ export function addStayReceipt(stay: GuestStay, input: { id: string; amount: num
   }
   if (remaining) throw new Error('Não foi possível distribuir o recebimento. Revise a conta da hospedagem.');
   return { ...stay, receiptsInitialized: true, receipts, lastReceiptAt: [stay.lastReceiptAt ?? '', receivedAt].sort().at(-1)! };
+}
+
+const withoutVoids = (stay: GuestStay): GuestStay => ({ ...stay, receiptsInitialized: false, receipts: undefined, voidedPayments: undefined });
+
+// Ids dos lançamentos previstos cuja forma de pagamento foi trocada entre duas versões da hospedagem.
+export function changedStayPaymentMethods(previous: GuestStay, next: GuestStay): string[] {
+  const before = stayFinanceEntries(withoutVoids(previous));
+  const after = stayFinanceEntries(withoutVoids(next));
+  return Object.keys(after).filter((id) => before[id] && incomeItems(before[id])[0].paymentMethod !== incomeItems(after[id])[0].paymentMethod);
+}
+
+// Recebimentos já gravados continuam valendo na hospedagem; sem isto a troca da forma no formulário não chega ao Financeiro.
+export function withSyncedReceiptMethods(previous: GuestStay, next: GuestStay): GuestStay {
+  if (!next.receiptsInitialized && !next.receipts) return next;
+  const after = stayFinanceEntries(withoutVoids(next));
+  const receipts = { ...next.receipts };
+  for (const id of changedStayPaymentMethods(previous, next)) {
+    const receipt = receipts[id];
+    if (!receipt) continue;
+    const { cardFeeRate: _rate, cardFeeAmount: _fee, netAmount: _net, ...rest } = receipt;
+    void _rate; void _fee; void _net;
+    receipts[id] = { ...rest, method: incomeItems(after[id])[0].paymentMethod };
+  }
+  return { ...next, receipts };
 }

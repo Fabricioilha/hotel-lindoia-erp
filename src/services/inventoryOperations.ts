@@ -8,7 +8,7 @@ export const RECEPTION_STOCK_LOCATION = 'Geladeira - Recepção';
 export interface InventoryMovementInput {
   id: string; productId: string; type: MovementType; quantity: number;
   fromLocation: string; toLocation: string; unitPrice: number; reference: string; note: string; actor: string;
-  createdAt: string; entryPayment?: 'pendente' | 'caixa' | 'banco'; paidDate?: string;
+  createdAt: string; entryPayment?: 'pendente' | 'caixa' | 'banco' | 'cartao'; entryCard?: string; paidDate?: string;
 }
 
 function validateLocation(location: string) {
@@ -66,7 +66,7 @@ export function applyInventoryMovement(current: InventoryData, input: InventoryM
     quantity, unit: product.unit, fromLocation, toLocation, reference: input.reference, actor: input.actor, unitPrice: input.unitPrice,
     note: input.type === 'ajuste' ? `${input.note}${input.note ? ' · ' : ''}Contagem informada: ${input.quantity} ${product.unit}.` : input.note,
     createdAt: input.createdAt,
-    ...(input.type === 'entrada' ? { previousUnitCost: Number(product.cost) || 0, entryPayment: input.entryPayment ?? 'pendente', ...(input.paidDate ? { paidDate: input.paidDate } : {}), financeSynced: Math.round(input.quantity * input.unitPrice * 100) === 0 } : {}),
+    ...(input.type === 'entrada' ? { previousUnitCost: Number(product.cost) || 0, entryPayment: input.entryPayment ?? 'pendente', ...(input.entryPayment === 'cartao' && input.entryCard ? { entryCard: input.entryCard } : {}), ...(input.paidDate ? { paidDate: input.paidDate } : {}), financeSynced: Math.round(input.quantity * input.unitPrice * 100) === 0 } : {}),
   };
   return { ...current,
     products: { ...current.products, [product.id]: { ...product, locationQuantities: locations, ...(input.type === 'entrada' ? { cost: input.unitPrice, averageCost } : {}), updatedAt: input.createdAt } },

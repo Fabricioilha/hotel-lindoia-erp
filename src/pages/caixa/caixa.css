@@ -75,6 +75,9 @@
 .cx-methods { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 8px; margin: 0; padding: 0; list-style: none; }
 .cx-methods li { display: flex; justify-content: space-between; padding: 10px 12px; border-radius: 8px; background: #f1f6fc; font-size: 0.875rem; }
 
+.cx-edit { margin-left: 12px; border: 0; color: #1f5fa8; background: none; font: inherit; font-size: 0.75rem; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.cx-edit-line { display: grid; gap: 10px; margin: 0; padding: 12px; border: 1px solid #dbe3ee; border-radius: 10px; }
+.cx-edit-line legend { padding: 0 6px; color: #142b4d; font-size: 0.8125rem; font-weight: 800; }
 .cx-delete { margin-left: 12px; border: 0; color: #b22a3e; background: none; font: inherit; font-size: 0.75rem; font-weight: 700; text-decoration: underline; cursor: pointer; }
 .cx-stat.is-store { background: #6a3f9a; }
 .cx-float { margin: 0; padding: 8px 12px; border-radius: 8px; background: #f1f6fc; color: #556580; font-size: 0.8125rem; }

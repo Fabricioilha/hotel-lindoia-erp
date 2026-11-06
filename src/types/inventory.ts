@@ -49,7 +49,8 @@ export interface StockSupplier {
 export interface StockMovement {
   unitCost?: number;
   previousAverageCost?: number;
-  entryPayment?: 'pendente' | 'caixa' | 'banco';
+  entryPayment?: 'pendente' | 'caixa' | 'banco' | 'cartao';
+  entryCard?: string;
   paidDate?: string;
   sourceLocationQuantities?: Record<string, number>;
   id: string;

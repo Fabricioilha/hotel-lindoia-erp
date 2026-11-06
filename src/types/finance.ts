@@ -65,11 +65,22 @@ export interface FinanceExpense {
   paidOyo?: number;
   paidDate?: string;
   payments?: Record<string, FinancePaymentEvent>;
+  // Forma escolhida na compra; compras no cartão guardam o cartão e só debitam as carteiras quando a fatura é paga.
+  purchaseMethod?: PurchaseMethod;
+  cardCategory?: string;
   note: string;
   createdAt: string;
   updatedAt: string;
   operationalOverride?: boolean;
 }
+
+export type PurchaseMethod = 'cash' | 'pix' | 'card';
+
+export const PURCHASE_METHOD_LABELS: Record<PurchaseMethod, string> = {
+  cash: 'Dinheiro',
+  pix: 'Pix',
+  card: 'Cartão',
+};
 
 export interface FinanceTransfer {
   id: string;
