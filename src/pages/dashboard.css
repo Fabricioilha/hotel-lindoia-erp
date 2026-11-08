@@ -331,3 +331,442 @@
 .dashboard-maintenance-list { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 10px; }
 .dashboard-arrivals { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
 .dashboard-arrivals li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid #d5deea; border-radius: 8px; background: #fff; }
+
+/* ===== DARK-GLASS (gerente) =====
+   Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
+   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+:where(html[data-manager-theme="dark-glass"]) .dashboard-page {
+  --brand-ink: var(--dg-text);
+  --brand-muted: var(--dg-text-muted);
+  color: var(--dg-text);
+  background: transparent;
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-header {
+  background: var(--dg-surface-strong);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-profile {
+  border-right: 1px solid var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-eyebrow {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-welcome h1 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-welcome > div > p:last-child {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-toast {
+  border: 1px solid var(--dg-border);
+  color: #86efac;
+  background: hsl(131 54% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-metric {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-metric p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-metric strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-metric small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-section-heading h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-text-link {
+  color: #8ec5fa;
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-text-link:hover {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .module-card {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .module-active:hover {
+  box-shadow: 0 7px 18px rgb(0 0 0 / 0.14);
+}
+:where(html[data-manager-theme="dark-glass"]) .module-number {
+  color: #8ec5fa;
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .module-copy strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .module-copy p,
+:where(html[data-manager-theme="dark-glass"]) .module-arrow {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .module-disabled {
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .module-disabled .module-copy strong,
+:where(html[data-manager-theme="dark-glass"]) .module-disabled .module-copy p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .module-lock {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .duty-bar {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .duty-bar small {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .duty-option {
+  border: 1px solid var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .duty-option:hover {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .duty-option.is-on {
+  border-color: var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .duty-bar strong {
+  color: #8ec5fa;
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-content-employee .duty-bar strong {
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-price-suggestions,
+:where(html[data-manager-theme="dark-glass"]) .dashboard-rooms .dashboard-section-heading > small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room:hover:not(:disabled) {
+  box-shadow: 0 8px 18px rgb(0 0 0 / 0.27);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room:focus-visible {
+  outline: 3px solid var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room.is-cleaning {
+  background: hsl(40 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-top strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-number-icon {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-status.is-occupied {
+  color: #fda4af;
+  background: hsl(352 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-status.is-free {
+  color: #86efac;
+  background: hsl(140 50% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-status.is-maintenance,
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-status.is-dirty {
+  color: #fcd34d;
+  background: hsl(39 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-status.is-checkout {
+  color: #fcd34d;
+  background: hsl(40 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-checkout-notice {
+  border: 1px solid hsl(41 52% 60% / 0.35);
+  color: #fcd34d;
+  background: hsl(42 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-status.is-cleaning {
+  color: #fcd34d;
+  background: hsl(39 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-type,
+:where(html[data-manager-theme="dark-glass"]) .dashboard-rooms .dashboard-section-heading > div > small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-cleanliness {
+  color: #fcd34d;
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-cleanliness.is-limpo {
+  color: #86efac;
+}
+:where(html[data-manager-theme="dark-glass"]) .manager-room-dialog .stay-account {
+  border-top: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .manager-room-dialog .stay-account-receive {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .manager-room-dialog .stay-account-receive legend {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .manager-room-dialog .stay-account-receive label {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .manager-room-dialog .stay-account-receive input,
+:where(html[data-manager-theme="dark-glass"]) .manager-room-dialog .stay-account-receive select {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .manager-room-dialog .stay-account-receive button {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .manager-room-dialog .stay-account-receive button:last-child {
+  background: #2563eb;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .manager-room-badges > span {
+  background: var(--dg-surface-inset);
+  color: #8ec5fa;
+}
+:where(html[data-manager-theme="dark-glass"]) .manager-room-booking {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .manager-room-details dt {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .manager-room-details dd {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .manager-room-actions > button,
+:where(html[data-manager-theme="dark-glass"]) .manager-room-actions > a {
+  border: 1px solid var(--dg-border);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .manager-room-actions > :focus-visible {
+  outline: 3px solid var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .manager-room-help {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .manager-room-release-confirm {
+  background: hsl(42 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-cleaning {
+  border: 1px solid hsl(41 52% 60% / 0.35);
+  color: #fcd34d;
+  background: hsl(42 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-stats > span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-stats > span.has-value {
+  color: #8ec5fa;
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-guest strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-extra-guest,
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-vacancy {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-rooms-empty {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-tool-modal {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+  box-shadow: 0 18px 55px rgb(0 0 0 / 0.51);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-tool-modal-header {
+  border-bottom: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-tool-modal-header h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-tool-modal-header button {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-tool-modal-header button:hover {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-tool-loading,
+:where(html[data-manager-theme="dark-glass"]) .breadcrumb .panel-breadcrumb-link {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .breadcrumb .panel-breadcrumb-link:hover {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .back-to-panel.panel-modal-home {
+  border: 2px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-home-button.panel-modal-home {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-modal,
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-choice {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  box-shadow: 0 18px 55px rgb(0 0 0 / 0.51);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-choice h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-choice > div:first-child > p:last-child {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-choice-actions button {
+  border: 1px solid var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-surface-inset);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-choice-actions button:hover {
+  box-shadow: 0 6px 16px rgb(0 0 0 / 0.17);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-choice-actions svg {
+  color: #8ec5fa;
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-choice-cancel {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-header h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-header small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-close {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-close:hover {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-types legend {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-types label {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-types label:has(input:checked) {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-field {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-field input,
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-field select {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-field input:focus,
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-field select:focus {
+  border-color: var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-split {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-total {
+  color: var(--dg-text-muted);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-total strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-total small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-error {
+  border: 1px solid hsl(12 62% 60% / 0.35);
+  color: #fda4af;
+  background: hsl(16 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-actions button {
+  border: 1px solid var(--dg-border);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-cancel {
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-release-button {
+  box-shadow: 0 3px 8px rgb(0 0 0 / 0.27);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-release-button:focus-visible {
+  outline: 3px solid var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-checkout-warning {
+  color: #fcd34d;
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-submit {
+  border-color: var(--dg-border-strong) !important;
+  background: #2563eb;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-charge-submit:hover:not(:disabled) {
+  background: #1d4ed8;
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-room-stats .has-breakfast {
+  background: hsl(48 80% 52% / 0.16);
+  color: #fcd34d;
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-board-date input,
+:where(html[data-manager-theme="dark-glass"]) .dashboard-board-date button {
+  border: 1px solid var(--dg-border);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-board-date .dashboard-board-date-arrow {
+  background: var(--dg-surface);
+  color: #8ec5fa;
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-board-date .dashboard-board-date-arrow:hover {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-noon-alert {
+  border: 1px solid hsl(351 72% 60% / 0.35);
+  background: hsl(351 80% 52% / 0.16);
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-arrivals li {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+/* ===== /DARK-GLASS ===== */

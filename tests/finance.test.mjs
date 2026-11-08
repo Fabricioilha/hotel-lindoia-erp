@@ -627,3 +627,78 @@ test('card category subscription reads only category metadata', () => {
   assert.ok(categories.includes('Cartão Banco · Titular'));
   assert.deepEqual(isolated.listeners.map((item) => item.path).sort(), ['erp_geral/financeiro/categoryAliases', 'erp_geral/financeiro/expenseCategories']);
 });
+
+test('staff base salary persists, stays optional for legacy members and is only cleared explicitly', async () => {
+  const legacy = { id: 'staff-ana', name: 'Ana', categoryId: 'reception', active: true };
+  const state = { erp_geral: { escala: { days: {}, employees: ['Ana'], staff: { configured: true,
+    categories: { reception: { id: 'reception', name: 'Recepção plantonista', duty: 'reception' } }, members: { 'staff-ana': legacy } } } } };
+  const isolated = isolatedDomain(state);
+  const staffStore = isolated.load('src/services/staffStore.ts');
+  const staffTypes = isolated.load('src/types/staff.ts');
+  const members = () => state.erp_geral.escala.staff.members;
+  assert.equal(staffTypes.staffBaseSalary(legacy), 0, 'legacy members without baseSalary read as 0');
+
+  await staffStore.saveStaffMember({ id: 'staff-bruno', name: 'Bruno', categoryId: 'reception', active: true, baseSalary: 2150.456 });
+  assert.equal(members()['staff-bruno'].baseSalary, 2150.46, 'saved in reais, rounded to cents');
+  assert.deepEqual(members()['staff-ana'], legacy, 'unrelated legacy members are untouched');
+  assert.deepEqual(state.erp_geral.escala.employees, ['Ana', 'Bruno']);
+
+  await staffStore.saveStaffMember({ ...legacy, baseSalary: 1800 });
+  assert.equal(members()['staff-ana'].baseSalary, 1800);
+  // An editor that does not know the field (baseSalary undefined) must not wipe the stored salary.
+  await staffStore.saveStaffMember({ ...legacy, name: 'Ana Paula' });
+  assert.equal(members()['staff-ana'].baseSalary, 1800);
+  assert.deepEqual(members()['staff-ana'].previousNames, ['Ana']);
+  // Informing 0 (or an invalid value) clears it, and loaded data is read back through the tolerant helper.
+  await staffStore.saveStaffMember({ ...legacy, name: 'Ana Paula', baseSalary: 0 });
+  assert.equal('baseSalary' in members()['staff-ana'], false);
+  assert.equal(staffTypes.staffBaseSalary(members()['staff-ana']), 0);
+  assert.deepEqual(['1800,5', 1800.5, '', 'abc', -5, NaN, null, undefined].map(staffTypes.normalizeBaseSalary), [1800.5, 1800.5, 0, 0, 0, 0, 0, 0]);
+});
+
+test('payroll with an advance records the vale on the payroll but only the payslip leaves the cash balance', async () => {
+  const vale = expense({ id: 'vale', category: 'Adiantamento de salário', employee: 'Maria', employeeId: 'e1', advanceMonth: '2026-10', dueDate: '2026-10-10',
+    plannedAmount: 300, paidCash: 300, paidDate: '2026-10-10', payments: { 'vale-cash': { id: 'vale-cash', date: '2026-10-10', wallet: 'cash', amount: 300, dateSource: 'informed' } } });
+  const state = db({ openingBalances: { cash: 1000, bank: 5000, oyo: 0 }, expenses: { vale } });
+  const isolated = isolatedDomain(state);
+  const store = isolated.load('src/services/financeStore.ts');
+  const advancesModule = isolated.load('src/services/payrollAdvances.ts');
+  const reportModule = isolated.load('src/services/accounting/monthlyAccounting.ts');
+  const finance = isolated.load('src/types/finance.ts');
+  const events = (entry) => isolated.load('src/services/financePayments.ts').payrollPaymentEvents(entry);
+
+  const before = await store.loadFinanceForMonth('2026-10');
+  const advances = advancesModule.availablePayrollAdvances(before, { id: 'p1', employee: 'Maria', employeeId: 'e1', month: '2026-10' });
+  assert.deepEqual(advances, { vale: 300 });
+  const totals = advancesModule.payrollLaunchTotals({ baseSalary: 2000, advances, paidCash: 0, paidBank: 1500 });
+  assert.deepEqual([totals.basePay, totals.additions, totals.deductions, totals.net, totals.registered, totals.pending, totals.closing], [2000, 0, 200, 1500, 1800, 0, true]);
+  const entry = payroll({ id: 'p1', employeeId: 'e1', month: '2026-10', dueDate: '2026-10-31', basePay: totals.basePay, additions: totals.additions, deductions: totals.deductions, advances, paidBank: 1500, paidDate: '2026-10-30' });
+  await store.updateFinance((current) => ({ ...current, payroll: { ...current.payroll, p1: entry } }));
+
+  const saved = state.erp_geral.financeiro.payroll.p1;
+  assert.deepEqual(saved.advances, { vale: 300 }, 'the vale stays linked to the payroll record');
+  assert.deepEqual(events(saved).map((event) => [event.wallet, event.amount, event.date]), [['bank', 1500, '2026-10-30']], 'only the payslip is a payment');
+  assert.equal(state.erp_geral.financeiro.expenses.vale.paidCash, 300, 'the vale keeps its own history');
+
+  const snapshot = await store.loadFinanceForMonth('2026-10');
+  assert.deepEqual(analytics.balancesAt(snapshot, '2026-10'), { cash: 700, bank: 3500, oyo: 0 }, 'cash -300 (vale, paid earlier) and bank -1500 (payslip); never -2100');
+  assert.equal(finance.payrollNet(snapshot.payroll.p1), 1500);
+  assert.equal(finance.payrollRegistered(snapshot.payroll.p1), 1800);
+  const summary = analytics.monthlyFinanceSummary(snapshot, '2026-10');
+  assert.equal(summary.payrollPayments.bank + summary.payrollPayments.cash, 1500);
+  assert.equal(summary.expensePayments.cash, 300);
+  assert.equal(summary.cashPaidExpenses, 1800);
+  const report = reportModule.buildMonthlyAccountingReport(snapshot, '2026-10', stamp);
+  assert.equal(report.totals.paidHotel, 1800);
+  assert.ok(report.wallets.every((wallet) => wallet.difference === 0));
+  assert.match(report.payments.find((payment) => payment.type === 'Folha').note, /Vales compensados nesta folha: R\$\s300,00.*não debitam novamente/);
+  assert.match(report.obligations.find((row) => row.type === 'Folha').note, /adiantamentos compensados 300; remuneração registrada 1800/);
+
+  // Editing the payroll again must not create another payment or release the vale.
+  await store.updateFinance((current) => ({ ...current, payroll: { ...current.payroll, p1: { ...current.payroll.p1, note: 'Conferida' } } }));
+  assert.equal(Object.keys(state.erp_geral.financeiro.payroll.p1.payments).length, 1);
+  assert.deepEqual(analytics.balancesAt(await store.loadFinanceForMonth('2026-10'), '2026-10'), { cash: 700, bank: 3500, oyo: 0 });
+  // Paying the whole remuneration again (double deduction) or deleting the linked vale is refused.
+  await assert.rejects(store.updateFinance((current) => ({ ...current, payroll: { ...current.payroll, p1: { ...current.payroll.p1, paidBank: 1800, payments: undefined } } })), /supera o valor líquido/);
+  await assert.rejects(store.updateFinance((current) => { const expenses = { ...current.expenses }; delete expenses.vale; return { ...current, expenses }; }), /adiantamento/);
+});

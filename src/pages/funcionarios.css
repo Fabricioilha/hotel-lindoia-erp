@@ -1,37 +1,185 @@
-.staff-page .finance-panel { margin: 20px 0; padding: 22px; }
-.staff-page .finance-form { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); align-items: end; gap: 16px; margin: 18px 0; }
-.staff-page label { display: grid; gap: 6px; color: #203b59; font-size: 13px; font-weight: 600; }
-.staff-page input:not([type=checkbox]), .staff-page select { padding: 10px; border: 1px solid #cbd5e1; border-radius: 7px; min-width: 180px; background: #fff; color: #172d47; }
-.staff-page button { padding: 8px 12px; border-radius: 7px; border: 1px solid #bccadc; background: #fff; color: #24476b; cursor: pointer; }
-.staff-page button[type=submit] { background: #24476b; color: #fff; }
-.staff-page button:disabled { opacity: .5; cursor: wait; }
-.staff-page td small { display: block; margin-top: 4px; color: #64748b; font-size: 11px; }
-.staff-page .staff-schedule-hint { align-self: end; max-width: 260px; margin: 0; color: #53627a; font-size: 12px; font-weight: 600; }
-.staff-page .finance-panel > p { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
-@media (max-width: 600px) { .staff-page .finance-form > label { width: 100%; } }
-.staff-page .staff-wide {
-  grid-column: 1 / -1;
-}
+.staff-page .staff-heading { display: flex; align-items: flex-end; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin: 14px 0 18px; }
+.staff-page .staff-heading h1 { margin: 0; font-size: 1.688rem; font-weight: 760; line-height: 1.2; }
+.staff-page .staff-heading p { max-width: 62ch; margin: 6px 0 0; color: var(--finance-muted); font-size: .875rem; line-height: 1.5; }
+.staff-page .finance-alert { margin-bottom: 14px; }
 
-.staff-page fieldset {
-  display: grid;
-  gap: 8px;
-  border: 1px solid #d4dce7;
-  padding: 10px;
-}
+.staff-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; margin-bottom: 16px; }
+.staff-stats article { display: grid; gap: 4px; padding: 14px 16px; border: 1px solid var(--finance-border); border-radius: 12px; background: #fff; transition: background-color .25s ease, border-color .25s ease, box-shadow .25s ease, transform .2s ease; }
+.staff-stats article:hover { transform: translateY(-2px); box-shadow: 0 8px 22px rgb(20 43 77 / 10%); }
+.staff-stats span { color: var(--finance-muted); font-size: .8rem; font-weight: 600; }
+.staff-stats strong { color: var(--finance-ink); font-size: 1.375rem; line-height: 1.15; font-variant-numeric: tabular-nums; }
 
-.staff-page fieldset > div {
-  display: grid;
-  grid-template-columns: 1fr 170px auto;
-  gap: 8px;
-}
+.staff-page .staff-directory, .staff-page .staff-categories { margin: 0 0 18px; padding: 18px; }
+.staff-toolbar { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px 16px; margin-bottom: 16px; }
+.staff-search { flex: 1 1 280px; max-width: 460px; }
+.staff-search input { width: 100%; min-height: 42px; padding: .55rem .85rem .55rem 2.4rem; border: 1px solid #cdd6e3; border-radius: 10px; color: var(--finance-ink); background: #fff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%2364738a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat .75rem center; font: inherit; font-size: .925rem; transition: border-color .25s ease, box-shadow .25s ease, background-color .25s ease; }
+.staff-search input:focus { border-color: #1e5d9d; outline: 0; box-shadow: 0 0 0 3px rgb(30 93 157 / 20%); }
+.staff-filter { display: inline-flex; gap: 2px; padding: 4px; border: 1px solid #cdd6e3; border-radius: 999px; background: #f2f5fa; }
+.staff-filter button { display: inline-flex; align-items: center; gap: 7px; min-height: 36px; padding: 0 14px; border: 0; border-radius: 999px; color: #44566e; background: transparent; font: inherit; font-size: .85rem; font-weight: 650; cursor: pointer; transition: background-color .25s ease, color .2s ease, box-shadow .25s ease; }
+.staff-filter button span { min-width: 22px; padding: 1px 7px; border-radius: 999px; color: #44566e; background: rgb(20 43 77 / 8%); font-size: .75rem; text-align: center; }
+.staff-filter button:hover:not(.is-selected) { background: rgb(20 43 77 / 7%); }
+.staff-filter button.is-selected { color: #fff; background: #183c66; box-shadow: 0 3px 9px rgb(20 43 77 / 22%); }
+.staff-filter button.is-selected span { color: #fff; background: rgb(255 255 255 / 20%); }
+
+.staff-card-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 330px), 1fr)); gap: 14px; margin: 0; padding: 0; list-style: none; }
+.staff-card { display: grid; grid-template-rows: auto 1fr auto; gap: 14px; min-width: 0; padding: 16px; border: 1px solid #cdd6e3; border-radius: 14px; background: #fff; transition: background-color .25s ease, border-color .25s ease, box-shadow .25s ease, transform .2s ease; }
+.staff-card:hover { border-color: #aebed2; box-shadow: 0 10px 26px rgb(20 43 77 / 12%); transform: translateY(-2px); }
+.staff-card.is-inactive { background: #f7f9fc; }
+.staff-card.is-inactive .staff-avatar { filter: grayscale(1); opacity: .75; }
+.staff-card-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.staff-avatar { display: grid; flex: 0 0 42px; width: 42px; height: 42px; place-items: center; border-radius: 12px; color: #fff; background: linear-gradient(135deg, #183c66, #2c6aa8); font-size: .9rem; font-weight: 800; letter-spacing: .02em; }
+.staff-card-title { display: grid; flex: 1 1 auto; min-width: 0; }
+.staff-card-title strong { overflow: hidden; color: var(--finance-ink); font-size: 1rem; text-overflow: ellipsis; white-space: nowrap; }
+.staff-card-title span { overflow: hidden; color: var(--finance-muted); font-size: .8rem; text-overflow: ellipsis; white-space: nowrap; }
+.staff-status { flex: 0 0 auto; padding: 3px 10px; border: 1px solid transparent; border-radius: 999px; font-size: .72rem; font-weight: 750; }
+.staff-status.is-active { border-color: #b9dfcd; color: #1f6b43; background: #eff9f3; }
+.staff-status.is-inactive { border-color: #d3dae5; color: #5a6a80; background: #eef2f7; }
+.staff-card-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); align-content: start; gap: 12px 14px; margin: 0; }
+.staff-card-facts > div { min-width: 0; }
+.staff-card-facts dt { color: var(--finance-muted); font-size: .72rem; font-weight: 700; letter-spacing: .02em; }
+.staff-card-facts dd { margin: 3px 0 0; color: var(--finance-ink); font-size: .875rem; font-weight: 650; line-height: 1.35; overflow-wrap: anywhere; font-variant-numeric: tabular-nums; }
+.staff-card-facts dd small { display: block; margin-top: 2px; color: var(--finance-muted); font-size: .72rem; font-weight: 500; }
+.staff-muted { color: #7b889c; font-weight: 500; }
+.staff-card-actions { display: flex; flex-wrap: wrap; gap: 8px; padding-top: 12px; border-top: 1px solid #edf0f5; }
+.staff-page .staff-card-actions .finance-button, .staff-page .staff-category-actions .finance-button { min-height: 38px; font-size: .8125rem; border-radius: 9px; }
+.staff-page .staff-danger { border-color: #edc4c8; color: #a52c3b; background: #fff; }
+.staff-page .staff-danger:hover:not(:disabled) { background: #fff2f3; }
+
+.staff-category-form { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; align-items: end; gap: 12px 16px; margin-bottom: 14px; }
+.staff-category-form .finance-field input, .staff-category-form .finance-field select { min-height: 42px; border-radius: 10px; font-size: .925rem; }
+.staff-category-form .finance-button { min-height: 42px; border-radius: 10px; font-size: .85rem; }
+.staff-category-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.staff-category-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border: 1px solid #dbe3ee; border-radius: 12px; background: #f7f9fc; }
+.staff-category-list strong { display: block; color: var(--finance-ink); font-size: .9rem; }
+.staff-category-list small { display: block; margin-top: 2px; color: var(--finance-muted); font-size: .76rem; }
+.staff-category-actions { display: flex; flex: 0 0 auto; gap: 6px; }
+
+.staff-modal .staff-schedule-hint { align-self: end; margin: 0; padding-bottom: 12px; }
+.staff-modal .staff-children { display: grid; gap: 10px; min-width: 0; margin: 0; padding: 14px; border: 1px solid rgb(20 43 77 / 14%); border-radius: 12px; }
+.staff-modal .staff-children legend { padding: 0 6px; }
+.staff-child-row { display: grid; grid-template-columns: minmax(0, 1fr) 190px auto; gap: 10px; }
+.staff-add-child { justify-self: start; }
 
 @media (max-width: 760px) {
-  .staff-page .finance-form {
-    grid-template-columns: 1fr;
-  }
-
-  .staff-page .staff-wide {
-    grid-column: auto;
-  }
+  .staff-category-form { grid-template-columns: minmax(0, 1fr); }
+  .staff-child-row { grid-template-columns: minmax(0, 1fr); }
+  .staff-search { max-width: none; }
 }
+@media (max-width: 440px) {
+  .staff-card-facts { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ===== DARK-GLASS (gerente) =====
+   Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
+   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+:where(html[data-manager-theme="dark-glass"]) .staff-page .staff-heading p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-stats article {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-stats article:hover {
+  box-shadow: 0 8px 22px rgb(0 0 0 / 0.17);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-stats span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-stats strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-search input {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-input-bg) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24' fill='none' stroke='%2364738a' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cpath d='m20 20-3.5-3.5'/%3E%3C/svg%3E") no-repeat .75rem center;
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-search input:focus {
+  box-shadow: 0 0 0 3px rgb(0 0 0 / 0.34);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-filter {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-filter button {
+  color: var(--dg-text-muted);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-filter button span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-filter button.is-selected {
+  background: #1d4ed8;
+  box-shadow: 0 3px 9px rgb(0 0 0 / 0.37);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-filter button.is-selected span {
+  background: rgb(255 255 255 / 0.028);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-card {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-card:hover {
+  border-color: var(--dg-border);
+  box-shadow: 0 10px 26px rgb(0 0 0 / 0.2);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-card.is-inactive {
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-avatar {
+  background: linear-gradient(135deg, #2563eb, #2563eb);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-card-title strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-card-title span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-status.is-active {
+  border-color: hsl(152 37% 60% / 0.35);
+  color: #86efac;
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-status.is-inactive {
+  border-color: var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-card-facts dt {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-card-facts dd {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-card-facts dd small,
+:where(html[data-manager-theme="dark-glass"]) .staff-muted {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-card-actions {
+  border-top: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-page .staff-danger {
+  border-color: hsl(354 53% 60% / 0.35);
+  color: #fda4af;
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-page .staff-danger:hover:not(:disabled) {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-category-list li {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-category-list strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-category-list small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .staff-modal .staff-children {
+  border: 1px solid var(--dg-border-strong);
+}
+/* ===== /DARK-GLASS ===== */

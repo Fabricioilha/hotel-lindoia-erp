@@ -622,3 +622,129 @@
     flex: 1 1 auto;
   }
 }
+
+/* ===== DARK-GLASS (gerente) =====
+   Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
+   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+:where(html[data-manager-theme="dark-glass"]) .schedule-app {
+  --schedule-line: var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-sidebar-toggle {
+  border: 1px solid var(--dg-border-strong);
+  background: #2563eb;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-sidebar-toggle:hover {
+  background: #1d4ed8;
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-app .button-danger {
+  border-color: hsl(351 37% 60% / 0.35);
+  color: #fda4af;
+  background: hsl(355 80% 52% / 0.16);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-app .button-danger:hover:not(:disabled) {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-app.is-sidebar-collapsed .schedule-nav-icon {
+  border: 1px solid var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-summary {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-summary article {
+  border-right: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-summary article span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-summary article strong,
+:where(html[data-manager-theme="dark-glass"]) .schedule-month-control {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-month-arrow {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-month-arrow:hover {
+  color: #fda4af;
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-tools {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-field {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-field input,
+:where(html[data-manager-theme="dark-glass"]) .schedule-field select {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-calendar-section {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-calendar th {
+  border: 1px solid var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-calendar td {
+  border: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-calendar td.has-day:hover {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-calendar td.empty-day {
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-calendar td.is-today {
+  background: hsl(41 80% 52% / 0.16);
+  box-shadow: inset 0 0 0 2px rgb(0 0 0 / 0.6);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-day-number {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-day-number strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-shift {
+  color: var(--dg-text);
+  background: color-mix(in srgb, var(--shift-color) 13%, var(--dg-surface));
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-shift span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-shift.shift-falta {
+  background: hsl(356 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-cloud-status {
+  border-top: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-modal-heading h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-modal-close {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-modal-date {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .schedule-modal-actions {
+  border-top: 1px solid var(--dg-border);
+}
+@media (max-width: 850px) {
+  :where(html[data-manager-theme="dark-glass"]) .schedule-month-control {
+    border-top: 1px solid var(--dg-border);
+  }
+}
+/* ===== /DARK-GLASS ===== */

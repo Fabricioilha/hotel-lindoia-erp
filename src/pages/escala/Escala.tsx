@@ -255,10 +255,14 @@ export function Escala({ userRole }: { userRole: UserRole }) {
 				<section className="stock-modal schedule-modal" role="dialog" aria-modal="true" aria-labelledby="schedule-modal-title">
 					<form onSubmit={saveShift}>
 						<div className="schedule-modal-heading"><div><p className="eyebrow">{editing.shift ? 'ATUALIZAR REGISTRO' : 'NOVO REGISTRO'}</p><h2 id="schedule-modal-title">{editing.shift ? 'Editar turno' : 'Adicionar turno'}</h2></div><button type="button" className="schedule-modal-close" onClick={() => setEditing(null)} aria-label="Fechar">×</button></div>
-						<p className="schedule-modal-date">{new Date(Number(editing.date.split('-')[0]), Number(editing.date.split('-')[1]), Number(editing.date.split('-')[2])).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
-						<label className="schedule-field"><span>Funcionário</span><select required value={employee} onChange={(event) => setEmployee(event.target.value)}><option value="">Selecione...</option>{[...new Set([...data.employees, ...(editing?.shift ? [editing.shift.name] : [])])].map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
-						<label className="schedule-field"><span>Status</span><select value={shiftType} onChange={(event) => setShiftType(event.target.value as ShiftType)}>{shiftTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></label>
-						{(shiftType === 'normal' || shiftType === 'falta') && <div className="schedule-time-fields modal-times"><label className="schedule-field"><span>Entrada</span><input type="time" value={timeStart} onChange={(event) => setTimeStart(event.target.value)} /></label><label className="schedule-field"><span>Saída</span><input type="time" value={timeEnd} onChange={(event) => setTimeEnd(event.target.value)} /></label></div>}
+						<div className="modal-form-body">
+							<p className="schedule-modal-date">{new Date(Number(editing.date.split('-')[0]), Number(editing.date.split('-')[1]), Number(editing.date.split('-')[2])).toLocaleDateString('pt-BR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' })}</p>
+							<div className="modal-form-grid">
+								<label className="schedule-field"><span>Funcionário</span><select required value={employee} onChange={(event) => setEmployee(event.target.value)}><option value="">Selecione...</option>{[...new Set([...data.employees, ...(editing?.shift ? [editing.shift.name] : [])])].map((name) => <option key={name} value={name}>{name}</option>)}</select></label>
+								<label className="schedule-field"><span>Status</span><select value={shiftType} onChange={(event) => setShiftType(event.target.value as ShiftType)}>{shiftTypes.map((type) => <option key={type.value} value={type.value}>{type.label}</option>)}</select></label>
+								{(shiftType === 'normal' || shiftType === 'falta') && <div className="schedule-time-fields modal-times modal-form-span"><label className="schedule-field"><span>Entrada</span><input type="time" value={timeStart} onChange={(event) => setTimeStart(event.target.value)} /></label><label className="schedule-field"><span>Saída</span><input type="time" value={timeEnd} onChange={(event) => setTimeEnd(event.target.value)} /></label></div>}
+							</div>
+						</div>
 						<div className="schedule-modal-actions">{editing.shift && <button type="button" className="button button-danger" onClick={deleteShift}>Excluir</button>}<button type="button" className="button button-plain" onClick={() => setEditing(null)}>Cancelar</button><button className="button button-primary" type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar turno'}</button></div>
 					</form>
 				</section>

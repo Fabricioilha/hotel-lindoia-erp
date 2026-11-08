@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { db, get, onValue, ref, runTransaction } from './pocketbaseRealtime';
-import { defaultStaff, findStaff, staffMembers, staffNameKey, type StaffData, type StaffMember } from '../types/staff';
+import { defaultStaff, findStaff, normalizeBaseSalary, staffBaseSalary, staffMembers, staffNameKey, type StaffData, type StaffMember } from '../types/staff';
 import { updateSchedule } from './scheduleStore';
 
 const PATH = 'erp_geral/escala/staff';
@@ -80,7 +80,11 @@ export async function saveStaffMember(member: StaffMember): Promise<void> {
   await updateStaff((data) => {
     const previous = data.members[member.id];
     const previousNames = [...new Set([...(previous?.previousNames ?? []), ...(previous && previous.name !== member.name ? [previous.name] : [])])];
-    const saved = { ...member, ...(previousNames.length ? { previousNames } : {}) };
+    // Quem não informa o salário base preserva o valor já salvo; informar 0 remove o salário.
+    const baseSalary = member.baseSalary === undefined ? staffBaseSalary(previous) : normalizeBaseSalary(member.baseSalary);
+    const { baseSalary: _informed, ...rest } = member;
+    void _informed;
+    const saved = { ...rest, ...(baseSalary > 0 ? { baseSalary } : {}), ...(previousNames.length ? { previousNames } : {}) };
     return { ...data, members: { ...data.members, [member.id]: saved } };
   });
 }

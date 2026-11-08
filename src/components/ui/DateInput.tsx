@@ -53,7 +53,7 @@ export function DateInput({ name, value, defaultValue, onValueChange, required, 
 			setText(next);
 			onValueChange?.(toIso(next));
 		}} />
-		<button type="button" aria-label="Abrir calendário" title="Abrir calendário" style={{ flex: '0 0 auto', padding: '6px 9px', border: '1px solid #cfd9db', borderRadius: 6, background: '#fff', cursor: 'pointer', lineHeight: 1 }} onClick={() => pickerRef.current?.showPicker()}>📅</button>
+		<button type="button" className="date-input-button" aria-label="Abrir calendário" title="Abrir calendário" onClick={() => pickerRef.current?.showPicker()}>📅</button>
 		<input ref={pickerRef} type="date" tabIndex={-1} aria-hidden="true" min={min} max={max} value={iso} style={{ position: 'absolute', right: 0, bottom: 0, width: 1, height: 1, padding: 0, border: 0, opacity: 0, pointerEvents: 'none' }} onChange={(event) => {
 			if (!event.target.value) return;
 			setText(toBr(event.target.value));

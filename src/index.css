@@ -31,6 +31,9 @@
 
 html { font-size: 16px; }
 
+/* Botão do calendário do DateInput (estilo antes inline, para o tema escuro poder redefini-lo). */
+.date-input-button { flex: 0 0 auto; padding: 6px 9px; border: 1px solid #cfd9db; border-radius: 6px; background: #fff; cursor: pointer; line-height: 1; }
+
 #root {
   width: 100%;
   max-width: 100%;
@@ -110,4 +113,97 @@ html[data-role='viewer'] .reception-wide { grid-column: 1 / -1; }
 html[data-role='viewer'] .reception-modal .reception-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 @media (max-width: 600px) {
   html[data-role='viewer'] .reception-modal .reception-grid { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Dark Glassmorphism — tema exclusivo do login de Gerente.
+   Ativado só por data-manager-theme="dark-glass" (ver services/managerTheme.ts); funcionários nunca o recebem.
+   Os tokens --dg-* abaixo alimentam os blocos escopados no fim de cada folha de estilo.
+   ═══════════════════════════════════════════════════════════════════════════ */
+html[data-manager-theme="dark-glass"] {
+  color-scheme: dark;
+  --dg-bg-deep: #0b0f19;
+  --dg-bg-base: #111827;
+  --dg-text: #f8fafc;
+  --dg-text-muted: #94a3b8;
+  --dg-surface: rgba(30, 41, 59, 0.55);
+  --dg-surface-strong: rgba(15, 23, 42, 0.72);
+  --dg-surface-inset: rgba(15, 23, 42, 0.45);
+  --dg-input-bg: rgba(15, 23, 42, 0.6);
+  --dg-hover: rgba(255, 255, 255, 0.08);
+  --dg-active: rgba(59, 130, 246, 0.22);
+  --dg-border: rgba(255, 255, 255, 0.10);
+  --dg-border-strong: rgba(255, 255, 255, 0.16);
+  --dg-shadow: 0 8px 32px rgba(0, 0, 0, 0.35);
+  --dg-blur: blur(16px) saturate(140%);
+  --dg-accent: #60a5fa;
+  --dg-focus: 0 0 0 3px rgba(96, 165, 250, 0.32);
+  --dg-transition: background-color 0.25s ease, border-color 0.25s ease, color 0.2s ease, box-shadow 0.25s ease, transform 0.2s ease;
+
+  /* Variáveis do tema claro reaproveitadas pelas folhas de estilo. */
+  --text: var(--dg-text-muted);
+  --text-h: var(--dg-text);
+  --bg: transparent;
+  --border: var(--dg-border);
+  --code-bg: rgba(255, 255, 255, 0.08);
+  --accent-bg: rgba(248, 113, 113, 0.14);
+  --social-bg: var(--dg-surface);
+  --shadow: var(--dg-shadow);
+
+  color: var(--dg-text);
+  background-color: var(--dg-bg-deep);
+  background-image:
+    radial-gradient(1100px 640px at 6% -10%, rgba(59, 130, 246, 0.20), transparent 62%),
+    radial-gradient(900px 560px at 102% 2%, rgba(139, 92, 246, 0.15), transparent 60%),
+    radial-gradient(1000px 700px at 52% 112%, rgba(20, 184, 166, 0.12), transparent 62%),
+    linear-gradient(160deg, var(--dg-bg-deep) 0%, var(--dg-bg-base) 100%);
+  background-attachment: fixed;
+  scrollbar-color: rgba(148, 163, 184, 0.38) transparent;
+}
+html[data-manager-theme="dark-glass"] body,
+html[data-manager-theme="dark-glass"] #root {
+  color: var(--dg-text);
+  background: transparent;
+}
+html[data-manager-theme="dark-glass"] h1,
+html[data-manager-theme="dark-glass"] h2,
+html[data-manager-theme="dark-glass"] h3 {
+  color: var(--dg-text);
+}
+html[data-manager-theme="dark-glass"] ::selection {
+  color: #fff;
+  background: rgba(96, 165, 250, 0.38);
+}
+html[data-manager-theme="dark-glass"] ::placeholder {
+  color: rgba(148, 163, 184, 0.72);
+  opacity: 1;
+}
+html[data-manager-theme="dark-glass"] ::-webkit-scrollbar { width: 11px; height: 11px; }
+html[data-manager-theme="dark-glass"] ::-webkit-scrollbar-track { background: transparent; }
+html[data-manager-theme="dark-glass"] ::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background: rgba(148, 163, 184, 0.34) padding-box; }
+html[data-manager-theme="dark-glass"] ::-webkit-scrollbar-thumb:hover { background: rgba(148, 163, 184, 0.55) padding-box; }
+html[data-manager-theme="dark-glass"] :is(input, select, textarea) {
+  color: var(--dg-text);
+  caret-color: var(--dg-accent);
+}
+html[data-manager-theme="dark-glass"] :is(input, select, textarea):focus {
+  border-color: rgba(96, 165, 250, 0.6);
+  outline: 0;
+  box-shadow: var(--dg-focus);
+}
+html[data-manager-theme="dark-glass"] option,
+html[data-manager-theme="dark-glass"] optgroup {
+  color: var(--dg-text);
+  background: #1e293b;
+}
+html[data-manager-theme="dark-glass"] code {
+  color: var(--dg-text);
+  background: var(--code-bg);
+}
+html[data-manager-theme="dark-glass"] .date-input-button {
+  border-color: var(--dg-border-strong);
+  background: var(--dg-input-bg);
+}
+@media (prefers-reduced-motion: reduce) {
+  html[data-manager-theme="dark-glass"] * { transition-duration: 0.01ms !important; animation-duration: 0.01ms !important; }
 }

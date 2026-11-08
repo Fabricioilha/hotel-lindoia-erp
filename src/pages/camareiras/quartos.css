@@ -996,3 +996,330 @@
 .room-assignment { display: grid; gap: 5px; margin: 0; padding: 10px 12px; border-radius: 8px; color: #315f87; background: #eef5fb; font-size: .8125rem; }
 .room-assignment a, .room-reservation-link { font-weight: 700; font-size: .8125rem; }
 .room-card-actions { flex-wrap: wrap; }
+
+/* ===== DARK-GLASS (gerente) =====
+   Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
+   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-app {
+  --room-line: var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-sidebar-toggle {
+  border: 1px solid var(--dg-border-strong);
+  background: #2563eb;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-sidebar-toggle:hover {
+  background: #1d4ed8;
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-app.is-sidebar-collapsed .housekeeping-nav-icon {
+  border: 1px solid var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-metric {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-metric p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-metric strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-controls {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .interval-input-wrap > span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-list-heading h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-list-heading > span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-card {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-card.room-cleaning-em_limpeza {
+  border-top-color: var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-number-label {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-card-header h3 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-bed-count {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-bed-count.is-missing {
+  color: #fcd34d;
+}
+:where(html[data-manager-theme="dark-glass"]) .room-edit-button {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-edit-button:hover {
+  border-color: var(--dg-border);
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .badge-cleaning-sujo {
+  border-color: hsl(37 60% 60% / 0.35);
+  color: #fcd34d;
+  background: hsl(39 80% 52% / 0.16);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .badge-cleaning-limpo {
+  border-color: hsl(149 33% 60% / 0.35);
+  color: #86efac;
+  background: hsl(142 54% 52% / 0.16);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .badge-cleaning-em_limpeza {
+  border-color: var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-surface-inset);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .badge-occupancy-livre {
+  border-color: var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface-inset);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .badge-occupancy-ocupado {
+  border-color: var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-surface-inset);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .badge-maintenance-manutencao_necessaria {
+  border-color: hsl(37 71% 60% / 0.35);
+  color: #fcd34d;
+  background: hsl(38 80% 52% / 0.16);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .badge-maintenance-em_manutencao {
+  border-color: hsl(348 49% 60% / 0.35);
+  color: #fda4af;
+  background: hsl(352 80% 52% / 0.16);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .badge-maintenance-normal {
+  border-color: var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface-inset);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-stayover {
+  border-top: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-guest-name {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-guest-name strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .cleaning-request-row {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .choice-buttons button {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .choice-buttons button.is-selected {
+  border-color: var(--dg-border-strong);
+  background: #1d4ed8;
+}
+:where(html[data-manager-theme="dark-glass"]) .room-plan-status {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-breakfast {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-breakfast.has-breakfast {
+  color: #fcd34d;
+  background: hsl(48 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .doors-due {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .doors-due.is-due {
+  border-color: hsl(38 65% 60% / 0.35);
+  background: hsl(40 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .doors-due strong,
+:where(html[data-manager-theme="dark-glass"]) .doors-due small,
+:where(html[data-manager-theme="dark-glass"]) .room-note {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-empty {
+  border: 1px dashed var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-empty strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-empty p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .attendant-panel {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .attendant-empty {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .attendant-table th,
+:where(html[data-manager-theme="dark-glass"]) .attendant-table td {
+  border-bottom: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .attendant-table thead th {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .attendant-table tbody th,
+:where(html[data-manager-theme="dark-glass"]) .attendant-table td {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .attendant-log {
+  border-top: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .attendant-log > strong,
+:where(html[data-manager-theme="dark-glass"]) .attendant-log > div {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .attendant-log > div span:last-child {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-modal {
+  border-color: var(--dg-border);
+  box-shadow: 0 22px 64px rgb(0 0 0 / 0.42);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-modal .schedule-modal-heading {
+  border-bottom: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-modal .schedule-modal-actions {
+  border-top: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-modal .schedule-field input,
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-modal .schedule-field select,
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-modal .schedule-field textarea {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .doors-cleaning-option {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .doors-cleaning-option.is-due {
+  border-color: hsl(38 65% 60% / 0.35);
+  background: hsl(40 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .doors-cleaning-option strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .doors-cleaning-option small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .attendant-manage-list li {
+  border: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-modal .reservation-modal-error {
+  background: hsl(0 80% 52% / 0.16);
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-modal .schedule-modal-header {
+  border-bottom: 1px solid var(--dg-border);
+  background: linear-gradient(135deg, var(--dg-surface) 0%, var(--dg-surface-inset) 100%);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-modal .schedule-modal-header h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-modal .schedule-modal-header p:not(.schedule-eyebrow) {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-modal .schedule-eyebrow {
+  color: #fcd34d;
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-modal .schedule-modal-header > button {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-category-preview {
+  border: 1px solid var(--dg-border);
+  background: linear-gradient(120deg, var(--dg-surface-inset), var(--dg-surface));
+}
+:where(html[data-manager-theme="dark-glass"]) .room-category-preview strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-category-preview span,
+:where(html[data-manager-theme="dark-glass"]) .room-category-preview small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-category-form {
+  border-bottom: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-category-error {
+  border: 1px solid hsl(5 52% 60% / 0.35);
+  color: #fda4af;
+  background: hsl(10 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-category-list h3 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-category-list h3 span {
+  color: var(--dg-text-muted);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-category-item {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-category-item:hover {
+  border-color: var(--dg-border);
+  box-shadow: 0 7px 17px rgb(0 0 0 / 0.1);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-category-item strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-category-item span,
+:where(html[data-manager-theme="dark-glass"]) .room-category-item small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-category-delete:disabled {
+  background: rgba(148, 163, 184, 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .housekeeping-context {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .room-assignment {
+  color: #8ec5fa;
+  background: var(--dg-surface-inset);
+}
+/* ===== /DARK-GLASS ===== */

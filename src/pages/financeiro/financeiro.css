@@ -278,3 +278,520 @@
 .finance-revenue-days { display: grid; gap: 8px; margin-top: 14px; }
 .finance-revenue-day { border: 1px solid #d5deea; border-radius: 8px; background: #fff; }
 .finance-revenue-day > summary { cursor: pointer; padding: 10px 12px; }
+
+/* Folha de pagamento: situação, métricas e resumo financeiro do lançamento. */
+.payroll-metrics { grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+.payroll-status { display: inline-flex; align-items: center; padding: 3px 10px; border: 1px solid transparent; border-radius: 999px; font-size: .6875rem; font-weight: 750; white-space: nowrap; }
+.payroll-status.status-pago { border-color: #b9dfcd; color: #1f6b43; background: #eff9f3; }
+.payroll-status.status-parcial { border-color: #ecd9a4; color: #7a5a0a; background: #fff6d9; }
+.payroll-status.status-pendente { border-color: #edc4c8; color: #8c2530; background: #fff2f3; }
+
+.payroll-summary { display: grid; min-width: 0; overflow: hidden; border: 1px solid rgb(20 43 77 / 14%); border-radius: 14px; background: rgb(255 255 255 / 72%); }
+.payroll-summary-heading { display: flex; align-items: baseline; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px; padding: 13px 18px; border-bottom: 1px solid rgb(20 43 77 / 10%); background: rgb(20 43 77 / 5%); }
+.payroll-summary-heading h3 { margin: 0; color: #142b4d; font-size: .95rem; font-weight: 750; }
+.payroll-summary-heading small { color: #4e637b; font-size: .78rem; }
+.payroll-line { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 8px 18px; padding: 13px 18px; border-bottom: 1px solid rgb(20 43 77 / 8%); }
+.payroll-line-label { display: grid; min-width: 0; gap: 2px; }
+.payroll-line-label strong, .payroll-line-label label strong { color: #172f4e; font-size: .9rem; font-weight: 700; }
+.payroll-line-label small { color: #4e637b; font-size: .78rem; font-weight: 500; line-height: 1.4; }
+.payroll-line-label a { color: #1e5d9d; font-weight: 700; }
+.payroll-line-value { display: grid; justify-items: end; gap: 5px; min-width: 0; color: #172f4e; font-size: 1.02rem; font-weight: 750; font-variant-numeric: tabular-nums; text-align: right; }
+.payroll-line-value small { color: #4e637b; font-size: .76rem; font-weight: 500; }
+.payroll-line-paid .payroll-line-value { width: min(260px, 100%); }
+.payroll-line-total { border-bottom: 0; background: rgb(24 60 102 / 8%); }
+.payroll-line-total .payroll-line-value strong { color: #183c66; font-size: 1.25rem; }
+.payroll-badge { display: inline-block; padding: 3px 10px; border: 1px solid rgb(31 122 74 / 30%); border-radius: 999px; color: #1f6b43; background: rgb(31 122 74 / 10%); font-size: .72rem; font-weight: 700; line-height: 1.3; }
+.payroll-advance-list { display: grid; gap: 8px; margin: 0; padding: 2px 18px 14px; border-bottom: 1px solid rgb(20 43 77 / 8%); list-style: none; }
+.payroll-advance-list .modal-check-row { justify-content: flex-start; padding: 9px 12px; border: 1px solid rgb(20 43 77 / 10%); border-radius: 10px; background: rgb(255 255 255 / 80%); transition: background-color .25s ease, border-color .25s ease, box-shadow .25s ease; }
+.payroll-advance-list .modal-check-row:hover { border-color: rgb(24 60 102 / 30%); background: #fff; }
+.payroll-advance-list .modal-check-row > span { flex: 1 1 auto; }
+.payroll-advance-list .modal-check-row > strong { margin-left: auto; font-variant-numeric: tabular-nums; }
+.payroll-line-hint { margin: 0; padding: 9px 18px; color: #4e637b; font-size: .8rem; line-height: 1.45; }
+.payroll-line-hint strong { color: #172f4e; }
+.payroll-fill { padding: 2px 0; border: 0; color: #1e5d9d; background: transparent; font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
+.payroll-origin { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 20px; padding: 4px 18px 12px; }
+.payroll-origin > span { color: #4e637b; font-size: .8rem; font-weight: 700; }
+.payroll-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 18px; padding: 2px 18px 14px; }
+.payroll-split strong { display: flex; align-items: center; min-height: 42px; color: #172f4e; font-size: 1rem; font-variant-numeric: tabular-nums; }
+.payroll-partial { margin: 0 18px 12px; padding: 10px 12px; border: 1px dashed rgb(20 43 77 / 24%); border-radius: 10px; }
+.money-input { display: block; width: 100%; min-width: 0; }
+.money-input .money-input-field { width: 100%; }
+@media (max-width: 640px) {
+  .payroll-line { grid-template-columns: minmax(0, 1fr); }
+  .payroll-line-value { justify-items: start; text-align: left; }
+  .payroll-line-paid .payroll-line-value { width: 100%; }
+  .payroll-split { grid-template-columns: minmax(0, 1fr); }
+}
+
+/* ===== DARK-GLASS (gerente) =====
+   Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
+   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+:where(html[data-manager-theme="dark-glass"]) .finance-page {
+  --finance-ink: var(--dg-text);
+  --finance-muted: var(--dg-text-muted);
+  --finance-border: var(--dg-border);
+  color: var(--dg-text);
+  background: transparent;
+}
+:where(html[data-manager-theme="dark-glass"]) .cash-flow-page .finance-tabs {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .cash-flow-page .finance-tabs button.selected {
+  border-bottom-color: var(--dg-border-strong);
+  background: #1d4ed8;
+}
+:where(html[data-manager-theme="dark-glass"]) .cash-flow-page .finance-tabs button:hover:not(.selected) {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .cash-flow-page .finance-report-toolbar {
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .cash-flow-page .finance-export-button {
+  color: var(--dg-text-muted);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-header {
+  background: var(--dg-surface-strong);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-header nav a:hover,
+:where(html[data-manager-theme="dark-glass"]) .finance-header nav .finance-nav-active {
+  border-color: var(--dg-border-strong);
+  background: var(--dg-active);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-eyebrow {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-page-heading > div:first-child > p:last-child,
+:where(html[data-manager-theme="dark-glass"]) .finance-month span,
+:where(html[data-manager-theme="dark-glass"]) .finance-field > span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-month input,
+:where(html[data-manager-theme="dark-glass"]) .finance-field input,
+:where(html[data-manager-theme="dark-glass"]) .finance-field select,
+:where(html[data-manager-theme="dark-glass"]) .finance-field textarea {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-button-soft {
+  border-color: var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-button-soft:hover {
+  border-color: var(--dg-border);
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-button-dark {
+  background: #2563eb;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-button-dark:hover {
+  background: #1d4ed8;
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-report-toolbar {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-month-arrow {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-report-action small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-query-controls {
+  border-top: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-payment-history h3 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-payment-history > p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-payment-event {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-payment-event strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-payment-event small,
+:where(html[data-manager-theme="dark-glass"]) .finance-confirm-date {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-payment-shortcuts > span {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-tabs button:focus-visible,
+:where(html[data-manager-theme="dark-glass"]) .finance-month-arrow:focus-visible {
+  outline: 3px solid var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-metric {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .metric-navy .metric-rule {
+  background: #2563eb;
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-metric p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-metric strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-metric small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-tabs {
+  border-bottom: 1px solid var(--dg-border);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-tabs button {
+  color: var(--dg-text-muted);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-tabs button:hover,
+:where(html[data-manager-theme="dark-glass"]) .finance-tabs button.selected {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-range-form {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-range-form input {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-range-caption {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-category-form {
+  border-bottom: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-category-list li {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-category-list li button {
+  border: 1px solid hsl(351 33% 60% / 0.35);
+  color: #fda4af;
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-category-list li button:hover {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-panel {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-panel-heading h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-panel-heading p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-text-button {
+  color: #8ec5fa;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-category-row {
+  border-bottom: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-category-row span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-transfer-row {
+  border-bottom: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-transfer-row > span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-table th {
+  border-bottom: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-table td {
+  border-bottom: 1px solid var(--dg-border);
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-table td strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-table td small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-table td.positive-value {
+  color: #86efac;
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-row-actions button {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-row-actions button:hover {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-row-actions button.danger {
+  color: #fda4af;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-empty,
+:where(html[data-manager-theme="dark-glass"]) .finance-empty-inline {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-alert {
+  border: 1px solid hsl(354 53% 60% / 0.35);
+  color: #fda4af;
+  background: hsl(355 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-notice {
+  border: 1px solid hsl(152 37% 60% / 0.35);
+  color: #86efac;
+  background: hsl(144 55% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-storage-notice,
+:where(html[data-manager-theme="dark-glass"]) .finance-page-footer {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-modal {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  box-shadow: 0 22px 64px rgb(0 0 0 / 0.42);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-modal-header {
+  border-bottom: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-close {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-income-section-heading strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-income-section-heading small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-income-lines {
+  border-top: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-income-line {
+  border-bottom: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-remove-line {
+  border: 1px solid hsl(351 33% 60% / 0.35);
+  color: #fda4af;
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-remove-line:hover {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-entry-total {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-entry-total strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-form-hint {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-modal-footer {
+  border-top: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  box-shadow: 0 -7px 18px rgb(0 0 0 / 0.07);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-validation-notice {
+  color: #fcd34d;
+  background: hsl(39 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal {
+  background: var(--dg-surface-inset);
+  box-shadow: 0 36px 100px rgb(0 0 0 / 0.6), 0 8px 24px rgb(0 0 0 / 0.54);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal .finance-modal-header {
+  background: var(--dg-surface-strong);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal .finance-close {
+  border-color: var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal .finance-modal-body {
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-section {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.14);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-step {
+  border-bottom: 2px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-step > span {
+  border: 2px solid var(--dg-border);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.6);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-step strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-step small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal .finance-field > span {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal .finance-field input,
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal .finance-field select,
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal .finance-field textarea {
+  color: var(--dg-text);
+  background: var(--dg-input-bg);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.1);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal .finance-field input:focus,
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal .finance-field select:focus,
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal .finance-field textarea:focus {
+  box-shadow: 0 0 0 3px rgb(0 0 0 / 0.37);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-money {
+  background: var(--dg-surface);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.1);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal .finance-field .finance-expense-money > span,
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal .finance-form-hint {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal .finance-modal-footer {
+  border-top: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal .finance-modal-footer .finance-button-soft {
+  border-color: var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal .finance-modal-footer .finance-button-primary {
+  background: #2563eb;
+  box-shadow: 0 3px 9px rgb(0 0 0 / 0.31);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-expense-modal .finance-modal-footer .finance-button-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+  box-shadow: 0 6px 14px rgb(0 0 0 / 0.36);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-revenue-day {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-status.status-pago {
+  border-color: hsl(152 37% 60% / 0.35);
+  color: #86efac;
+  background: hsl(144 55% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-status.status-parcial {
+  border-color: hsl(44 65% 60% / 0.35);
+  color: #fcd34d;
+  background: hsl(46 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-status.status-pendente {
+  border-color: hsl(354 53% 60% / 0.35);
+  color: #fda4af;
+  background: hsl(355 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-summary {
+  border: 1px solid var(--dg-border-strong);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-summary-heading {
+  border-bottom: 1px solid var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-summary-heading h3 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-summary-heading small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-line {
+  border-bottom: 1px solid var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-line-label strong,
+:where(html[data-manager-theme="dark-glass"]) .payroll-line-label label strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-line-label small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-line-label a {
+  color: #8ec5fa;
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-line-value {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-line-value small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-line-total .payroll-line-value strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-badge {
+  color: #86efac;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-advance-list {
+  border-bottom: 1px solid var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-advance-list .modal-check-row {
+  border: 1px solid var(--dg-border-strong);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-advance-list .modal-check-row:hover {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-line-hint {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-line-hint strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-fill {
+  color: #8ec5fa;
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-origin > span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-split strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .payroll-partial {
+  border: 1px dashed var(--dg-border-strong);
+}
+/* ===== /DARK-GLASS ===== */

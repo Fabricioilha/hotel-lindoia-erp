@@ -83,6 +83,7 @@ export interface MonthlyAccountingReport {
 }
 
 const cents = (amount: number) => Math.round(amount * 100);
+const money = (amount: number) => amount.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 const sum = <T>(rows: T[], value: (row: T) => number) => rows.reduce((total, row) => total + cents(value(row)), 0) / 100;
 const rounded = (amount: number) => cents(amount) / 100;
 const emptyBalances = (): FinanceBalances => ({ cash: 0, bank: 0, oyo: 0 });
@@ -139,16 +140,19 @@ export function buildMonthlyAccountingReport(data: FinanceData, month: string, g
 
   for (const payroll of Object.values(data.payroll)) {
     const events = payrollPaymentEvents(payroll);
+    // Os vales já saíram do caixa quando foram pagos como despesa; a folha só os registra como compensados.
+    const advancesTotal = Object.values(payroll.advances ?? {}).reduce((total, amount) => total + cents(amount), 0) / 100;
+    const advanceNote = advancesTotal > 0 ? `Vales compensados nesta folha: ${money(advancesTotal)} (já saíram do caixa quando pagos; não debitam novamente)` : '';
     let paidAtClosing = 0;
     for (const payment of events) {
       if (payment.date <= to) paidAtClosing += payment.amount;
       if (!inMonth(payment.date)) continue;
-      payments.push({ date: payment.date, dueDate: payroll.dueDate, type: payment.amount < 0 ? 'Correção de folha' : 'Folha', category: 'Folha de pagamento', description: `${payroll.employee}${payroll.position ? ` · ${payroll.position}` : ''}`, wallet: payment.wallet, amount: rounded(payment.amount), reference: `${payroll.id}/${payment.id}`, dateSource: payment.dateSource === 'legacy_due_date' ? 'Vencimento usado em registro antigo' : 'Informada', note: [payroll.note, payment.note].filter(Boolean).join(' · ') });
+      payments.push({ date: payment.date, dueDate: payroll.dueDate, type: payment.amount < 0 ? 'Correção de folha' : 'Folha', category: 'Folha de pagamento', description: `${payroll.employee}${payroll.position ? ` · ${payroll.position}` : ''}`, wallet: payment.wallet, amount: rounded(payment.amount), reference: `${payroll.id}/${payment.id}`, dateSource: payment.dateSource === 'legacy_due_date' ? 'Vencimento usado em registro antigo' : 'Informada', note: [payroll.note, payment.note, advanceNote].filter(Boolean).join(' · ') });
       outgoing[payment.wallet] += payment.amount;
     }
     const planned = payrollNet(payroll);
     const pending = rounded(Math.max(0, planned - paidAtClosing));
-    if (payroll.month === month || inMonth(payroll.dueDate) || (payroll.dueDate < from && pending > 0)) obligations.push({ dueDate: payroll.dueDate, type: 'Folha', competence: payroll.month, category: 'Folha de pagamento', employee: payroll.employee, planned, paid: rounded(paidAtClosing), pending, status: pending <= 0 ? 'Quitada até o fechamento' : payroll.dueDate < from ? 'Pendente de mês anterior' : paidAtClosing > 0 ? 'Parcialmente paga' : 'A pagar', reference: payroll.id, note: `${payroll.note}${payroll.note ? ' · ' : ''}Base ${payroll.basePay}; adicionais ${payroll.additions}; descontos ${payroll.deductions}; adiantamentos compensados ${Object.values(payroll.advances ?? {}).reduce((sum, amount) => sum + amount, 0)}` });
+    if (payroll.month === month || inMonth(payroll.dueDate) || (payroll.dueDate < from && pending > 0)) obligations.push({ dueDate: payroll.dueDate, type: 'Folha', competence: payroll.month, category: 'Folha de pagamento', employee: payroll.employee, planned, paid: rounded(paidAtClosing), pending, status: pending <= 0 ? 'Quitada até o fechamento' : payroll.dueDate < from ? 'Pendente de mês anterior' : paidAtClosing > 0 ? 'Parcialmente paga' : 'A pagar', reference: payroll.id, note: `${payroll.note}${payroll.note ? ' · ' : ''}Base ${payroll.basePay}; adicionais ${payroll.additions}; descontos ${payroll.deductions}; adiantamentos compensados ${advancesTotal}; remuneração registrada ${rounded(planned + advancesTotal)}` });
   }
 
   for (const transfer of Object.values(data.transfers)) {

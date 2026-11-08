@@ -82,3 +82,188 @@
 .cx-stat.is-store { background: #6a3f9a; }
 .cx-float { margin: 0; padding: 8px 12px; border-radius: 8px; background: #f1f6fc; color: #556580; font-size: 0.8125rem; }
 .cx-float.is-diff { color: #8f1d2e; background: #fde8eb; font-weight: 600; }
+
+/* ===== DARK-GLASS (gerente) =====
+   Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
+   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+:where(html[data-manager-theme="dark-glass"]) .cx-page {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-eyebrow {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-eyebrow span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-title h1,
+:where(html[data-manager-theme="dark-glass"]) .cx-panel h1 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-title p:last-child {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-alert {
+  color: #fda4af;
+  background: hsl(351 80% 52% / 0.16);
+  border: 1px solid hsl(351 72% 60% / 0.35);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-success {
+  color: #86efac;
+  background: hsl(142 61% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-panel {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-panel h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-panel h2 small {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-muted,
+:where(html[data-manager-theme="dark-glass"]) .cx-field {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-field input,
+:where(html[data-manager-theme="dark-glass"]) .cx-field textarea,
+:where(html[data-manager-theme="dark-glass"]) .cx-field select {
+  border: 2px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-field input:focus,
+:where(html[data-manager-theme="dark-glass"]) .cx-field textarea:focus,
+:where(html[data-manager-theme="dark-glass"]) .cx-field select:focus {
+  border-color: var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-chip {
+  border: 2px solid var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-chip:hover {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-who {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-list li {
+  border-bottom: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-list li small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-time {
+  color: #8ec5fa;
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-transfer {
+  border-top: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-transfer strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-transfer select {
+  border: 1px solid var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-correction {
+  border-top: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-correction > strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-correction input,
+:where(html[data-manager-theme="dark-glass"]) .cx-correction select {
+  border: 1px solid var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-handoff-panel {
+  border: 1px solid var(--dg-border);
+  border-left: 4px solid var(--dg-border-strong);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-handoff-panel strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-handoff-panel span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-secondary {
+  border: 1px solid var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-handoff-modal {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  box-shadow: 0 18px 60px rgb(0 0 0 / 0.54);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-handoff-modal h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-handoff-modal > div:first-child > p:last-child {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-handoff-balance {
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-handoff-balance span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-handoff-balance strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-handoff-balance small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-day {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-day summary::before {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-day[open] summary {
+  border-bottom: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-day-total {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-day-body h3 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-methods li {
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-edit {
+  color: #8ec5fa;
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-edit-line {
+  border: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-edit-line legend {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-delete {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-float {
+  background: var(--dg-surface-inset);
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .cx-float.is-diff {
+  color: #fda4af;
+  background: hsl(351 80% 52% / 0.16);
+}
+/* ===== /DARK-GLASS ===== */

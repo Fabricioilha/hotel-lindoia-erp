@@ -92,3 +92,171 @@
 @keyframes clean-selected-pop { from { transform: scale(.65); } to { transform: scale(1); } }
 @keyframes clean-working { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .clean-room { transition: none; } .clean-room.is-busy .clean-room-symbol, .clean-room.is-selected .clean-room-symbol { animation: none; } }
+
+/* ===== DARK-GLASS (gerente) =====
+   Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
+   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+:where(html[data-manager-theme="dark-glass"]) .clean-page {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-eyebrow {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-eyebrow span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-title h1 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-title p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-counter {
+  background: var(--dg-surface-strong);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-alert {
+  color: #fda4af;
+  background: hsl(351 80% 52% / 0.16);
+  border: 1px solid hsl(351 72% 60% / 0.35);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-success {
+  color: #86efac;
+  background: hsl(142 61% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-panel {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-panel h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-muted {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-person {
+  border: 2px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-person:hover {
+  border-color: var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-person.is-chosen {
+  background: var(--dg-surface-inset);
+  box-shadow: 0 0 0 3px rgb(0 0 0 / 0.42);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-avatar {
+  background: #2563eb;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-person small,
+:where(html[data-manager-theme="dark-glass"]) .clean-legend {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-legend span::before {
+  border: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .legend-free::before {
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .legend-busy::before {
+  background: hsl(40 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .legend-done::before {
+  background: hsl(139 57% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .legend-blocked::before {
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-room {
+  border: 2px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-room:hover:not(:disabled) {
+  border-color: var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-room.is-selected {
+  background: var(--dg-active);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-room.is-busy {
+  background: hsl(43 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-room.is-done {
+  background: hsl(141 58% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-room.is-blocked {
+  color: var(--dg-text-muted);
+  border-color: var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-context {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-context span,
+:where(html[data-manager-theme="dark-glass"]) .clean-add-room label,
+:where(html[data-manager-theme="dark-glass"]) .clean-date {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-add-room input,
+:where(html[data-manager-theme="dark-glass"]) .clean-date input {
+  border: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-primary:disabled {
+  color: var(--dg-text-muted);
+  background: rgba(148, 163, 184, 0.16);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-secondary {
+  color: #8ec5fa;
+  background: var(--dg-surface-inset);
+  border: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-link {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-task {
+  background: hsl(44 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-task small {
+  color: #fcd34d;
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-table th,
+:where(html[data-manager-theme="dark-glass"]) .clean-table td {
+  border-bottom: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-table th {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-manage li {
+  border: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-room.is-dirty {
+  background: hsl(25 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-room {
+  box-shadow: 0 2px 5px rgb(0 0 0 / 0.07);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-room:hover:not(:disabled) {
+  box-shadow: 0 5px 12px rgb(0 0 0 / 0.2);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-room:focus-visible {
+  outline: 3px solid var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-room.is-busy {
+  background: hsl(45 80% 52% / 0.16);
+  color: #fcd34d;
+}
+:where(html[data-manager-theme="dark-glass"]) .clean-room.is-busy .clean-room-symbol {
+  color: #fcd34d;
+}
+/* ===== /DARK-GLASS ===== */

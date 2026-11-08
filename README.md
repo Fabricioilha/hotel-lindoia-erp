@@ -51,6 +51,23 @@ No formulário financeiro dessas despesas, a gerência também pode corrigir a d
 
 Despesas e folha mantêm cada pagamento com data, carteira e valor. Vencimento, competência e pagamento são informações independentes. Ao corrigir um total pago, a diferença é registrada na data informada, preservando as parcelas anteriores. Datas de pagamentos antigos sem histórico aparecem identificadas e podem ser confirmadas ou corrigidas pela gerência.
 
+### Folha de pagamento e vales
+
+O vale (categoria **Adiantamento de salário**, lançado no Fluxo de caixa com funcionário e competência) sai do caixa ou do banco no momento em que é pago. Na **Folha de pagamento**, o lançamento mostra o **Salário base (referência)** cadastrado em **Funcionários**, lista automaticamente os **vales do período ainda não compensados** e pede apenas o **valor pago agora** (o contracheque, em caixa, banco ou dividido):
+
+- **Total remuneração registrada** = valor pago no contracheque + vales já adiantados. A diferença para o salário base é registrada como acréscimo ou desconto da folha; sem salário base cadastrado, o total registrado vira a base.
+- Os vales marcados ficam **vinculados e compensados** na folha (`advances`) e continuam com o próprio histórico de pagamento, mas **não saem do caixa novamente**: o saldo de caixa e banco só desconta o valor pago no ato da folha. O Fluxo de caixa identifica o vale como "Compensado na folha" e a planilha do contador traz os vales na observação da folha.
+- Sem valor pago, a folha fica **pendente** (líquido previsto = salário base − vales). Com **Pagamento parcial**, o líquido previsto é mantido e o restante continua pendente; sem essa marcação, o valor pago fecha a folha.
+- Registros antigos continuam válidos: os ajustes originais são preservados quando o total registrado não muda ao reabrir a folha.
+
+## Tema escuro da gerência
+
+Somente o login de **Gerente** vê, na barra lateral, o botão **Tema escuro** (Sol/Lua). Ele ativa o tema "Dark Glassmorphism" aplicando `data-manager-theme="dark-glass"` em `document.documentElement` e guarda a escolha no navegador em `localStorage` (`lindoia_manager_dark_glass`). O atributo é removido imediatamente ao encerrar a sessão, na tela de login e em qualquer sessão de funcionário, que mantém sempre o tema claro original (`src/services/managerTheme.ts`). Os estilos escuros ficam no fim de cada folha de estilo, sempre escopados em `[data-manager-theme="dark-glass"]`, e usam os tokens `--dg-*` definidos em `src/index.css`.
+
+## Formulários e modais
+
+Os modais de formulário e edição usam a mesma largura (`min(94vw, 820px)`; fluxos longos como recepção e lançamento de entrada/despesa mantêm 900px e confirmações ficam compactas), rótulos de `0.85rem`, campos de `0.925rem` com altura mínima de 42px, grades de duas colunas no desktop (uma no celular) e rodapé `Cancelar` / `Salvar` à direita. Linhas de checkbox ou radio devem usar a classe `modal-check-row` (ou `label` com `input` direto), que alinha a caixa de 18px ao texto. Valores em reais usam `MoneyInput` (`R$ 2.150,50`).
+
 Para registrar uma compra, selecione sua categoria e a forma de pagamento na despesa ou na entrada de estoque. Dinheiro e Pix debitam a carteira na data da compra; cartão mantém a compra pendente, vinculada ao cartão cadastrado em **Configurações**, sem debitar as carteiras. Quando a fatura for paga, edite a despesa e registre o pagamento em dinheiro ou pelo banco. Não lance o mesmo pagamento novamente como outra despesa.
 
 Em **Conferir caixa**, a gerência pode corrigir recebimentos, adicionais, vendas da geladeira e saídas. As correções atualizam os registros financeiros correspondentes; os recebimentos parciais continuam parciais.
@@ -60,6 +77,8 @@ Para enviar o movimento mensal ao contador, abra **Fluxo de caixa**, selecione o
 ## Funcionários e exclusões
 
 O menu **Funcionários** mantém o cadastro em `erp_geral/escala/staff`, separado das contas usadas para entrar no sistema. Na primeira sessão da gerência, o sistema inicializa as sete pessoas configuradas para recepção e limpeza e importa nomes históricos não cadastrados como inativos. A marca `configured` evita recriar automaticamente pessoas ou categorias excluídas. Registros de turnos e operações mantêm a referência do funcionário e o nome histórico para preservar o histórico após renomeações ou exclusões.
+
+A página lista os funcionários em cartões com busca por nome ou função, filtro **Ativos / Inativos / Todos**, **Salário base** em reais, resumo dos vales pendentes do mês e ações de editar, ativar/inativar e excluir. O cadastro e a edição abrem em um modal amplo com o campo **Salário Base (R$)**, gravado como `baseSalary` (número, em reais) no funcionário. Cadastros antigos sem `baseSalary` continuam válidos e valem 0; salvar sem informar o campo preserva o valor existente e informar 0 remove o salário.
 
 A gerência pode excluir registros de reservas, hospedagens, adicionais, quartos, limpezas, conferências, passagens de turno e financeiro. Exclusões relacionadas são processadas em conjunto; pagamentos e adicionais vinculados são removidos conforme a operação, e bebidas podem devolver quantidades ao estoque. Os identificadores de exclusão ajudam a impedir que uma devolução seja aplicada mais de uma vez. Excluir um pagamento individual de hospedagem conserva a hospedagem e registra a anulação; excluir recebimento de reserva ajusta o saldo devido ou remove uma cobrança ainda pendente de conciliação.
 
@@ -87,4 +106,4 @@ Antes, configure as variáveis locais e inicie o PocketBase seguindo
 
 Os scripts disponíveis incluem `npm run build`, `npm run lint` e `npm run preview`.
 
-Os testes `npm run test:operations`, `npm run test:cleaning`, `npm run test:finance`, `npm run test:inventory`, `npm run test:accounting` e `npm run test:pocketbase-import` verificam operações, limpeza, conciliação financeira, concorrência, estoque, geração do Excel e validações do importador usando dados locais.
+`npm test` executa todas as suítes em sequência. Os testes `npm run test:operations`, `npm run test:cleaning`, `npm run test:finance`, `npm run test:improvements`, `npm run test:inventory`, `npm run test:accounting`, `npm run test:dialog-behavior` e `npm run test:pocketbase-import` verificam operações, limpeza, conciliação financeira (inclusive folha com vales sem dupla saída de caixa), cadastro de funcionários com salário base, tema escuro da gerência, padrão dos modais, concorrência, estoque, geração do Excel e validações do importador usando dados locais.

@@ -229,3 +229,8 @@ export const WALLET_LABELS: Record<FinanceWallet, string> = {
 export function payrollNet(entry: Pick<PayrollEntry, 'basePay' | 'additions' | 'deductions' | 'advances'>) {
   return Math.max(0, Math.round((entry.basePay + entry.additions - entry.deductions - Object.values(entry.advances ?? {}).reduce((sum, amount) => sum + amount, 0)) * 100) / 100);
 }
+
+// Remuneração registrada na folha: o líquido pago no contracheque mais os vales já adiantados (que não saem do caixa de novo).
+export function payrollRegistered(entry: Pick<PayrollEntry, 'basePay' | 'additions' | 'deductions'>) {
+  return Math.round((entry.basePay + entry.additions - entry.deductions) * 100) / 100;
+}

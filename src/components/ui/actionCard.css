@@ -18,3 +18,37 @@
 
 .back-to-panel { display: inline-flex; align-items: center; justify-self: start; min-height: 40px; padding: 0 16px; border: 2px solid #b8c5d8; border-radius: 20px; color: #315f87; background: #fff; font-size: 0.875rem; font-weight: 800; text-decoration: none; transition: background 120ms ease, transform 120ms ease; }
 .back-to-panel:hover { background: #eef3fa; transform: translateX(-2px); }
+
+/* ===== DARK-GLASS (gerente) =====
+   Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
+   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+:where(html[data-manager-theme="dark-glass"]) .action-card {
+  --card-color: #2563eb;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.31);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .action-card:hover,
+:where(html[data-manager-theme="dark-glass"]) .action-card:focus-visible {
+  box-shadow: 0 12px 26px rgb(0 0 0 / 0.48);
+  outline: 3px solid var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .action-card.tone-blue {
+  --card-color: #2563eb;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .action-card-icon {
+  background: rgb(255 255 255 / 0.025);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .back-to-panel {
+  border: 2px solid var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .back-to-panel:hover {
+  background: var(--dg-hover);
+}
+/* ===== /DARK-GLASS ===== */

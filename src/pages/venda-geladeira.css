@@ -166,3 +166,295 @@
   .pending-minibar-sale button { grid-column: 1 / -1; }
   .reservation-extra-option { grid-template-columns: minmax(0, 1fr) 88px; }
 }
+
+/* ===== DARK-GLASS (gerente) =====
+   Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
+   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+:where(html[data-manager-theme="dark-glass"]) .sales-page,
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-only {
+  --sales-ink: var(--dg-text);
+  --sales-muted: var(--dg-text-muted);
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-page {
+  background: transparent;
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-header {
+  border-bottom: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-brand-mark {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-brand strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-brand small,
+:where(html[data-manager-theme="dark-glass"]) .sales-header-links a {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-header-links a:hover {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-home-button {
+  border: 1px solid var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-surface);
+  box-shadow: 0 2px 5px rgb(0 0 0 / 0.12);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-home-button:hover {
+  border-color: var(--dg-border-strong);
+  color: var(--dg-text);
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-eyebrow {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-title-row h1 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-title-row > div > p:last-child {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-operator {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-operator strong {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .pending-minibar-panel {
+  border-top: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .pending-minibar-panel h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .pending-minibar-panel p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .pending-minibar-sale {
+  border-top: 1px solid var(--dg-border);
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .pending-minibar-sale > strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .pending-minibar-sale select {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .pending-minibar-sale button {
+  background: #2563eb;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .catalog-panel,
+:where(html[data-manager-theme="dark-glass"]) .sale-order {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .catalog-heading {
+  border-bottom: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .catalog-heading h2,
+:where(html[data-manager-theme="dark-glass"]) .order-heading h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .catalog-heading p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .catalog-search input,
+:where(html[data-manager-theme="dark-glass"]) .sales-field input,
+:where(html[data-manager-theme="dark-glass"]) .sales-field select {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .catalog-search input:focus,
+:where(html[data-manager-theme="dark-glass"]) .sales-field input:focus,
+:where(html[data-manager-theme="dark-glass"]) .sales-field select:focus {
+  box-shadow: 0 0 0 3px rgb(255 255 255 / 0.1);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-product {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-product:hover {
+  border-color: var(--dg-border);
+  box-shadow: 0 5px 14px rgb(0 0 0 / 0.12);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-product-kind {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-stock-ok,
+:where(html[data-manager-theme="dark-glass"]) .sales-stock-empty {
+  color: #86efac;
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-stock-empty {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-product-name {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-product-price,
+:where(html[data-manager-theme="dark-glass"]) .sales-product-no-price {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-add-button {
+  border: 1px solid var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-surface-inset);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-add-button:hover:not(:disabled) {
+  border-color: var(--dg-border);
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-add-button:disabled {
+  background: rgba(148, 163, 184, 0.16);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-stock-notice {
+  border: 1px solid hsl(42 57% 60% / 0.35);
+  color: #fcd34d;
+  background: hsl(44 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-stock-notice a,
+:where(html[data-manager-theme="dark-glass"]) .sales-restock-button {
+  color: #8ec5fa;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-stock-notice a:hover,
+:where(html[data-manager-theme="dark-glass"]) .sales-restock-button:hover {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-restock-button {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .order-heading {
+  border-bottom: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .order-count {
+  color: var(--dg-text);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .order-empty {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-extra-order-lines {
+  border-top: 1px dashed var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .remove-extra-button {
+  border: 1px solid hsl(351 33% 60% / 0.35);
+  color: #fda4af;
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .remove-extra-button:hover {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .order-line {
+  border-bottom: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .order-line-info strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .order-line-info small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .order-line-info b {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .quantity-stepper {
+  border: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .quantity-stepper button {
+  color: #8ec5fa;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .quantity-stepper span {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-extras-fieldset {
+  border-top: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-extras-fieldset > div:first-child strong,
+:where(html[data-manager-theme="dark-glass"]) .sales-extras-fieldset > div:first-child small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-extra-option {
+  border: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-extra-option > label:first-child,
+:where(html[data-manager-theme="dark-glass"]) .sales-extra-amount {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-extra-amount input {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .settlement-fieldset legend {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .settlement-option {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .settlement-option.chosen {
+  border-color: var(--dg-border-strong);
+  color: #8ec5fa;
+  background: var(--dg-hover);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.6);
+}
+:where(html[data-manager-theme="dark-glass"]) .settlement-option:focus-within {
+  outline: 2px solid var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-field > span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .order-total {
+  border-top: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .order-total strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .sale-submit:disabled {
+  border-color: var(--dg-border);
+  color: var(--dg-text-muted);
+  background: rgba(148, 163, 184, 0.16);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .sale-note,
+:where(html[data-manager-theme="dark-glass"]) .sales-empty {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-empty strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-outline-button {
+  border: 1px solid var(--dg-border);
+  color: #8ec5fa;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-alert,
+:where(html[data-manager-theme="dark-glass"]) .sales-success {
+  border: 1px solid hsl(352 60% 60% / 0.35);
+  color: #fda4af;
+  background: hsl(356 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .sales-success {
+  border-color: hsl(144 32% 60% / 0.35);
+  color: #86efac;
+  background: hsl(136 54% 52% / 0.16);
+}
+/* ===== /DARK-GLASS ===== */

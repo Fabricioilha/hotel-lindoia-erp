@@ -11,6 +11,8 @@
     "test:accounting": "node tests/accounting-export.test.mjs",
     "test:finance": "node tests/finance.test.mjs",
     "test:improvements": "node tests/improvements.test.mjs",
+    "test:dialog-behavior": "node tests/dialog-behavior.test.mjs",
+    "test": "npm run test:operations && npm run test:accounting && npm run test:finance && npm run test:improvements && npm run test:dialog-behavior && npm run test:cleaning && npm run test:inventory && npm run test:checkout && npm run test:pocketbase-import && npm run test:cloudflare && npm run test:checkout-client",
     "preview": "vite preview",
     "test:cleaning": "node tests/cleaning.test.cjs",
     "test:inventory": "node tests/inventory.test.mjs",

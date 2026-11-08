@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
+import { clearManagerTheme } from '../services/managerTheme';
 import './login.css';
 
 interface LoginProps {
@@ -10,6 +11,9 @@ export function Login({ onLogin }: LoginProps) {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+
+  // A tela de entrada é sempre clara: o tema escuro pertence apenas à sessão da gerência.
+  useEffect(() => { clearManagerTheme(); }, []);
 
   async function handleLogin(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

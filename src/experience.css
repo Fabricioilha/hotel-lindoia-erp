@@ -47,3 +47,59 @@
   .finance-mobile-table td::before { content: attr(data-label); font-size: .75rem; font-weight: 700; color: #556580; }
   .finance-mobile-table td small { grid-column: 2; }
 }
+
+/* ===== DARK-GLASS (gerente) =====
+   Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
+   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+:where(html[data-manager-theme="dark-glass"]) .finance-summary-toggle span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-debt-summary button {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  color: var(--dg-text);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .stay-account {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .stay-account-receive :is(input, select, button) {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-input-bg);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .stay-account-receive button {
+  color: #8ec5fa;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .stay-account-receive button:last-child {
+  background: #2563eb;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-receipt-options {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .dashboard-task-strip a {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-row-menu[open] {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+@media (max-width: 700px) {
+  :where(html[data-manager-theme="dark-glass"]) .finance-mobile-table tr {
+    border-bottom: 1px solid var(--dg-border);
+  }
+  :where(html[data-manager-theme="dark-glass"]) .finance-mobile-table td::before {
+    color: var(--dg-text-muted);
+  }
+}
+/* ===== /DARK-GLASS ===== */

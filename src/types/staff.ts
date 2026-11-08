@@ -18,6 +18,8 @@ export interface StaffMember {
   startDate?: string;
   notes?: string;
   previousNames?: string[];
+  /** Salário base mensal em R$. Ausente nos cadastros anteriores a este campo (equivale a 0). */
+  baseSalary?: number;
 }
 
 export interface StaffChild {
@@ -32,6 +34,16 @@ export interface StaffData {
 }
 
 export const staffNameKey = (name: string) => name.trim().toLocaleLowerCase('pt-BR');
+
+// Cadastros antigos não têm salário base; valores ausentes, inválidos ou negativos valem 0.
+export function normalizeBaseSalary(value: unknown): number {
+  const amount = typeof value === 'string' ? Number(value.trim().replace(',', '.')) : typeof value === 'number' ? value : Number.NaN;
+  return Number.isFinite(amount) && amount > 0 ? Math.round(amount * 100) / 100 : 0;
+}
+
+export function staffBaseSalary(member?: Pick<StaffMember, 'baseSalary'> | null): number {
+  return normalizeBaseSalary(member?.baseSalary);
+}
 
 export function defaultStaff(): StaffData {
   const names = { reception: ['Tatiana', 'Luana', 'Cevani', 'Paulo'], housekeeping: ['Juliana', 'Thifani', 'Amanda'] };

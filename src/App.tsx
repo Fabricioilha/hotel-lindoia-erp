@@ -1,4 +1,4 @@
-import { lazy, Suspense, useEffect, useState, type ReactNode } from 'react';
+import { lazy, Suspense, useEffect, useLayoutEffect, useState, type ReactNode } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { Login } from './pages/Login';
 import { Dashboard } from './pages/Dashboard';
@@ -7,6 +7,8 @@ import { observeAuth, readUserRole, signInUser, signOutUser } from './services/a
 import type { UserRole } from './types';
 import { useAttendant } from './services/useAttendant';
 import { initializeStaff } from './services/staffStore';
+import { applyManagerTheme, clearManagerTheme } from './services/managerTheme';
+import { useManagerTheme } from './services/useManagerTheme';
 import './modal-theme.css';
 import './experience.css';
 
@@ -95,11 +97,19 @@ function App() {
     else delete document.documentElement.dataset.role;
   }, [userRole]);
 
+  // Tema escuro só para a gerência: perfis de funcionário e a ausência de sessão removem o atributo na hora.
+  const { preferred: darkGlassPreferred } = useManagerTheme(userRole);
+  useLayoutEffect(() => {
+    applyManagerTheme(userRole, darkGlassPreferred);
+    return () => clearManagerTheme();
+  }, [userRole, darkGlassPreferred]);
+
   async function handleLogin(email: string, password: string) {
     setUserRole(await signInUser(email, password));
   }
 
   async function handleLogout() {
+    clearManagerTheme();
     await signOutUser();
     setUserRole(null);
   }

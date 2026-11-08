@@ -33,3 +33,70 @@
 @media (max-width: 850px) { .rates-presets { grid-template-columns: 1fr auto; } }
 @media (max-width: 560px) { .rates-page .rates-panel { padding: 14px; } .rates-presets { grid-template-columns: 1fr; } .rates-presets button { justify-self: start; } .rates-holiday-form, .rates-holiday-list li { grid-template-columns: 1fr; } }
 .rates-form-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
+
+/* ===== DARK-GLASS (gerente) =====
+   Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
+   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+:where(html[data-manager-theme="dark-glass"]) .rates-page .finance-content > p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .rates-panel h2,
+:where(html[data-manager-theme="dark-glass"]) .rates-panel h3 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .rates-panel h3 small,
+:where(html[data-manager-theme="dark-glass"]) .rates-help {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .rates-alert {
+  color: #fda4af !important;
+  background: hsl(356 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .rates-notice {
+  color: #86efac !important;
+  background: hsl(140 56% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .rates-room-card,
+:where(html[data-manager-theme="dark-glass"]) .rates-occupancy-card {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .rates-occupancy-card h4,
+:where(html[data-manager-theme="dark-glass"]) .rates-page label {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .rates-page input {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .rates-page button {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .rates-money-input {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .rates-money-input > span,
+:where(html[data-manager-theme="dark-glass"]) .rates-addons small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .rates-holiday-list li {
+  border: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .rates-holiday-list time {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .rates-empty {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .rates-save {
+  border-color: var(--dg-border-strong) !important;
+}
+/* ===== /DARK-GLASS ===== */

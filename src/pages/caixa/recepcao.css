@@ -238,3 +238,394 @@ a.reception-primary { display: inline-flex; align-items: center; text-decoration
   .reception-modal-footer { gap: 10px; padding: 9px 16px; }
   .reception-modal input, .reception-modal select { min-height: 34px; padding-block: 4px; }
 }
+
+/* ===== DARK-GLASS (gerente) =====
+   Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
+   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+:where(html[data-manager-theme="dark-glass"]) .reception-attendant-pick {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-link-button {
+  color: var(--dg-text-muted);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-panel {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-panel h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-grid .sales-field {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-grid textarea {
+  border: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-check {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-hint {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-primary {
+  background: #2563eb;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-entries li {
+  border: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-entries small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-table th,
+:where(html[data-manager-theme="dark-glass"]) .reception-table td {
+  border: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-table th {
+  color: var(--dg-text-muted);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-table small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-chip {
+  border: 1px solid var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-extra-row input,
+:where(html[data-manager-theme="dark-glass"]) .reception-extra-row select {
+  border: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-vacant td {
+  color: var(--dg-text-muted);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-today {
+  background: var(--dg-surface-strong);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-duty {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .bed-icons {
+  color: #8ec5fa;
+}
+:where(html[data-manager-theme="dark-glass"]) .bed-icons-label {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-days input[type='date'] {
+  border: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-head {
+  border-bottom: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-head h2 {
+  color: var(--dg-text);
+  text-shadow: 0 1px 0 rgb(0 0 0 / 0.14);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-close {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-optional {
+  border: 1px solid var(--dg-border);
+  background: linear-gradient(135deg, var(--dg-surface), var(--dg-surface-inset));
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.07);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-small-field {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-small-field input,
+:where(html[data-manager-theme="dark-glass"]) .reception-small-field select {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-split {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-note {
+  background: linear-gradient(135deg, hsl(40 80% 52% / 0.16), hsl(45 80% 52% / 0.16));
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.09);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-note span {
+  color: #fcd34d;
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-note textarea {
+  color: var(--dg-text);
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  box-shadow: 0 28px 80px rgb(0 0 0 / 0.58), 0 4px 14px rgb(0 0 0 / 0.2);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-step-heading strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-step-heading small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-step-heading:not(.reception-step-heading-inline) {
+  border-bottom: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-service-intro strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-service-intro small,
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .sales-field {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .sales-field > span {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .sales-field input,
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .sales-field select {
+  border-color: var(--dg-border);
+  color: var(--dg-text);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .sales-field input:focus,
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .sales-field select:focus {
+  background: var(--dg-hover);
+  box-shadow: 0 0 0 3px rgb(0 0 0 / 0.27);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .sales-field input::placeholder,
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-hint {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-check {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-extras {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-extras-head {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-chip {
+  border-color: var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-chip:hover {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-extra-row input,
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-extra-row select {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-money-input {
+  border-color: var(--dg-border);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-money-input > span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-footer {
+  border-top: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-footer .reception-total {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-footer .reception-total strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-total-summary > p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-total-summary > p strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-total-summary > small {
+  color: #fcd34d;
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-footer .reception-total-summary > .reception-total {
+  border-top: 1px solid var(--dg-border);
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-footer .reception-total-summary > .reception-total strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-footer .reception-primary {
+  background: #2563eb;
+  box-shadow: 0 3px 9px rgb(0 0 0 / 0.31);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-footer .reception-primary:hover:not(:disabled) {
+  background: #1d4ed8;
+  box-shadow: 0 6px 14px rgb(0 0 0 / 0.36);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-footer .sales-outline-button {
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-footer .sales-outline-button:hover {
+  border-color: var(--dg-border);
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-money-input {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-money-input > span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal {
+  background: transparent;
+  box-shadow: 0 36px 100px rgb(0 0 0 / 0.6), 0 8px 24px rgb(0 0 0 / 0.54);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-head {
+  background: var(--dg-surface-strong);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-head h2 {
+  text-shadow: 0 1px 0 rgb(0 0 0 / 0.34);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-close {
+  border-color: var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-body {
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-grid {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.14);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-step-heading > span {
+  border: 2px solid var(--dg-border);
+  box-shadow: 0 0 0 1px rgb(0 0 0 / 0.6);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-step-heading strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-step-heading small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-step-heading:not(.reception-step-heading-inline) {
+  border-bottom: 2px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-service-card {
+  border: 1px solid var(--dg-border);
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.14);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-service-breakfast {
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-service-tax {
+  background: hsl(39 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-service-intro strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-service-intro small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .sales-field,
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .sales-field > span {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .sales-field input,
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .sales-field select {
+  color: var(--dg-text);
+  background: var(--dg-input-bg);
+  box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.1);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .sales-field input:focus,
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .sales-field select:focus {
+  box-shadow: 0 0 0 3px rgb(0 0 0 / 0.37);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .sales-field input::placeholder,
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-hint {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-check,
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-service-card .reception-small-field input,
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-service-card .reception-small-field select {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-extras {
+  background: var(--dg-surface);
+  box-shadow: 0 3px 10px rgb(0 0 0 / 0.14);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-extras-head {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-chip {
+  color: var(--dg-text);
+  background: var(--dg-surface-inset);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-extra-row input,
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .reception-extra-row select {
+  border-color: var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-note {
+  background: hsl(43 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-note span {
+  color: #fcd34d;
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-note textarea {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-footer {
+  border-top: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-total-summary {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-total-summary > p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-total-summary > p strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-total-summary > small {
+  color: #fcd34d;
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-footer .reception-primary {
+  background: #2563eb;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal-footer .sales-outline-button {
+  color: var(--dg-text);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-date-nights {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-date-nights.is-invalid {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-modal .sales-field > span button {
+  color: var(--dg-text);
+  background: var(--dg-surface-inset) !important;
+  transition: var(--dg-transition);
+}
+/* ===== /DARK-GLASS ===== */

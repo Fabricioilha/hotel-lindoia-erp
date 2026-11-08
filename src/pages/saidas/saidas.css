@@ -43,3 +43,109 @@
 .out-time { color: #315f87; font-weight: 800; }
 .out-history small { color: #6a7888; }
 @media (max-width: 860px) { .out-layout { grid-template-columns: minmax(0, 1fr); } .out-summary { position: static; } }
+
+/* ===== DARK-GLASS (gerente) =====
+   Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
+   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+:where(html[data-manager-theme="dark-glass"]) .out-page {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-eyebrow {
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .out-eyebrow span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-title h1 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-title p:last-child {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-alert {
+  color: #fda4af;
+  background: hsl(351 80% 52% / 0.16);
+  border: 1px solid hsl(351 72% 60% / 0.35);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-success {
+  color: #86efac;
+  background: hsl(142 61% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-panel {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-panel h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-muted {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-search {
+  border: 2px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-search:focus {
+  border-color: var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-chip {
+  border: 1px solid var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-chip:hover {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-chip.is-on {
+  background: #1d4ed8;
+}
+:where(html[data-manager-theme="dark-glass"]) .out-product {
+  border: 2px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-product.is-in-cart {
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-product small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-stepper button {
+  background: #2563eb;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-stepper button:disabled {
+  background: rgba(148, 163, 184, 0.16);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-cart li {
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-field {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-field input,
+:where(html[data-manager-theme="dark-glass"]) .out-field textarea {
+  border: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-who {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-confirm:disabled {
+  color: var(--dg-text-muted);
+  background: rgba(148, 163, 184, 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-clear {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-history li {
+  border-bottom: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .out-time {
+  color: #8ec5fa;
+}
+:where(html[data-manager-theme="dark-glass"]) .out-history small {
+  color: var(--dg-text-muted);
+}
+/* ===== /DARK-GLASS ===== */

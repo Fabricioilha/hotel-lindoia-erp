@@ -11,6 +11,15 @@
   --modal-ink: #172f4e;
   --modal-muted: #4e637b;
   --modal-font: "Avenir Next", "DM Sans", "Segoe UI", sans-serif;
+  /* Padrão único dos campos e rótulos de todos os modais. */
+  --modal-form-width: 820px;
+  --modal-label-size: .85rem;
+  --modal-input-size: .925rem;
+  --modal-field-height: 42px;
+  --modal-field-pad: .55rem .85rem;
+  --modal-field-radius: 10px;
+  --modal-grid-gap: 16px 20px;
+  --modal-pad-x: 26px;
 }
 
 /* Shared sizing for standard dialogs; specialized room dialogs keep their own dimensions. */
@@ -162,7 +171,7 @@ html body :is(.modal-backdrop, .finance-modal-backdrop, .dashboard-room-charge-b
 .finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-modal-header,
 .dashboard-tool-backdrop .dashboard-tool-modal .dashboard-tool-modal-header {
   min-height: 76px;
-  flex-basis: 76px;
+  flex-basis: auto;
   align-items: center;
   padding: 14px 24px;
   border-top: 0 !important;
@@ -241,8 +250,8 @@ html body :is(.modal-backdrop, .finance-modal-backdrop, .dashboard-room-charge-b
 .float-box .float-form label {
   color: #203956 !important;
   font-family: var(--modal-font) !important;
-  font-size: .875rem !important;
-  font-weight: 800 !important;
+  font-size: var(--modal-label-size) !important;
+  font-weight: 600 !important;
 }
 
 .modal-backdrop .stock-modal .form-field > span,
@@ -252,8 +261,8 @@ html body :is(.modal-backdrop, .finance-modal-backdrop, .dashboard-room-charge-b
 .cx-handoff-modal .cx-field,
 .float-box .float-form label {
   color: #203956 !important;
-  font-size: .875rem !important;
-  font-weight: 800 !important;
+  font-size: var(--modal-label-size) !important;
+  font-weight: 600 !important;
 }
 
 .modal-backdrop .stock-modal .form-field input,
@@ -273,14 +282,14 @@ html body :is(.modal-backdrop, .finance-modal-backdrop, .dashboard-room-charge-b
 .float-box .float-form input,
 .float-box .float-form select,
 .float-box .float-form textarea {
-  min-height: 49px !important;
-  padding: 10px 12px !important;
+  min-height: var(--modal-field-height) !important;
+  padding: var(--modal-field-pad) !important;
   border: 1px solid var(--modal-control-line) !important;
-  border-radius: 7px !important;
+  border-radius: var(--modal-field-radius) !important;
   color: var(--modal-ink) !important;
   background: #fff !important;
   font-family: var(--modal-font) !important;
-  font-size: .9375rem !important;
+  font-size: var(--modal-input-size) !important;
   font-weight: 500 !important;
   box-shadow: inset 0 1px 2px rgb(24 47 78 / 6%);
 }
@@ -506,12 +515,12 @@ html body :is(.modal-backdrop, .finance-modal-backdrop, .dashboard-room-charge-b
 }
 
 html body :where(.stock-modal[role="dialog"], .finance-modal[role="dialog"], .dashboard-room-charge-modal[role="dialog"], .dashboard-room-choice[role="dialog"], .dashboard-tool-modal[role="dialog"], .cx-handoff-modal[role="dialog"], .reception-overlay > .reception-modal, .float-gate > .float-box) {
-  --glass-dialog-width: 620px;
+  --glass-dialog-width: var(--modal-form-width);
 }
 
 html body :is(.stock-modal[role="dialog"], .finance-modal[role="dialog"], .dashboard-room-charge-modal[role="dialog"], .dashboard-room-choice[role="dialog"], .dashboard-tool-modal[role="dialog"], .cx-handoff-modal[role="dialog"], .reception-overlay > .reception-modal, .float-gate > .float-box) {
   box-sizing: border-box;
-  width: min(var(--glass-dialog-width, 620px), 94vw) !important;
+  width: min(var(--glass-dialog-width, var(--modal-form-width)), 94vw) !important;
   max-width: 100% !important;
   min-width: 0 !important;
   height: auto !important;
@@ -531,10 +540,11 @@ html body :is(.stock-modal[role="dialog"], .finance-modal[role="dialog"], .dashb
   animation: modalBoxEnter 220ms cubic-bezier(.16, 1, .3, 1) both;
 }
 
-html body :is(.float-gate > .float-box, .dashboard-room-choice, .cleaning-editor-modal, .checkout-modal, .finance-modal-ajuste, .finance-modal-saldo) {
+/* Confirmações e escolhas ficam compactas; formulários e edições usam a largura ampla padrão (820px). */
+html body :is(.float-gate > .float-box, .dashboard-room-choice) {
   --glass-dialog-width: 460px;
 }
-html body :is(.manager-room-dialog, .dashboard-occupied-room-modal, .dashboard-room-charge-modal, .dashboard-tool-modal, .cx-handoff-modal, .stock-checkout-modal) {
+html body .dashboard-tool-modal {
   --glass-dialog-width: 700px;
 }
 html body :is(.reception-overlay > .reception-modal, .reservation-modal-wide, .finance-modal-entrada, .finance-modal-entrada-prepaga, .finance-expense-modal) {
@@ -622,12 +632,15 @@ html body :is(.stock-modal, .finance-modal, .reception-modal, .dashboard-room-ch
   box-sizing: border-box;
   width: 100%;
   min-width: 0;
-  min-height: 42px !important;
-  padding: 9px 12px !important;
+  min-height: var(--modal-field-height) !important;
+  padding: var(--modal-field-pad) !important;
   border: 1px solid rgba(20, 43, 77, .16) !important;
-  border-radius: 11px !important;
+  border-radius: var(--modal-field-radius) !important;
   background: rgba(255, 255, 255, .88) !important;
-  font-family: var(--modal-font);
+  font-family: inherit;
+  font-size: var(--modal-input-size);
+  line-height: 1.35;
+  transition: background-color .25s ease, border-color .25s ease, color .2s ease, box-shadow .25s ease, transform .2s ease;
 }
 html body :is(.stock-modal, .finance-modal, .reception-modal, .dashboard-room-charge-modal, .cx-handoff-modal, .float-box) :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]), select, textarea):focus {
   border-color: #183c66 !important;
@@ -693,4 +706,412 @@ html body .reception-modal .reception-money-input input {
   html body :is(.modal-backdrop, .finance-modal-backdrop, .dashboard-room-charge-backdrop, .dashboard-tool-backdrop, .cx-modal-backdrop, .float-gate, .reception-overlay, .stock-modal, .finance-modal, .dashboard-room-charge-modal, .dashboard-room-choice, .dashboard-tool-modal, .cx-handoff-modal, .reception-modal, .float-box) {
     animation: none !important;
   }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Padrão único dos modais de formulário e edição: grades responsivas, rótulos,
+   campos, linhas de checkbox/radio e rodapé de ações alinhado à direita.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Formulários e edições usam a largura ampla; confirmações seguem compactas e fluxos complexos mantêm 900px. */
+html body :is(.reception-overlay > .reception-modal, .reservation-modal-wide, .finance-modal-entrada, .finance-modal-entrada-prepaga, .finance-expense-modal) {
+  --glass-dialog-width: 900px;
+}
+
+/* Grades: 2 colunas no desktop e 1 coluna no celular, com respiro uniforme. */
+html body :is(.stock-modal .modal-body, .finance-modal:not(.finance-expense-modal) .finance-modal-body, .dashboard-room-charge-grid, .modal-form-grid) {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--modal-grid-gap);
+  align-content: start;
+  min-width: 0;
+  margin: 0;
+  border: 0;
+}
+html body :is(.stock-modal .modal-body, .finance-modal:not(.finance-expense-modal) .finance-modal-body, .modal-form-body) {
+  padding: 22px var(--modal-pad-x) 24px;
+}
+html body .modal-form-grid--3 {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+html body :is(.modal-form-span, .modal-form-grid > fieldset, .modal-form-grid > .modal-check-row) {
+  grid-column: 1 / -1;
+}
+
+/* Rótulos e campos com a mesma tipografia em todos os modais. */
+html body [role="dialog"][aria-modal="true"] :is(label, legend) {
+  font-family: inherit;
+  font-size: var(--modal-label-size);
+  font-weight: 600;
+  line-height: 1.35;
+}
+html body [role="dialog"][aria-modal="true"] :is(input, select, textarea, button) {
+  font-family: inherit;
+}
+html body [role="dialog"][aria-modal="true"] :where(input, select, textarea) {
+  font-weight: 500;
+}
+html body [role="dialog"][aria-modal="true"] :is(.finance-field, .form-field, .schedule-field, .sales-field, .cx-field, .dashboard-room-charge-field, .modal-field) {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 6px;
+}
+html body [role="dialog"][aria-modal="true"] :is(.finance-field, .form-field, .schedule-field, .sales-field, .cx-field, .dashboard-room-charge-field, .modal-field) > span:first-child {
+  font-size: var(--modal-label-size);
+  font-weight: 600;
+  line-height: 1.35;
+}
+html body [role="dialog"][aria-modal="true"] textarea {
+  resize: vertical;
+  line-height: 1.45;
+}
+html body [role="dialog"][aria-modal="true"] :is(select) {
+  cursor: pointer;
+}
+/* Títulos de seção, totais e dicas: legíveis e com a mesma escala em todos os formulários. */
+html body [role="dialog"][aria-modal="true"] :is(.finance-income-section-heading strong, .finance-expense-step strong, .finance-entry-total strong) {
+  font-size: .9rem;
+  font-weight: 700;
+}
+html body [role="dialog"][aria-modal="true"] :is(.finance-income-section-heading small, .finance-expense-step small, .finance-form-hint, .modal-form-hint, .finance-payment-event small) {
+  font-size: .78rem;
+  font-weight: 500;
+  line-height: 1.45;
+}
+html body [role="dialog"][aria-modal="true"] .finance-entry-total {
+  font-size: var(--modal-label-size);
+}
+html body [role="dialog"][aria-modal="true"] .money-input-field {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
+html body [role="dialog"][aria-modal="true"] .date-input-button {
+  min-width: 44px;
+  min-height: var(--modal-field-height);
+  border-radius: var(--modal-field-radius);
+}
+/* Despesa e recepção têm cabeçalho próprio: mesma tipografia dos demais formulários. */
+html body .reception-modal-head h2 {
+  font-family: var(--modal-font);
+  font-weight: 750;
+}
+html body .finance-expense-modal .finance-modal-header h2 {
+  font-family: var(--modal-font);
+  font-size: 1.5rem;
+  font-weight: 750;
+  line-height: 1.2;
+}
+html body .finance-expense-modal .finance-modal-header .finance-eyebrow {
+  font-family: var(--modal-font);
+  font-size: .6875rem;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+html body .finance-expense-modal .finance-field > span {
+  font-size: var(--modal-label-size);
+  font-weight: 600;
+}
+html body .finance-expense-modal .finance-field :is(input, select, textarea) {
+  font-family: var(--modal-font);
+  font-size: var(--modal-input-size);
+  font-weight: 500;
+}
+/* Valor monetário da recepção: um único contorno (o da caixa) e a mesma altura dos demais campos. */
+html body .reception-modal .reception-money-input {
+  min-height: var(--modal-field-height);
+  border-color: rgba(20, 43, 77, .16);
+  border-radius: var(--modal-field-radius);
+  transition: border-color .25s ease, box-shadow .25s ease;
+}
+html body .reception-modal .reception-money-input:focus-within {
+  border-color: #183c66;
+  box-shadow: 0 0 0 3px rgba(24, 60, 102, .14);
+}
+html body .reception-modal .reception-money-input > input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]) {
+  min-height: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Linhas de checkbox/radio ("markboxes"): caixa de 18px centralizada na linha do texto. */
+html body [role="dialog"][aria-modal="true"] :is(.modal-check-row, label:has(> input[type="checkbox"]), label:has(> input[type="radio"]), .reception-check, .dashboard-room-charge-split, .finance-confirm-date, .reservation-check-option, .doors-cleaning-option) {
+  display: flex;
+  align-items: center;
+  gap: .65rem;
+  min-width: 0;
+  line-height: 1.3;
+  cursor: pointer;
+}
+html body [role="dialog"][aria-modal="true"] :is(input[type="checkbox"], input[type="radio"]) {
+  flex: 0 0 18px;
+  width: 18px !important;
+  height: 18px !important;
+  min-width: 18px;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  cursor: pointer;
+  accent-color: var(--modal-navy-action);
+}
+html body [role="dialog"][aria-modal="true"] .modal-check-row > :is(span, strong):not(:first-child) {
+  min-width: 0;
+}
+html body [role="dialog"][aria-modal="true"] .modal-check-row small {
+  display: block;
+  margin-top: 2px;
+  color: var(--modal-muted);
+  font-size: .78rem;
+  font-weight: 500;
+  line-height: 1.35;
+}
+
+/* Rodapé de ações à direita (Cancelar / Salvar), com botões na mesma altura dos campos. */
+html body :is(.modal-footer, .finance-modal-footer, .schedule-modal-actions, .reservation-modal-footer, .reception-modal-footer, .cx-handoff-modal footer, .modal-form-actions) {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: .75rem;
+  padding: 14px var(--modal-pad-x);
+}
+html body :is(.modal-footer, .finance-modal-footer, .schedule-modal-actions, .reservation-modal-footer, .reception-modal-footer, .cx-handoff-modal footer, .modal-form-actions) :is(button, .button, .finance-button) {
+  min-height: var(--modal-field-height) !important;
+  padding: .55rem 1.1rem !important;
+  border-radius: var(--modal-field-radius) !important;
+  font-size: .875rem !important;
+  font-weight: 700;
+  transition: background-color .25s ease, border-color .25s ease, color .2s ease, box-shadow .25s ease, transform .2s ease;
+}
+html body :is(.modal-footer, .finance-modal-footer, .schedule-modal-actions, .reservation-modal-footer, .reception-modal-footer, .cx-handoff-modal footer, .modal-form-actions) :is(button, .button, .finance-button):hover:not(:disabled) {
+  transform: translateY(-1px);
+}
+html body .schedule-modal-actions .button-danger {
+  margin-right: auto;
+}
+
+/* Corpo dos modais de formulário: respiro lateral igual ao dos campos. */
+html body .modal-form-hint {
+  margin: 0;
+  color: var(--modal-muted);
+  font-size: .8rem;
+  line-height: 1.45;
+}
+
+/* Turno da escala: campos lado a lado em vez de empilhados em coluna única. */
+html body .modal-backdrop .stock-modal.schedule-modal > form {
+  display: block;
+  padding-bottom: 0;
+}
+html body .modal-backdrop .stock-modal.schedule-modal .schedule-modal-date {
+  margin: 0 0 16px;
+}
+html body .modal-backdrop .stock-modal.schedule-modal .modal-times {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--modal-grid-gap);
+  margin: 0;
+}
+html body .modal-backdrop .stock-modal.schedule-modal .schedule-modal-actions {
+  margin: 0;
+}
+html body .modal-backdrop .stock-modal.schedule-modal .schedule-field {
+  min-width: 0;
+}
+
+/* Quarto e limpeza (camareiras): corpo e rodapé em largura total, sem margens herdadas do layout antigo. */
+html body .modal-backdrop .stock-modal.housekeeping-modal > form:not(.room-category-form) {
+  gap: 0;
+  padding-bottom: 0;
+}
+html body .modal-backdrop .stock-modal.housekeeping-modal > form:not(.room-category-form) .schedule-modal-actions,
+html body .modal-backdrop .stock-modal.housekeeping-modal .modal-form-grid > :is(.schedule-field, .doors-cleaning-option) {
+  margin: 0;
+}
+
+@media (max-width: 640px) {
+  html body :is(.stock-modal .modal-body, .modal-form-grid, .modal-form-grid--3, .modal-backdrop .stock-modal.schedule-modal .modal-times) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  html body :is(.stock-modal .modal-body, .finance-modal:not(.finance-expense-modal) .finance-modal-body, .modal-form-body) {
+    padding: 18px 16px 20px;
+  }
+  html body :is(.modal-footer, .finance-modal-footer, .schedule-modal-actions, .reservation-modal-footer, .reception-modal-footer, .cx-handoff-modal footer, .modal-form-actions) {
+    padding-inline: 16px;
+  }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Dark Glassmorphism (gerente) — modais. Só com html[data-manager-theme="dark-glass"].
+   ═══════════════════════════════════════════════════════════════════════════ */
+html[data-manager-theme="dark-glass"] {
+  --modal-ink: var(--dg-text);
+  --modal-muted: var(--dg-text-muted);
+  --modal-surface: transparent;
+  --modal-line: var(--dg-border-strong);
+  --modal-control-line: rgba(255, 255, 255, 0.18);
+  --modal-navy: rgba(15, 23, 42, 0.92);
+  --modal-navy-action: #2563eb;
+  --modal-navy-hover: #3b82f6;
+}
+
+html[data-manager-theme="dark-glass"] body :is(.modal-backdrop, .finance-modal-backdrop, .dashboard-room-charge-backdrop, .dashboard-tool-backdrop, .cx-modal-backdrop, .float-gate, .reception-overlay, .reservation-backdrop) {
+  background: rgba(2, 6, 23, 0.62) !important;
+  -webkit-backdrop-filter: blur(12px) saturate(120%) !important;
+  backdrop-filter: blur(12px) saturate(120%) !important;
+}
+
+html[data-manager-theme="dark-glass"] body :is(.stock-modal[role="dialog"], .finance-modal[role="dialog"], .dashboard-room-charge-modal[role="dialog"], .dashboard-room-choice[role="dialog"], .dashboard-tool-modal[role="dialog"], .cx-handoff-modal[role="dialog"], .reception-overlay > .reception-modal, .float-gate > .float-box, .float-box) {
+  border: 1px solid var(--dg-border) !important;
+  border-top: 3px solid rgba(244, 63, 94, 0.85) !important;
+  color: var(--dg-text) !important;
+  background: var(--dg-surface) !important;
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  box-shadow: var(--dg-shadow), 0 24px 60px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.08) !important;
+}
+html[data-manager-theme="dark-glass"] body .dashboard-tool-modal[role="dialog"] {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  background: rgba(15, 23, 42, 0.82) !important;
+}
+
+/* Cabeçalhos e rodapés em vidro mais escuro, com a mesma divisória sutil. */
+html[data-manager-theme="dark-glass"] body :is(.modal-backdrop .stock-modal .modal-header, .modal-backdrop .stock-modal .schedule-modal-heading, .modal-backdrop .stock-modal .schedule-modal-header, .modal-backdrop .stock-modal .reservation-modal-heading, .finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-modal-header, .finance-modal-backdrop .finance-expense-modal .finance-modal-header, .dashboard-tool-modal-header, .dashboard-room-charge-header, .reception-modal-head, .cx-handoff-modal > div:first-child) {
+  color: var(--dg-text) !important;
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.92), rgba(30, 41, 59, 0.78)) !important;
+  border-bottom: 1px solid var(--dg-border) !important;
+}
+html[data-manager-theme="dark-glass"] body :is(.modal-backdrop .stock-modal .modal-footer, .modal-backdrop .stock-modal .schedule-modal-actions, .modal-backdrop .stock-modal .reservation-modal-footer, .finance-modal-backdrop .finance-modal .finance-modal-footer, .reception-modal-footer, .cx-handoff-modal footer) {
+  border-top: 1px solid var(--dg-border) !important;
+  background: rgba(15, 23, 42, 0.72) !important;
+}
+html[data-manager-theme="dark-glass"] body .reservation-live-summary {
+  background: rgba(15, 23, 42, 0.85);
+}
+html[data-manager-theme="dark-glass"] body :is(.modal-backdrop .stock-modal .modal-header, .modal-backdrop .stock-modal .modal-body, .finance-modal-backdrop .finance-modal .finance-modal-body, .dashboard-room-charge-modal, .cx-handoff-modal) h2,
+html[data-manager-theme="dark-glass"] body :is(.float-box h2, .dashboard-room-charge-header h2, .dashboard-room-charge-header small, #cx-handoff-title) {
+  color: var(--dg-text) !important;
+}
+html[data-manager-theme="dark-glass"] body :is(.finance-eyebrow, .eyebrow, .schedule-eyebrow, .dashboard-eyebrow, .cx-eyebrow, .float-eyebrow) {
+  color: #fda4af !important;
+}
+html[data-manager-theme="dark-glass"] body :is(.modal-backdrop .stock-modal .modal-header .close-button, .modal-backdrop .stock-modal .schedule-modal-close, .modal-backdrop .stock-modal .schedule-modal-header > button, .finance-modal-backdrop .finance-modal .finance-close, .dashboard-tool-backdrop .dashboard-tool-modal .dashboard-tool-modal-header button, .dashboard-room-charge-modal .dashboard-room-charge-close) {
+  border: 1px solid var(--dg-border-strong) !important;
+  color: var(--dg-text) !important;
+  background: rgba(255, 255, 255, 0.08) !important;
+  transition: var(--dg-transition);
+}
+html[data-manager-theme="dark-glass"] body :is(.modal-backdrop .stock-modal .modal-header .close-button, .modal-backdrop .stock-modal .schedule-modal-close, .modal-backdrop .stock-modal .schedule-modal-header > button, .finance-modal-backdrop .finance-modal .finance-close, .dashboard-tool-backdrop .dashboard-tool-modal .dashboard-tool-modal-header button, .dashboard-room-charge-modal .dashboard-room-charge-close):hover {
+  border-color: rgba(244, 63, 94, 0.7) !important;
+  background: rgba(244, 63, 94, 0.85) !important;
+  transform: rotate(90deg);
+}
+
+/* Seções internas, textos e avisos. */
+html[data-manager-theme="dark-glass"] body :is(.stock-modal, .finance-modal, .reception-modal, .dashboard-room-charge-modal, .cx-handoff-modal) :is(.reservation-form-section, .finance-expense-section, .reception-grid, .reception-extras, .stay-account, .cx-handoff-balance, .room-category-preview) {
+  border: 1px solid var(--dg-border) !important;
+  color: var(--dg-text);
+  background: var(--dg-surface-inset) !important;
+  box-shadow: none !important;
+}
+html[data-manager-theme="dark-glass"] body :is(.reception-modal .reception-service-breakfast, .reception-modal .reception-service-tax) {
+  border-color: rgba(52, 211, 153, 0.3) !important;
+  border-left-color: #34d399 !important;
+  background: rgba(16, 185, 129, 0.12) !important;
+}
+html[data-manager-theme="dark-glass"] body .stock-modal .form-field:has(select[name="entryCard"]) {
+  border-color: rgba(251, 191, 36, 0.35);
+  background: rgba(245, 158, 11, 0.12);
+}
+html[data-manager-theme="dark-glass"] body [role="dialog"][aria-modal="true"] :is(p, small, legend, .finance-form-hint, .modal-form-hint) {
+  color: var(--dg-text-muted);
+}
+html[data-manager-theme="dark-glass"] body [role="dialog"][aria-modal="true"] :is(h2, h3, strong) {
+  color: var(--dg-text);
+}
+html[data-manager-theme="dark-glass"] body :is(.modal-backdrop .stock-modal .form-field, .modal-backdrop .stock-modal .schedule-field, .modal-backdrop .stock-modal .reservation-modal .schedule-field, .finance-modal-backdrop .finance-modal .finance-field, .dashboard-room-charge-modal .dashboard-room-charge-field, .dashboard-room-charge-modal .dashboard-room-charge-types legend, .cx-handoff-modal .cx-field, .float-box .float-form label, .modal-backdrop .stock-modal .form-field > span, .modal-backdrop .stock-modal .schedule-field > span, .finance-modal-backdrop .finance-modal .finance-field > span),
+html[data-manager-theme="dark-glass"] body [role="dialog"][aria-modal="true"] :is(label, .modal-check-row) {
+  color: var(--dg-text) !important;
+}
+html[data-manager-theme="dark-glass"] body [role="dialog"][aria-modal="true"] :is(.modal-check-row small, .finance-field small) {
+  color: var(--dg-text-muted) !important;
+}
+
+/* Campos escuros translúcidos com foco iluminado. */
+html[data-manager-theme="dark-glass"] body [role="dialog"][aria-modal="true"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]), select, textarea) {
+  border: 1px solid var(--dg-border-strong) !important;
+  color: var(--dg-text) !important;
+  background: var(--dg-input-bg) !important;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.25) !important;
+  transition: var(--dg-transition);
+}
+html[data-manager-theme="dark-glass"] body [role="dialog"][aria-modal="true"] :is(input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]), select, textarea):focus {
+  border-color: rgba(96, 165, 250, 0.7) !important;
+  background: rgba(15, 23, 42, 0.82) !important;
+  box-shadow: var(--dg-focus) !important;
+}
+html[data-manager-theme="dark-glass"] body [role="dialog"][aria-modal="true"] :is(input, textarea)[readonly],
+html[data-manager-theme="dark-glass"] body [role="dialog"][aria-modal="true"] :is(input, select, textarea):disabled {
+  color: var(--dg-text-muted) !important;
+  background: rgba(15, 23, 42, 0.35) !important;
+}
+html[data-manager-theme="dark-glass"] body [role="dialog"][aria-modal="true"] :is(input[type="checkbox"], input[type="radio"]) {
+  accent-color: #3b82f6;
+  color-scheme: dark;
+}
+html[data-manager-theme="dark-glass"] body [role="dialog"][aria-modal="true"] .date-input-button {
+  border: 1px solid var(--dg-border-strong);
+  background: var(--dg-input-bg);
+}
+html[data-manager-theme="dark-glass"] body .reception-modal .reception-money-input {
+  border-color: var(--dg-border-strong);
+}
+html[data-manager-theme="dark-glass"] body .reception-modal .reception-money-input:focus-within {
+  border-color: rgba(96, 165, 250, 0.7);
+  box-shadow: var(--dg-focus);
+}
+html[data-manager-theme="dark-glass"] body .reception-overlay .reception-modal .reception-money-input > input:not([type="checkbox"]):not([type="radio"]):not([type="hidden"]):not([type="file"]) {
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+/* Botões: ação primária em azul, secundários em vidro. */
+html[data-manager-theme="dark-glass"] body :is(.modal-backdrop .stock-modal .button-plain, .modal-backdrop .stock-modal .reservation-modal-footer .button-plain, .finance-modal-backdrop .finance-modal .finance-button-soft, .dashboard-room-charge-modal .dashboard-room-charge-cancel, .cx-handoff-modal .cx-secondary, .dashboard-room-choice-actions button, .dashboard-room-choice-cancel, .float-box .float-back, .float-box .float-no) {
+  border: 1px solid var(--dg-border-strong) !important;
+  color: var(--dg-text) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+  transition: var(--dg-transition);
+}
+html[data-manager-theme="dark-glass"] body :is(.modal-backdrop .stock-modal .button-plain, .modal-backdrop .stock-modal .reservation-modal-footer .button-plain, .finance-modal-backdrop .finance-modal .finance-button-soft, .dashboard-room-charge-modal .dashboard-room-charge-cancel, .cx-handoff-modal .cx-secondary, .dashboard-room-choice-actions button, .dashboard-room-choice-cancel, .float-box .float-back, .float-box .float-no):hover:not(:disabled) {
+  border-color: rgba(255, 255, 255, 0.28) !important;
+  background: var(--dg-hover) !important;
+}
+html[data-manager-theme="dark-glass"] body [role="dialog"][aria-modal="true"] :is(.finance-modal-footer, .modal-footer, .schedule-modal-actions, .reservation-modal-footer, .reception-modal-footer) :is(.finance-button-primary, .finance-button-dark, .button-primary),
+html[data-manager-theme="dark-glass"] body :is(.dashboard-room-charge-modal .dashboard-room-charge-submit, .cx-handoff-modal .cx-primary) {
+  border-color: #2563eb !important;
+  color: #fff !important;
+  background: #2563eb !important;
+  box-shadow: 0 6px 18px rgba(37, 99, 235, 0.35) !important;
+}
+html[data-manager-theme="dark-glass"] body [role="dialog"][aria-modal="true"] :is(.finance-modal-footer, .modal-footer, .schedule-modal-actions, .reservation-modal-footer, .reception-modal-footer) :is(.finance-button-primary, .finance-button-dark, .button-primary):hover:not(:disabled),
+html[data-manager-theme="dark-glass"] body :is(.dashboard-room-charge-modal .dashboard-room-charge-submit, .cx-handoff-modal .cx-primary):hover:not(:disabled) {
+  border-color: #3b82f6 !important;
+  background: #3b82f6 !important;
+}
+html[data-manager-theme="dark-glass"] body .dashboard-room-choice-actions svg {
+  color: #60a5fa !important;
+}
+html[data-manager-theme="dark-glass"] body .modal-backdrop .stock-modal .button-danger {
+  border-color: rgba(244, 63, 94, 0.45);
+  color: #fda4af;
+  background: rgba(244, 63, 94, 0.12);
+}
+
+/* Animação de abertura: entrada suave do vidro ao abrir o modal. */
+html[data-manager-theme="dark-glass"] body :is(.stock-modal, .finance-modal, .dashboard-room-charge-modal, .cx-handoff-modal)[role="dialog"] {
+  animation: modalBoxEnter 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }

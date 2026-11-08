@@ -368,12 +368,14 @@ function RoomEditor({ room, categories, onCancel, onSave }: { room?: Housekeepin
 		<section className="stock-modal housekeeping-modal" role="dialog" aria-modal="true" aria-labelledby="room-editor-title">
 			<form onSubmit={submit}>
 				<ModalHeading eyebrow={room ? 'ATUALIZAR QUARTO' : 'CADASTRO DE QUARTO'} title={room ? `Quarto ${room.number}` : 'Adicionar quarto'} onClose={onCancel} id="room-editor-title" />
-				<label className="schedule-field"><span>Número do quarto</span><input name="number" required maxLength={12} defaultValue={room?.number} placeholder="Ex.: 12" /></label>
-				<label className="schedule-field"><span>Categoria e configuração das camas</span><select name="category" required value={categoryId} onChange={(event) => setCategoryId(event.target.value)}><option value="" disabled>Selecione uma categoria</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name} · {category.bedComposition}</option>)}</select></label>
-				{selectedCategory && <div className="room-category-preview"><strong>{selectedCategory.name}</strong><span>{selectedCategory.bedComposition}</span><small>{selectedCategory.bedCount} {selectedCategory.bedCount === 1 ? 'cama' : 'camas'} cadastradas nesta configuração</small></div>}
-			<label className="schedule-field"><span>Limpeza</span><select name="cleaningStatus" defaultValue={room?.cleaningStatus ?? 'sujo'}><option value="sujo">Sujo</option><option value="limpo">Limpo</option><option value="em_limpeza">Em limpeza</option></select></label>
-				<label className="schedule-field"><span>Manutenção</span><select name="maintenanceStatus" defaultValue={room?.maintenanceStatus ?? 'normal'}><option value="normal">Sem manutenção</option><option value="manutencao_necessaria">Precisa manutenção, mas pode usar</option><option value="em_manutencao">Em manutenção, indisponível</option></select></label>
-				<label className="schedule-field"><span>Observação</span><textarea name="note" rows={3} maxLength={300} defaultValue={room?.note} placeholder="Manutenção pendente, preferência, observação da equipe" /></label>
+				<div className="modal-form-body"><div className="modal-form-grid">
+					<label className="schedule-field"><span>Número do quarto</span><input name="number" required maxLength={12} defaultValue={room?.number} placeholder="Ex.: 12" /></label>
+					<label className="schedule-field"><span>Categoria e configuração das camas</span><select name="category" required value={categoryId} onChange={(event) => setCategoryId(event.target.value)}><option value="" disabled>Selecione uma categoria</option>{categories.map((category) => <option key={category.id} value={category.id}>{category.name} · {category.bedComposition}</option>)}</select></label>
+					{selectedCategory && <div className="room-category-preview modal-form-span"><strong>{selectedCategory.name}</strong><span>{selectedCategory.bedComposition}</span><small>{selectedCategory.bedCount} {selectedCategory.bedCount === 1 ? 'cama' : 'camas'} cadastradas nesta configuração</small></div>}
+					<label className="schedule-field"><span>Limpeza</span><select name="cleaningStatus" defaultValue={room?.cleaningStatus ?? 'sujo'}><option value="sujo">Sujo</option><option value="limpo">Limpo</option><option value="em_limpeza">Em limpeza</option></select></label>
+					<label className="schedule-field"><span>Manutenção</span><select name="maintenanceStatus" defaultValue={room?.maintenanceStatus ?? 'normal'}><option value="normal">Sem manutenção</option><option value="manutencao_necessaria">Precisa manutenção, mas pode usar</option><option value="em_manutencao">Em manutenção, indisponível</option></select></label>
+					<label className="schedule-field modal-form-span"><span>Observação</span><textarea name="note" rows={3} maxLength={300} defaultValue={room?.note} placeholder="Manutenção pendente, preferência, observação da equipe" /></label>
+				</div></div>
 				<div className="schedule-modal-actions"><button className="button button-plain" type="button" onClick={onCancel}>Cancelar</button><button className="button button-primary" type="submit">Salvar quarto</button></div>
 			</form>
 		</section>
@@ -447,9 +449,11 @@ function CleaningEditor({ room, attendants, assignedTask, due, onCancel, onSave 
 		<section className="stock-modal housekeeping-modal cleaning-editor-modal" role="dialog" aria-modal="true" aria-labelledby="cleaning-editor-title">
 			<form onSubmit={submit}>
 				<ModalHeading eyebrow="CONCLUSÃO DE TAREFA" title={`Limpeza do quarto ${room.number}`} onClose={onCancel} id="cleaning-editor-title" />
-				<label className="schedule-field"><span>Camareira responsável</span><select required value={attendant} onChange={(event) => setAttendant(event.target.value)}><option value="" disabled>Selecione a camareira</option>{attendants.map((item) => <option value={item.name} key={item.id}>{item.name}</option>)}</select></label>
-				<label className={`doors-cleaning-option ${due ? 'is-due' : ''}`}><input type="checkbox" checked={doorsAndWindows} onChange={(event) => setDoorsAndWindows(event.target.checked)} /><span><strong>Limpar portas e janelas</strong><small>{due ? 'Esta limpeza está vencida ou é a primeira registrada.' : 'Tarefa periódica; o prazo é configurado no painel.'}</small></span></label>
-				<label className="schedule-field"><span>Observação</span><textarea rows={3} maxLength={300} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Opcional" /></label>
+				<div className="modal-form-body"><div className="modal-form-grid">
+					<label className="schedule-field modal-form-span"><span>Camareira responsável</span><select required value={attendant} onChange={(event) => setAttendant(event.target.value)}><option value="" disabled>Selecione a camareira</option>{attendants.map((item) => <option value={item.name} key={item.id}>{item.name}</option>)}</select></label>
+					<label className={`doors-cleaning-option modal-form-span ${due ? 'is-due' : ''}`}><input type="checkbox" checked={doorsAndWindows} onChange={(event) => setDoorsAndWindows(event.target.checked)} /><span><strong>Limpar portas e janelas</strong><small>{due ? 'Esta limpeza está vencida ou é a primeira registrada.' : 'Tarefa periódica; o prazo é configurado no painel.'}</small></span></label>
+					<label className="schedule-field modal-form-span"><span>Observação</span><textarea rows={3} maxLength={300} value={note} onChange={(event) => setNote(event.target.value)} placeholder="Opcional" /></label>
+				</div></div>
 				<div className="schedule-modal-actions"><button className="button button-plain" type="button" onClick={onCancel}>Cancelar</button><button className="button button-primary" type="submit">Concluir limpeza</button></div>
 			</form>
 		</section>

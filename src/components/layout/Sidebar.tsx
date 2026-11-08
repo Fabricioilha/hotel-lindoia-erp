@@ -7,6 +7,7 @@ import { FloatCheckGate } from './FloatCheckGate';
 import { useDuty, useDutyRoster } from '../../services/useAttendant';
 import { SidebarSlotContext } from './sidebarSlot';
 import { useStaff } from '../../services/staffStore';
+import { useManagerTheme } from '../../services/useManagerTheme';
 import './sidebar.css';
 
 const ReceptionModal = lazy(() => import('../../pages/caixa/CaixaRecepcao').then((module) => ({ default: module.CaixaRecepcao })));
@@ -28,6 +29,8 @@ const ICONS: Record<string, string> = {
   clock: 'M12 7v5l3 2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18',
   dollar: 'M12 3v18M16 7.5H10a2.5 2.5 0 0 0 0 5h4a2.5 2.5 0 0 1 0 5H8',
   receipt: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6',
+  sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
+  moon: 'M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z',
 };
 
 function Icon({ name }: { name: string }) {
@@ -94,6 +97,7 @@ export function AppShell({ userRole, onLogout }: { userRole: UserRole; onLogout:
   const [receptionNotice, setReceptionNotice] = useState('');
   const receptionTrigger = useRef<HTMLButtonElement | null>(null);
   const isAdmin = userRole === 'admin';
+  const managerTheme = useManagerTheme(userRole);
   const location = useLocation();
   const duty = useDutyRoster(userRole === 'viewer');
 
@@ -135,6 +139,9 @@ export function AppShell({ userRole, onLogout }: { userRole: UserRole; onLogout:
 
         <div className="app-sidebar-footer">
           <span className="app-sidebar-profile"><small>{isAdmin ? 'PERFIL' : 'PLANTONISTA'}</small><strong>{isAdmin ? 'Gerência' : duty.attendant || 'Sem plantonista na escala'}</strong></span>
+          {managerTheme.available && <button type="button" className={`app-nav-item app-theme-toggle${managerTheme.enabled ? ' is-on' : ''}`} role="switch" aria-checked={managerTheme.enabled} aria-label="Tema escuro" onClick={managerTheme.toggle} title={managerTheme.enabled ? 'Voltar ao tema claro' : 'Ativar o tema escuro'}>
+            <Icon name={managerTheme.enabled ? 'moon' : 'sun'} /><span className="app-nav-label">Tema escuro</span><span className="app-theme-switch" aria-hidden="true"><span className="app-theme-knob" /></span>
+          </button>}
           <button type="button" className="app-nav-item app-logout" onClick={onLogout} title="Encerrar sessão"><Icon name="logout" /><span className="app-nav-label">Encerrar sessão</span></button>
         </div>
       </aside>

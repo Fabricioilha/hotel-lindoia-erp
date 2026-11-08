@@ -1107,3 +1107,350 @@
   .reservation-modal-footer { padding: 12px 16px calc(12px + env(safe-area-inset-bottom)); }
   .reservation-modal-footer .button { flex: 1; }
 }
+
+/* ===== DARK-GLASS (gerente) =====
+   Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
+   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+:where(html[data-manager-theme="dark-glass"]) .reservation-summary .housekeeping-metric small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-occupancy {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-occupancy-heading h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-occupancy-heading > span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile:hover,
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile:focus-visible {
+  border-color: var(--dg-border-strong);
+  outline: 2px solid var(--dg-border-strong);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-context {
+  color: var(--dg-text);
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-context a,
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-context button {
+  color: #8ec5fa;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-existing-payment {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-check-option {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile.is-occupied {
+  background: hsl(350 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile.is-maintenance {
+  background: hsl(40 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile-top strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile-top span {
+  color: #86efac;
+  background: hsl(140 50% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile.is-occupied .reservation-room-tile-top span {
+  color: #fda4af;
+  background: hsl(352 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile.is-maintenance .reservation-room-tile-top span {
+  color: #fcd34d;
+  background: hsl(39 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile.is-occupied p {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-panel {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-toolbar {
+  border-bottom: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-tabs button {
+  color: var(--dg-text-muted);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-tabs button:hover {
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-tabs button.selected {
+  border-color: var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-channel-field legend {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-channel-options label {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-channel-options label.selected {
+  border-color: var(--dg-border-strong);
+  background: var(--dg-hover);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-channel-options small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-channel {
+  border: 1px solid var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .channel-balcao {
+  border-color: hsl(36 54% 60% / 0.35);
+  color: #fcd34d;
+  background: hsl(38 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .channel-unknown {
+  border-color: var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-empty strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-empty p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-stays-section {
+  border-top: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-stays-heading h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-stays-heading p {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reception-stays-heading > span {
+  border: 1px solid var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-card {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.09);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-card:hover {
+  border-color: var(--dg-border);
+  box-shadow: 0 4px 14px rgb(0 0 0 / 0.14);
+}
+:where(html[data-manager-theme="dark-glass"]) .rc-label,
+:where(html[data-manager-theme="dark-glass"]) .reservation-card small {
+  color: var(--dg-text-muted);
+}
+@media (max-width: 1280px) {
+  :where(html[data-manager-theme="dark-glass"]) .reservation-card .reservation-row-actions {
+    border-top: 1px solid var(--dg-border);
+  }
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-confirmada {
+  border-color: hsl(38 65% 60% / 0.35);
+  color: #fcd34d;
+  background: hsl(41 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-hospedado {
+  border-color: var(--dg-border);
+  color: #8ec5fa;
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-encerrada {
+  border-color: var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-cancelada {
+  border-color: hsl(348 49% 60% / 0.35);
+  color: #fda4af;
+  background: hsl(352 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-row-actions button {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-row-actions button:hover:not(:disabled) {
+  background: rgba(148, 163, 184, 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-row-actions button.reservation-action-primary {
+  border-color: var(--dg-border-strong);
+  background: #2563eb;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-row-actions button.danger {
+  border-color: hsl(349 37% 60% / 0.35);
+  color: #fda4af;
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-modal {
+  border-color: var(--dg-border);
+  box-shadow: 0 24px 72px rgb(0 0 0 / 0.48);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-live-summary {
+  border-bottom: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-live-summary span {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-modal-error {
+  border-top: 1px solid hsl(0 59% 60% / 0.35);
+  background: hsl(0 80% 52% / 0.16);
+  color: #fda4af;
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-modal-heading {
+  border-bottom: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-modal-heading .eyebrow {
+  color: #fcd34d;
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-modal-heading h2 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-modal-heading > div > p:last-child {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-modal .schedule-modal-close {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface);
+  -webkit-backdrop-filter: var(--dg-blur);
+  backdrop-filter: var(--dg-blur);
+  transition: var(--dg-transition);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-form-section {
+  border-bottom: 1px solid var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-section-heading > span {
+  color: #fcd34d;
+  background: hsl(38 62% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-section-heading h3 {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-section-heading p,
+:where(html[data-manager-theme="dark-glass"]) .reservation-modal .schedule-field {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-modal .schedule-field input,
+:where(html[data-manager-theme="dark-glass"]) .reservation-modal .schedule-field select,
+:where(html[data-manager-theme="dark-glass"]) .reservation-modal .schedule-field textarea {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text);
+  background: var(--dg-input-bg);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-modal .schedule-field input:focus,
+:where(html[data-manager-theme="dark-glass"]) .reservation-modal .schedule-field select:focus,
+:where(html[data-manager-theme="dark-glass"]) .reservation-modal .schedule-field textarea:focus {
+  box-shadow: 0 0 0 3px rgb(0 0 0 / 0.24);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-form-section .reservation-channel-field legend {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-channel-options label {
+  border-color: var(--dg-border);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-channel-options label.selected {
+  background: var(--dg-hover);
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 0.6);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-channel-options span {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-breakfast-option {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-extra-option {
+  border: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-extra-option > label:first-child {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-total-row {
+  border: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-total-row strong {
+  color: #5eead4;
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-rotativo-checkout {
+  color: var(--dg-text-muted);
+  background: hsl(42 66% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-rotativo-checkout strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-rotativo-checkout small {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .checkout-remaining-row {
+  border-color: var(--dg-border);
+  background: var(--dg-surface-inset);
+}
+:where(html[data-manager-theme="dark-glass"]) .checkout-remaining-row strong,
+:where(html[data-manager-theme="dark-glass"]) .reservation-admin-balance {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-admin-balance strong {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-modal-footer {
+  border-top: 1px solid var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-hint {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-payment-history {
+  border-left: 2px solid var(--dg-border);
+  background: var(--dg-surface-inset);
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-breakfast-option {
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-audit {
+  border-top: 1px solid var(--dg-border);
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .reservation-audit li span {
+  color: var(--dg-text-muted);
+}
+/* ===== /DARK-GLASS ===== */
