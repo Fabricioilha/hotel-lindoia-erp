@@ -1133,3 +1133,231 @@ html[data-manager-theme="dark-glass"] body .modal-backdrop .stock-modal .button-
 html[data-manager-theme="dark-glass"] body :is(.stock-modal, .finance-modal, .dashboard-room-charge-modal, .cx-handoff-modal)[role="dialog"] {
   animation: modalBoxEnter 260ms cubic-bezier(0.16, 1, 0.3, 1) both;
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Alinhamento de "Conta da hospedagem" (StayAccount) dentro dos modais
+   ═══════════════════════════════════════════════════════════════════════════ */
+html body .stay-account .stay-account-receive {
+  display: grid !important;
+  grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  gap: 14px 16px !important;
+  align-items: end !important;
+  margin: 14px 0 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+}
+
+html body .stay-account .stay-account-receive > legend {
+  grid-column: 1 / -1 !important;
+  width: 100%;
+  margin: 0 0 6px !important;
+  padding: 0 !important;
+  font-size: var(--modal-label-size) !important;
+  font-weight: 700 !important;
+}
+
+/* Corrige o DateInput para o input de data ocupar 100% e o botão 📅 ficar fixo à direita */
+html body .stay-account .stay-account-date-row,
+html body .stay-account .stay-account-date-row > * {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center !important;
+  gap: 8px !important;
+  width: 100% !important;
+  min-width: 0 !important;
+}
+
+html body .stay-account .stay-account-date-row input {
+  flex: 1 1 auto !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  height: var(--modal-field-height) !important;
+  min-height: var(--modal-field-height) !important;
+  margin: 0 !important;
+}
+
+html body .stay-account .stay-account-date-row button,
+html body .stay-account .stay-account-date-row .date-input-button {
+  flex: 0 0 44px !important;
+  width: 44px !important;
+  min-width: 44px !important;
+  height: var(--modal-field-height) !important;
+  min-height: var(--modal-field-height) !important;
+  padding: 0 !important;
+  margin: 0 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* Alinha o botão "Preencher saldo" exatamente na mesma altura e linha do campo Data */
+html body .stay-account .stay-account-ActionSpacer {
+  user-select: none;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+html body .stay-account .stay-account-fill-btn {
+  width: 100% !important;
+  height: var(--modal-field-height) !important;
+  min-height: var(--modal-field-height) !important;
+  margin: 0 !important;
+  padding: 0 16px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 1px solid var(--modal-line) !important;
+  border-radius: var(--modal-field-radius) !important;
+  background: #fff !important;
+  color: var(--modal-ink) !important;
+  font-size: .875rem !important;
+  font-weight: 700 !important;
+  cursor: pointer;
+}
+
+html body .stay-account .stay-account-fill-btn:hover:not(:disabled) {
+  border-color: var(--modal-navy-action) !important;
+  background: rgba(24, 60, 102, .05) !important;
+}
+
+/* Botão Confirmar recebimento ocupando as 2 colunas na base */
+html body .stay-account .stay-account-submit-btn {
+  grid-column: 1 / -1 !important;
+  width: 100% !important;
+  height: 44px !important;
+  min-height: 44px !important;
+  margin: 2px 0 0 !important;
+  padding: 0 18px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  border: 1px solid var(--modal-navy-action) !important;
+  border-radius: var(--modal-field-radius) !important;
+  background: var(--modal-navy-action) !important;
+  color: #fff !important;
+  font-size: .9rem !important;
+  font-weight: 700 !important;
+  box-shadow: 0 3px 9px rgb(20 43 77 / 18%);
+  cursor: pointer;
+}
+
+html body .stay-account .stay-account-submit-btn:hover:not(:disabled) {
+  background: var(--modal-navy-hover) !important;
+}
+
+html body .stay-account .stay-account-submit-btn:disabled {
+  opacity: .55;
+  cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+  html body .stay-account .stay-account-ActionSpacer {
+    display: none !important;
+  }
+}
+
+/* Suporte ao tema Dark Glass do Gerente */
+html[data-manager-theme="dark-glass"] body .stay-account .stay-account-fill-btn {
+  border-color: var(--dg-border-strong) !important;
+  color: var(--dg-text) !important;
+  background: rgba(255, 255, 255, 0.06) !important;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Cabeçalho fixo colado no topo com efeito de vidro (Opções do quarto)
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Remove o padding superior do modal para o header encostar exatamente na borda vermelha do topo */
+html body .dashboard-room-charge-modal[role="dialog"] {
+  padding-top: 0 !important;
+  scroll-padding-top: 84px;
+}
+
+/* Mantém o cabeçalho colado no topo (top: 0) compensando apenas as laterais */
+html body .dashboard-room-charge-modal .dashboard-room-charge-header {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 30 !important;
+  margin-top: 0 !important;
+  margin-left: -24px !important;
+  margin-right: -24px !important;
+  margin-bottom: 18px !important;
+  padding: 16px 24px !important;
+  background: linear-gradient(135deg, rgba(20, 43, 77, 0.191), rgba(24, 60, 102, 0.545)) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(160%) !important;
+  backdrop-filter: blur(18px) saturate(160%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.18) !important;
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.18) !important;
+}
+
+@media (max-width: 620px) {
+  html body .dashboard-room-charge-modal .dashboard-room-charge-header {
+    margin-left: -16px !important;
+    margin-right: -16px !important;
+    padding: 14px 18px !important;
+  }
+}
+
+/* Suporte ao modo Dark Glass do Gerente mantendo a transparência */
+html[data-manager-theme="dark-glass"] body .dashboard-room-charge-modal .dashboard-room-charge-header {
+  background: linear-gradient(135deg, rgba(15, 23, 42, 0.75), rgba(30, 41, 59, 0.65)) !important;
+  -webkit-backdrop-filter: blur(18px) saturate(150%) !important;
+  backdrop-filter: blur(18px) saturate(150%) !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12) !important;
+}
+
+
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Modais de Ferramentas (Controle de Limpeza, Estoque, etc.) amplos e responsivos
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+html body .dashboard-tool-modal[role="dialog"],
+html body .dashboard-tool-modal.dashboard-tool-modal--wide[role="dialog"] {
+  /* Expande para até 1480px em telas grandes, mantendo margem segura (96vw) em telas menores */
+  --glass-dialog-width: 1480px !important;
+  width: min(1480px, 96vw) !important;
+  max-width: calc(100vw - 2 * clamp(8px, 2vw, 24px)) !important;
+  background: rgba(244, 247, 251, .97) !important;
+}
+
+@media (min-width: 641px) {
+  html body .dashboard-tool-modal[role="dialog"] {
+    height: min(95dvh, 1000px) !important;
+    max-height: min(95dvh, 1000px) !important;
+  }
+}
+
+/* Garante que o conteúdo interno (Limpeza e Estoque) aproveite toda a nova largura */
+html body .dashboard-tool-modal .dashboard-tool-modal-content,
+html body .dashboard-tool-modal .dashboard-tool-modal-content > * {
+  width: 100% !important;
+  max-width: none !important;
+  box-sizing: border-box !important;
+}
+
+/* Mantém o suporte ao tema Dark Glass do Gerente */
+html[data-manager-theme="dark-glass"] body .dashboard-tool-modal[role="dialog"] {
+  background: rgba(15, 23, 42, 0.88) !important;
+}
+
+/* Ajuste responsivo para tablets e telas intermediárias */
+@media (max-width: 1024px) {
+  html body .dashboard-tool-modal[role="dialog"],
+  html body .dashboard-tool-modal.dashboard-tool-modal--wide[role="dialog"] {
+    width: 96vw !important;
+    height: min(94dvh, 920px) !important;
+    max-height: 94dvh !important;
+  }
+}
+
+/* Mantém o comportamento de bottom-sheet (100% da largura) no celular */
+@media (max-width: 640px) {
+  html body .dashboard-tool-modal[role="dialog"],
+  html body .dashboard-tool-modal.dashboard-tool-modal--wide[role="dialog"] {
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 92dvh !important;
+    max-height: 92dvh !important;
+  }
+}
