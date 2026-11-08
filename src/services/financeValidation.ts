@@ -56,6 +56,10 @@ export function financeDataIssues(data: FinanceData): FinanceIssue[] {
     if (!entry.id || !isFinanceDateKey(entry.date) || !['cash', 'bank', 'oyo'].includes(entry.from)
       || !['cash', 'bank', 'oyo'].includes(entry.to) || entry.from === entry.to
       || !Number.isFinite(entry.amount) || entry.amount <= 0) add(entry.id, 'transfer', 'Há transferência com data, valor ou carteiras inválidas.');
+    if (entry.oyoRecomMonth && ((entry.from === 'oyo') === (entry.to === 'oyo')
+      || !/^\d{4}-(0[1-9]|1[0-2])$/.test(entry.oyoRecomMonth) || entry.oyoRecomMonth < entry.date.slice(0, 7))) {
+      add(entry.id, 'transfer', 'Vincule a uma RECOM do mês da transferência ou de um mês posterior.');
+    }
   });
   return issues;
 }

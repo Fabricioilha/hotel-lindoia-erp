@@ -9,6 +9,7 @@ import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAttendant } from '../services/useAttendant';
 import type { UserRole } from '../types';
 import { subscribeDashboardHousekeeping, subscribeCurrentReservationDirectory, subscribeReservationCollections, subscribeRoomCategories, subscribeRoomDirectory, syncReservationCollections, setRoomMaintenanceBlock, type DashboardHousekeepingData } from '../services/housekeepingStore';
+import { breakfastsOnDate } from '../services/breakfastForecast';
 import { departureDue, guestStayOccupiesToday, hotelOccupancySummary, occupiedRoomNumbers } from '../services/reservationAnalytics';
 import { subscribeRoomAddOnInventory } from '../services/frigobarStore';
 import { convertRotativoToDaily, emptyReception, localDateKey, saveRoomCharge, confirmStayArrival, subscribeReceptionBoard, subscribeReceptionRates } from '../services/receptionStore';
@@ -222,7 +223,7 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
       setSyncError(cause.message);
       if (userRole === 'admin') setMetricsErrorKey(requestKey);
       setBoardReceptionLoadedKey(requestKey);
-    });
+    }, { includeUpcomingBreakfastCharges: userRole === 'admin' });
   }, [boardRequestKey, userRole]);
 
   useEffect(() => {
@@ -326,6 +327,10 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
 
   const metricDate = new Date(clock);
   const occupancy = hotelOccupancySummary(housekeeping, metricDate, { stays: boardStays, rooms: receptionRooms });
+  const tomorrow = dateKeyAfterDays(boardTodayKey, 1);
+  const breakfastForecast = userRole === 'admin' && boardReceptionLoaded && boardReservationsLoaded && !metricsError
+    ? breakfastsOnDate(tomorrow, boardStays, housekeeping.reservations, roomCharges)
+    : null;
   const occupiedNumbers = occupiedRoomNumbers(housekeeping, boardStays, metricDate);
   const lowStockCount = Object.values(inventoryProducts).filter((product) => {
     const quantity = product.category === 'frigobar'
@@ -398,6 +403,7 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
         {displayedNotice && <div key={displayedNotice.id} className="dashboard-toast" role="status"><span aria-hidden="true">✓</span>{displayedNotice.message}</div>}
 
         {userRole === 'admin' && <section className="dashboard-metrics" aria-label="Indicadores operacionais">
+          <MetricCard title="Cafés da manhã amanhã" value={breakfastForecast === null ? '—' : String(breakfastForecast)} detail={metricsError ? 'Dados indisponíveis' : breakfastForecast === null ? 'Carregando hospedagens e reservas' : `${tomorrow.split('-').reverse().join('/')} · previsão para o pedido da padaria`} tone="gold" />
           <MetricCard title="Ocupação atual" value={valueOrLoading(occupancy.occupancyRate === null ? '—' : `${occupancy.occupancyRate}%`)} detail={detailOrLoading(occupancy.usableRooms ? `${occupancy.occupiedRooms} de ${occupancy.usableRooms} quartos utilizáveis` : 'Cadastre os quartos')} tone="blue" />
           <MetricCard title="Prontos para hospedagem" value={valueOrLoading(readyRooms)} detail={detailOrLoading('Limpos, livres e sem bloqueio de manutenção')} tone="green" />
           <MetricCard title="Limpezas designadas" value={valueOrLoading(cleaningNow)} detail={detailOrLoading('Quartos com limpeza designada em andamento')} tone="gold" />

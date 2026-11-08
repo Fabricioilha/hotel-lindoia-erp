@@ -128,7 +128,7 @@ export interface ReceptionBoardData {
   rooms: Record<string, ReceptionRoom>;
 }
 
-export function subscribeReceptionBoard(onChange: (data: ReceptionBoardData) => void, onError: (error: Error) => void, options: { includeRoomCharges?: boolean } = {}): () => void {
+export function subscribeReceptionBoard(onChange: (data: ReceptionBoardData) => void, onError: (error: Error) => void, options: { includeRoomCharges?: boolean; includeUpcomingBreakfastCharges?: boolean } = {}): () => void {
   const today = new Date();
   const tomorrow = new Date(today);
   tomorrow.setDate(tomorrow.getDate() + 1);
@@ -141,6 +141,9 @@ export function subscribeReceptionBoard(onChange: (data: ReceptionBoardData) => 
   let rangeLoaded = false;
   let activeLoaded = false;
   let roomCharges: Record<string, RoomCharge> = {};
+  let recentCharges: Record<string, RoomCharge> | undefined;
+  const includeUpcoming = options.includeRoomCharges !== false && options.includeUpcomingBreakfastCharges === true;
+  let upcomingBreakfasts: Record<string, RoomCharge> | undefined = includeUpcoming ? undefined : {};
   let rooms: Record<string, ReceptionRoom> = {};
   if (options.includeRoomCharges === false) loaded.add('roomCharges');
   const emit = (key: keyof ReceptionBoardData) => {
@@ -174,17 +177,30 @@ export function subscribeReceptionBoard(onChange: (data: ReceptionBoardData) => 
     ref(db, `${PATH}/roomCharges`),
     orderByChild('date'),
     startAt(localDateKey(from)),
-    endAt(localDateKey(today)),
+    endAt(localDateKey(includeUpcoming ? tomorrow : today)),
   );
-  const stopRoomCharges = options.includeRoomCharges === false ? () => {} : onValue(roomChargesQuery, (snapshot) => {
-    roomCharges = snapshot.val() ?? {};
+  const emitCharges = () => {
+    if (!recentCharges || !upcomingBreakfasts) return;
+    roomCharges = { ...upcomingBreakfasts, ...recentCharges };
     emit('roomCharges');
+  };
+  const stopRoomCharges = options.includeRoomCharges === false ? () => {} : onValue(roomChargesQuery, (snapshot) => {
+    recentCharges = snapshot.val() ?? {};
+    emitCharges();
   }, onError);
+  const stopUpcoming = includeUpcoming ? onValue(query(
+    ref(db, `${PATH}/roomCharges`), orderByChild('validThrough'), startAt(localDateKey(tomorrow)),
+  ), (snapshot) => {
+    const charges = snapshot.val<Record<string, RoomCharge>>() ?? {};
+    upcomingBreakfasts = Object.fromEntries(Object.entries(charges).filter(([, charge]) => charge.kind === 'cafe_avulso'));
+    emitCharges();
+  }, onError) : undefined;
   return () => {
     stopStays();
     stopActiveStays();
     stopRooms();
     stopRoomCharges();
+    stopUpcoming?.();
   };
 }
 

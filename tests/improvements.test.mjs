@@ -328,3 +328,46 @@ test('the employee screen offers base salary, quick search and status filters wi
   const payrollPage = sourceText('src/pages/financeiro/FolhaDePagamento.tsx');
   for (const text of ['Salário base (referência)', 'Vales adiantados no período', 'Consta na folha • Não debita do caixa novamente', 'Valor pago agora', 'Total remuneração registrada na folha']) assert.ok(payrollPage.includes(text), `FolhaDePagamento.tsx contains ${text}`);
 });
+
+test('monthly debt scopes separate future maturities without counting later payments', () => {
+  const { accountsInScope } = load('src/services/outstandingAccounts.ts');
+  const expense = (id, dueDate, amount, payments = {}) => ({ id, dueDate, category: 'Teste', plannedAmount: amount, paidCash: 0, paidBank: 0, payments, note: '' });
+  const data = { ...base(), expenses: {
+    old: expense('old', '2026-09-30', 125),
+    end: expense('end', '2026-10-31', 29.60),
+    future: expense('future', '2026-11-05', 29265.09),
+    paidLater: expense('paidLater', '2026-10-20', 100, { p: { id: 'p', date: '2026-11-01', wallet: 'bank', amount: 100, dateSource: 'informed' } }),
+    suppressed: expense('suppressed', '2026-10-15', 900),
+  }, suppressed: { suppressed: true } };
+  const rows = outstandingAccounts(data, '2026-10-31');
+  const ids = (scope, asOf = '2026-10-31') => accountsInScope(rows, scope, asOf, '2026-10-31').map(r => r.id);
+  assert.deepEqual(ids('throughMonth'), ['old', 'paidLater', 'end']);
+  assert.deepEqual(ids('overdue'), ['old', 'paidLater']);
+  assert.deepEqual(ids('upcoming'), ['end']);
+  assert.deepEqual(ids('future'), ['future']);
+  assert.deepEqual(ids('upcoming', '2026-10-20'), ['paidLater', 'end']);
+  assert.equal(accountsInScope(rows, 'future', '2026-10-31', '2026-10-31')[0].pending, 29265.09);
+  assert.equal(rows.find(r => r.id === 'paidLater').pending, 100);
+  assert.equal(outstandingAccounts(data, '2026-11-01').some(r => r.id === 'paidLater'), false);
+});
+
+test('current October payables exclude November settlements and keep unpaid card purchases separate', () => {
+  const { accountsInScope } = load('src/services/outstandingAccounts.ts');
+  const expense = (id, dueDate, plannedAmount, date, wallet = 'bank') => ({
+    id, dueDate, plannedAmount, category: 'Teste', paidCash: 0, paidBank: 0,
+    payments: date ? { p: { id: 'p', date, wallet, amount: plannedAmount, dateSource: 'informed' } } : {}, note: '',
+  });
+  const data = { ...base(), expenses: {
+    advance: expense('advance', '2026-10-01', 125, '2026-11-07'),
+    oyo: expense('oyo', '2026-10-31', 29.60, '2026-11-01', 'oyo'),
+    card: expense('card', '2026-11-06', 507.42),
+  } };
+  const rows = outstandingAccounts(data, '2026-11-08');
+  for (const scope of ['throughMonth', 'overdue', 'upcoming']) {
+    assert.deepEqual(accountsInScope(rows, scope, '2026-11-08', '2026-10-31'), []);
+  }
+  assert.equal(accountsInScope(rows, 'future', '2026-11-08', '2026-10-31')[0].pending, 507.42);
+  assert.equal(accountsInScope(rows, 'throughMonth', '2026-11-08', '2026-11-30')[0].pending, 507.42);
+  // Historical accounting still respects the actual dates of the payments.
+  assert.equal(outstandingAccounts(data, '2026-10-31').filter(r => r.dueDate <= '2026-10-31').reduce((sum, r) => sum + Math.round(r.pending * 100), 0), 15460);
+});

@@ -1,5 +1,7 @@
-import { db, ref, runTransaction, update } from './pocketbaseRealtime';
+import { db, get, ref, runTransaction, update } from './pocketbaseRealtime';
+import type { CardStatement } from '../types/finance';
 import type { RoomCharge } from '../types/reception';
+import { withFinanceWriteLock } from './financeTransactions';
 import { withTransactionData } from './pocketbaseTransactions';
 
 const FINANCE = 'erp_geral/financeiro';
@@ -20,7 +22,18 @@ export function removeChargeUpdates(updates: Record<string, unknown>, charge: Ro
 // Claims prevent two manager sessions from returning the same stock twice.
 // The source, stock and linked financial records are then changed in one atomic update.
 export async function commitDeletion(ids: string[], updates: Record<string, unknown>): Promise<void> {
-  return withTransactionData(`${FINANCE}/deletions`, (locks) => commitClaimedDeletion(ids, updates, locks));
+  const remove = () => withTransactionData(`${FINANCE}/deletions`, (locks) => commitClaimedDeletion(ids, updates, locks));
+  const deletedExpenses = new Set(Object.keys(updates).filter((path) => path.startsWith(`${FINANCE}/expenses/`) && updates[path] === null)
+    .map((path) => path.slice(`${FINANCE}/expenses/`.length)));
+  if (!deletedExpenses.size) return remove();
+  return withFinanceWriteLock(async () => {
+    const snapshot = await get(ref(db, `${FINANCE}/cardStatements`));
+    const statements = snapshot.val<Record<string, CardStatement>>() ?? {};
+    if (Object.values(statements).some((statement) => Object.keys(statement.originalDueDates).some((id) => deletedExpenses.has(id)))) {
+      throw new Error('A compra está vinculada a uma fatura. Desagrupe a fatura antes de excluir a compra.');
+    }
+    await remove();
+  });
 }
 
 async function commitClaimedDeletion(ids: string[], updates: Record<string, unknown>, locks: ReturnType<typeof ref>): Promise<void> {

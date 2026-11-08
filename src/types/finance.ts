@@ -35,6 +35,7 @@ export interface FinancePaymentEvent {
   // Negative amounts record a correction or refund on its own date.
   amount: number;
   note?: string;
+  cardStatementId?: string;
   dateSource?: 'informed' | 'legacy_due_date';
 }
 
@@ -68,6 +69,7 @@ export interface FinanceExpense {
   // Forma escolhida na compra; compras no cartão guardam o cartão e só debitam as carteiras quando a fatura é paga.
   purchaseMethod?: PurchaseMethod;
   cardCategory?: string;
+  cardStatementId?: string;
   note: string;
   createdAt: string;
   updatedAt: string;
@@ -90,6 +92,16 @@ export interface FinanceTransfer {
   amount: number;
   note: string;
   createdAt: string;
+  /** Mês do relatório que inclui este movimento. Sem vínculo, vale o mês da transferência. */
+  oyoRecomMonth?: string;
+}
+
+export interface CardStatement {
+  id: string;
+  cardCategory: string;
+  dueDate: string;
+  originalDueDates: Record<string, string>;
+  payment?: { date: string; wallet: 'cash' | 'bank'; amount: number };
 }
 
 export interface PayrollEntry {
@@ -113,6 +125,7 @@ export interface PayrollEntry {
 }
 
 export interface FinanceData {
+  cardStatements?: Record<string, CardStatement>;
   /** Hospedagens da recepção, usadas apenas para ratear a receita por dia. */
   stays?: Record<string, import('./reception').GuestStay>;
   cardFeeSchedule?: Record<string, { effectiveAt: string; credit: number; debit: number }>;

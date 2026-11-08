@@ -1,5 +1,6 @@
 import { incomeItems, incomePaymentWallet, payrollNet, type FinanceBalances, type FinanceData, type FinanceIncome, type FinanceIncomeItem } from '../types/finance';
 import { expensePaymentEvents, financeCents, financeMonthRange, paymentEventTotals, paymentsInRange, payrollPaymentEvents } from './financePayments';
+import { stayFinanceEntries } from './operationalLedger';
 
 export interface PrepaidIncomeEntry {
   income: FinanceIncome;
@@ -90,6 +91,22 @@ export function prepaidEntriesAt(incomes: Record<string, FinanceIncome>, month: 
 
 export function prepaidEntriesTotal(entries: PrepaidIncomeEntry[]): number {
   return entries.reduce((total, entry) => total + Math.round(entry.amount * 100), 0) / 100;
+}
+
+export function oyoCounterFees(data: FinanceData, month: string): number {
+  const { from, to } = financeMonthRange(month);
+  const ids = new Set(Object.values(data.stays ?? {}).flatMap((stay) => Object.values(stayFinanceEntries(stay))
+    .filter((entry) => entry.category === 'Taxas').map((entry) => entry.id)));
+  let cents = 0;
+  for (const id of ids) {
+    const entry = data.incomes[id];
+    if (!entry || data.suppressed[id] || entry.date < from || entry.date > to) continue;
+    for (const item of incomeItems(entry)) {
+      const wallet = incomePaymentWallet(item.paymentMethod);
+      if (wallet === 'cash' || wallet === 'bank') cents += financeCents(item.amount);
+    }
+  }
+  return cents / 100;
 }
 
 export function monthlyFinanceSummary(data: FinanceData, month: string) {

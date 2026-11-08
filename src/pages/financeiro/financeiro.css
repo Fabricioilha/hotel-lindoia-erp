@@ -24,7 +24,7 @@
 .cash-flow-page .finance-report-action { margin-left: auto; }
 .cash-flow-page .finance-export-button { color: #556580; font-weight: 600; background: transparent; }
 @media (min-width: 1400px) {
-  .cash-flow-page .finance-metrics { grid-template-columns: repeat(6, minmax(0, 1fr)); }
+  .cash-flow-page .finance-metrics { grid-template-columns: repeat(7, minmax(0, 1fr)); }
 }
 @media (max-width: 620px) {
   .cash-flow-page .finance-report-action { width: auto; margin-left: 0; }
@@ -92,6 +92,7 @@
 }
 
 .finance-metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-bottom: 24px; }
+.finance-oyo-metrics { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 230px), 1fr)); gap: 10px; }
 .finance-metric { position: relative; min-width: 0; min-height: 112px; overflow: hidden; padding: 15px 17px 13px; border: 1px solid var(--finance-border); border-radius: 5px; background: #fff; }
 .finance-metric .metric-rule { position: absolute; top: 0; left: 0; width: 3px; height: 100%; background: #3979b9; }
 .metric-green .metric-rule { background: #2f8a67; }

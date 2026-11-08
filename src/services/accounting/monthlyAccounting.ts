@@ -1,3 +1,4 @@
+import { expenseCashMovements } from '../cardStatements';
 import { balancesAt } from '../financeAnalytics';
 import { expensePaymentEvents, payrollPaymentEvents } from '../financePayments';
 import { financeDataIssues } from '../financeValidation';
@@ -17,7 +18,7 @@ export interface AccountingReceipt {
 export interface AccountingPayment {
   date: string;
   dueDate: string;
-  type: 'Despesa' | 'Folha' | 'Correção de despesa' | 'Correção de folha';
+  type: 'Despesa' | 'Folha' | 'Correção de despesa' | 'Correção de folha' | 'Pagamento de fatura';
   category: string;
   description: string;
   wallet: FinanceWallet;
@@ -126,16 +127,30 @@ export function buildMonthlyAccountingReport(data: FinanceData, month: string, g
 
   for (const expense of Object.values(data.expenses)) {
     if (data.suppressed[expense.id]) continue;
-    const events = expensePaymentEvents(expense);
-    let paidAtClosing = 0;
-    for (const payment of events) {
-      if (payment.date <= to) paidAtClosing += payment.amount;
-      if (!inMonth(payment.date)) continue;
-      payments.push({ date: payment.date, dueDate: expense.dueDate, type: payment.amount < 0 ? 'Correção de despesa' : 'Despesa', category: expense.category, description: expense.employee || expense.note || expense.category, wallet: payment.wallet, amount: rounded(payment.amount), reference: `${expense.id}/${payment.id}`, dateSource: payment.dateSource === 'legacy_due_date' ? 'Vencimento usado em registro antigo' : 'Informada', note: [expense.note, payment.note].filter(Boolean).join(' · ') });
-      outgoing[payment.wallet] += payment.amount;
-    }
+    const paidAtClosing = sum(expensePaymentEvents(expense).filter((payment) => payment.date <= to), (payment) => payment.amount);
     const pending = rounded(Math.max(0, expense.plannedAmount - paidAtClosing));
-    if (inMonth(expense.dueDate) || (expense.dueDate < from && pending > 0)) obligations.push({ dueDate: expense.dueDate, type: 'Despesa', competence: expense.dueDate.slice(0, 7), category: expense.category, employee: expense.employee ?? '', planned: expense.plannedAmount, paid: rounded(paidAtClosing), pending, status: pending <= 0 ? 'Quitada até o fechamento' : expense.dueDate < from ? 'Pendente de mês anterior' : paidAtClosing > 0 ? 'Parcialmente paga' : 'A pagar', reference: expense.id, note: expense.note });
+    if (inMonth(expense.dueDate) || (expense.dueDate < from && pending > 0)) {
+      const withoutStatement = pending > 0 && expense.purchaseMethod === 'card' && !expense.cardStatementId;
+      obligations.push({ dueDate: withoutStatement ? '' : expense.dueDate, type: 'Despesa', competence: expense.dueDate.slice(0, 7),
+        category: expense.category, employee: expense.employee ?? '', planned: expense.plannedAmount, paid: rounded(paidAtClosing), pending,
+        status: pending <= 0 ? 'Quitada até o fechamento' : withoutStatement ? 'Sem fatura' : expense.dueDate < from ? 'Pendente de mês anterior' : paidAtClosing > 0 ? 'Parcialmente paga' : 'A pagar',
+        reference: expense.id, note: [expense.note, expense.cardStatementId ? 'Fatura ' + expense.cardStatementId : ''].filter(Boolean).join(' · ') });
+    }
+  }
+
+  for (const movement of expenseCashMovements(data)) {
+    const { payment } = movement;
+    if (!inMonth(payment.date)) continue;
+    outgoing[payment.wallet] += payment.amount;
+    if (movement.statement) {
+      const { statement } = movement;
+      payments.push({ date: payment.date, dueDate: statement.dueDate, type: 'Pagamento de fatura',
+        category: statement.cardCategory, description: `Fatura · ${Object.keys(statement.originalDueDates).length} compra(s)`,
+        wallet: payment.wallet, amount: rounded(payment.amount), reference: statement.id, dateSource: 'Informada', note: '' });
+    } else {
+      const { expense, payment } = movement;
+      payments.push({ date: payment.date, dueDate: expense.dueDate, type: payment.amount < 0 ? 'Correção de despesa' : 'Despesa', category: expense.category, description: expense.employee || expense.note || expense.category, wallet: payment.wallet, amount: rounded(payment.amount), reference: `${expense.id}/${payment.id}`, dateSource: payment.dateSource === 'legacy_due_date' ? 'Vencimento usado em registro antigo' : 'Informada', note: [expense.note, payment.note].filter(Boolean).join(' · ') });
+    }
   }
 
   for (const payroll of Object.values(data.payroll)) {
@@ -183,5 +198,5 @@ export function buildMonthlyAccountingReport(data: FinanceData, month: string, g
   payments.sort((a, b) => a.date.localeCompare(b.date) || a.reference.localeCompare(b.reference));
   obligations.sort((a, b) => a.dueDate.localeCompare(b.dueDate) || a.reference.localeCompare(b.reference));
   transfers.sort((a, b) => a.date.localeCompare(b.date) || a.reference.localeCompare(b.reference));
-  return { month, from, to, generatedAt, cashAdjustments, receipts, prepaid, payments, obligations, transfers, wallets, totals: { direct, prepaid: prepaidTotal, repasses, sentToOyo, paidHotel, paidOyo, cashResult: rounded(direct + repasses - paidHotel - sentToOyo), pendingMonth: sum(obligations.filter((row) => row.competence === month), (row) => row.pending), pendingOverdue: sum(obligations.filter((row) => row.dueDate < from && row.competence !== month), (row) => row.pending) }, legacyPaymentCount: payments.filter((row) => row.dateSource !== 'Informada').length };
+  return { month, from, to, generatedAt, cashAdjustments, receipts, prepaid, payments, obligations, transfers, wallets, totals: { direct, prepaid: prepaidTotal, repasses, sentToOyo, paidHotel, paidOyo, cashResult: rounded(direct + repasses - paidHotel - sentToOyo), pendingMonth: sum(obligations.filter((row) => row.competence === month), (row) => row.pending), pendingOverdue: sum(obligations.filter((row) => row.dueDate && row.dueDate < from && row.competence !== month), (row) => row.pending) }, legacyPaymentCount: payments.filter((row) => row.dateSource !== 'Informada').length };
 }

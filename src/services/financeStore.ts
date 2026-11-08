@@ -8,12 +8,14 @@ import { BREAKFAST_EXPENSE_CATEGORY, LEGACY_BREAKFAST_CATEGORIES } from '../type
 import { withOperationalFinance, type OperationalFinanceSources } from './operationalLedger';
 import { financeDateKeyFromTimestamp, financeMonthRange, withExpensePaymentTotals, withPayrollPaymentTotals } from './financePayments';
 import { validateFinanceRecords } from './financeValidation';
+import { validateCardStatements } from './cardStatements';
 import { withFinanceWriteLock } from './financeTransactions';
 
 const DEPRECATED_INCOME_CATEGORIES = ['Rotativo cartão', 'Consumo Cartão', 'Diária Cartão', 'Café da manhã', 'Café da manhã cartão', 'Outros'];
 
 export function emptyFinance(): FinanceData {
   return {
+    cardStatements: {},
     cashAdjustments: {},
     incomes: {},
     expenses: {},
@@ -57,6 +59,7 @@ function normalizeFinance(value: unknown): FinanceData {
     if (categoryAliases.income[entry.category]) incomes[income.id] = { ...entry, category: categoryAliases.income[entry.category] };
   });
   return {
+    cardStatements: data.cardStatements ?? {},
     incomes,
     expenses,
     cardFeeSchedule: data.cardFeeSchedule ?? {},
@@ -78,7 +81,7 @@ function normalizeFinance(value: unknown): FinanceData {
 
 export const financeStorageMode = 'PocketBase';
 
-const FINANCE_KEYS = ['cardFeeSchedule', 'cashAdjustments', 'incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'auditLog', 'suppressed', 'categoryAliases'] as const;
+const FINANCE_KEYS = ['cardStatements', 'cardFeeSchedule', 'cashAdjustments', 'incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'auditLog', 'suppressed', 'categoryAliases'] as const;
 const OPERATIONAL_PATHS = {
   stays: 'erp_geral/recepcao/stays', roomCharges: 'erp_geral/recepcao/roomCharges', cashOuts: 'erp_geral/recepcao/cashOuts',
   sales: 'erp_geral/frigobar/operations/sales', reservationCollections: 'erp_geral/reservationCollections',
@@ -208,7 +211,7 @@ export async function updateFinance(
 async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData): Promise<void> {
   const operationId = crypto.randomUUID();
   const occurredAt = new Date().toISOString();
-  const keys = ['cardFeeSchedule', 'cashAdjustments', 'incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'suppressed', 'deletions', 'categoryAliases'] as const;
+  const keys = ['cardStatements', 'cardFeeSchedule', 'cashAdjustments', 'incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'suppressed', 'deletions', 'categoryAliases'] as const;
   const sourcePaths = Object.entries(OPERATIONAL_PATHS);
   const [snapshots, sourceSnapshots] = await Promise.all([
     Promise.all(keys.map((key) => get(ref(db, `erp_geral/financeiro/${key}`)))),
@@ -244,6 +247,7 @@ async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData
     }
   });
   validateFinanceRecords(current, next);
+  validateCardStatements(next);
   validatePayrollAdvances(next);
   for (const [id, rate] of Object.entries(current.cardFeeSchedule ?? {})) {
     if (JSON.stringify(next.cardFeeSchedule?.[id]) !== JSON.stringify(rate)) throw new Error('O histórico das taxas não pode ser alterado. Cadastre uma nova taxa.');
@@ -262,6 +266,7 @@ async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData
     });
   };
   changedRecords('cardFeeSchedule', current.cardFeeSchedule, next.cardFeeSchedule);
+  changedRecords('cardStatements', current.cardStatements, next.cardStatements);
   changedRecords('cashAdjustments', current.cashAdjustments, next.cashAdjustments);
   changedRecords('incomes', current.incomes, next.incomes);
   changedRecords('expenses', current.expenses, next.expenses);
@@ -356,6 +361,7 @@ async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData
     { entity: 'finance-income', before: current.incomes, after: next.incomes },
     { entity: 'finance-expense', before: current.expenses, after: next.expenses },
     { entity: 'finance-transfer', before: current.transfers, after: next.transfers },
+    { entity: 'card-statement', before: current.cardStatements ?? {}, after: next.cardStatements ?? {} },
     { entity: 'payroll', before: current.payroll, after: next.payroll },
     {
       entity: 'finance-settings',

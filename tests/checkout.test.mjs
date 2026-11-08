@@ -26,8 +26,33 @@ function domainModule(path) {
 
 const { applyCheckout, checkoutPending, dueCheckouts, hotelDate } = domainModule('src/services/checkoutPolicy.ts');
 const { currentOccupants, reservationOccupiesDate, stayOccupiesDate } = domainModule('src/services/occupantDirectory.ts');
+const { breakfastsOnDate } = domainModule('src/services/breakfastForecast.ts');
 const { departureDue } = domainModule('src/services/reservationAnalytics.ts');
 const { checkoutStatus } = domainModule('cloudflare/lib/checkoutStatus.ts');
+
+test('tomorrow breakfast counts the preceding night, checkout morning and scheduled extras', () => {
+  const date = '2026-11-09';
+  const stay = { id: 's', roomNumber: '101', kind: 'hospede', status: 'hospedado', checkInDate: '2026-11-07', checkOutDate: date, nights: 2, hasBreakfast: true, breakfastCount: 2 };
+  const reservation = { id: 'r', roomNumber: '102', status: 'confirmada', checkInDate: '2026-11-08', checkOutDate: date, adults: 2, children: 1, breakfastIncluded: true };
+  const stays = {
+    s: stay,
+    short: { ...stay, id: 'short', roomNumber: '103', breakfastDays: 1 },
+    closed: { ...stay, id: 'closed', roomNumber: '104', status: 'encerrado' },
+    rotating: { ...stay, id: 'rotating', roomNumber: '105', kind: 'periodo' },
+  };
+  const reservations = {
+    r: reservation,
+    duplicate: { ...reservation, id: 'duplicate', roomNumber: '101', checkInDate: stay.checkInDate },
+    cancelled: { ...reservation, id: 'cancelled', roomNumber: '106', status: 'cancelada' },
+    tomorrow: { ...reservation, id: 'tomorrow', roomNumber: '107', checkInDate: date, checkOutDate: '2026-11-10' },
+  };
+  const extras = {
+    valid: { kind: 'cafe_avulso', sourceType: 'stay', sourceId: 's', date: '2026-11-07', validThrough: date },
+    past: { kind: 'cafe_avulso', sourceType: 'stay', sourceId: 's', date: '2026-11-08' },
+    cancelled: { kind: 'cafe_avulso', sourceType: 'reservation', sourceId: 'cancelled', date },
+  };
+  assert.equal(breakfastsOnDate(date, stays, reservations, extras), 6);
+});
 
 function statusState(reservations, stays = {}) {
   return {
