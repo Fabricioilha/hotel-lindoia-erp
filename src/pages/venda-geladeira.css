@@ -167,6 +167,110 @@
   .reservation-extra-option { grid-template-columns: minmax(0, 1fr) 88px; }
 }
 
+/* ===== Geladeira no modal largo do painel (login de funcionário) =====
+   Escopo: .sales-page--modal, que só existe quando a página é aberta como modal (modalOnly). Cores vêm dos tokens --tool-*. */
+.sales-page--modal { min-height: 0; background: transparent; color: var(--tool-ink); font-family: inherit; }
+.sales-page--modal .sales-content { width: 100%; max-width: none; margin: 0; padding: 16px var(--modal-pad-x, 26px) 24px; }
+.sales-modal-bar { display: flex; align-items: center; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
+.sales-modal-bar p { margin: 0; color: var(--tool-muted); font-size: .9rem; line-height: 1.5; }
+.sales-page--modal .sales-operator { flex: 0 0 auto; gap: 8px; padding: 6px 14px; border: 1px solid var(--tool-line); border-radius: 999px; color: var(--tool-muted); background: var(--tool-surface); font-size: .8125rem; font-weight: 600; }
+.sales-page--modal .sales-operator strong { color: var(--tool-heading); font-weight: 750; }
+.sales-page--modal :is(.sales-alert, .sales-success) { margin-bottom: 14px; padding: 12px 14px; border-radius: 12px; font-size: .875rem; font-weight: 600; }
+
+.sales-page--modal .sales-layout { grid-template-columns: minmax(0, 1fr) 380px; gap: var(--tool-gap); }
+.sales-page--modal :is(.catalog-panel, .sale-order, .pending-minibar-panel) { border: 1px solid var(--tool-line); border-radius: var(--tool-radius); background: var(--tool-surface); box-shadow: 0 4px 14px rgb(15 23 42 / 5%); }
+.sales-page--modal :is(.catalog-heading h2, .order-heading h2, .pending-minibar-panel h2) { color: var(--tool-heading); font-family: inherit; font-size: 1.05rem; font-weight: 750; line-height: 1.25; }
+.sales-page--modal .catalog-heading { gap: 16px; padding: 18px 20px; border-bottom: 1px solid var(--tool-line); }
+.sales-page--modal .catalog-heading p { margin: 4px 0 0; color: var(--tool-muted); font-size: .8rem; }
+.sales-page--modal .catalog-search { flex: 0 1 280px; }
+
+.sales-page--modal :is(.catalog-search input, .sales-field input, .sales-field select, .pending-minibar-sale select) { min-height: var(--modal-field-height, 42px); padding: var(--modal-field-pad, .55rem .85rem); border: 1px solid var(--tool-line-strong); border-radius: var(--modal-field-radius, 10px); color: var(--tool-ink); background: var(--tool-surface-solid); font-family: inherit; font-size: var(--modal-input-size, .925rem); line-height: 1.35; transition: border-color .25s ease, box-shadow .25s ease, background-color .25s ease; }
+.sales-page--modal :is(.catalog-search input, .sales-field input, .sales-field select, .pending-minibar-sale select):focus { border-color: var(--tool-accent); box-shadow: 0 0 0 3px var(--tool-accent-soft); }
+.sales-page--modal :is(.catalog-search input, .sales-field input)::placeholder { color: var(--tool-muted); opacity: .75; }
+.sales-page--modal .sales-field input[readonly] { color: var(--tool-muted); background: var(--tool-inset); }
+
+.sales-page--modal .sales-product-grid { grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 14px; padding: 18px 20px 20px; }
+.sales-page--modal .sales-product { min-height: 0; gap: 8px; padding: 14px; border: 1px solid var(--tool-line); border-radius: 14px; background: var(--tool-surface-solid); transition: border-color .25s ease, box-shadow .25s ease, transform .2s ease; }
+.sales-page--modal .sales-product:hover { border-color: var(--tool-line-strong); box-shadow: 0 8px 20px rgb(15 23 42 / 10%); transform: translateY(-1px); }
+.sales-page--modal .sales-product.is-in-cart { border-color: var(--tool-accent); box-shadow: 0 0 0 1px var(--tool-accent); }
+.sales-page--modal .sales-product-kind { color: var(--tool-accent); font-size: .68rem; letter-spacing: .08em; }
+.sales-page--modal :is(.sales-stock-ok, .sales-stock-empty) { padding: 3px 9px; border-radius: 999px; color: var(--tool-ok); background: var(--tool-ok-soft); font-size: .75rem; font-weight: 700; }
+.sales-page--modal .sales-stock-empty { color: var(--tool-danger); background: var(--tool-danger-soft); }
+.sales-page--modal .sales-product-name { min-height: 0; margin-top: 4px; color: var(--tool-heading); font-size: .95rem; font-weight: 700; line-height: 1.35; }
+.sales-page--modal .sales-product-price { margin-top: 0; color: var(--tool-heading); font-size: 1.1rem; font-variant-numeric: tabular-nums; }
+.sales-page--modal .sales-product-no-price { margin-top: 0; color: var(--tool-danger); font-size: .8rem; font-weight: 600; }
+.sales-page--modal .sales-add-button { min-height: var(--modal-field-height, 42px); margin-top: auto; padding: 0 14px; border: 1px solid var(--tool-line-strong); border-radius: var(--modal-field-radius, 10px); color: var(--tool-accent); background: var(--tool-accent-soft); font-family: inherit; font-size: .85rem; font-weight: 700; transition: background-color .25s ease, border-color .25s ease, color .2s ease; }
+.sales-page--modal .sales-add-button:hover:not(:disabled) { border-color: var(--tool-accent); color: #fff; background: var(--tool-accent); }
+.sales-page--modal .sales-add-button:disabled { border-color: var(--tool-line); color: var(--tool-muted); background: var(--tool-inset); }
+.sales-page--modal .sales-add-button span { font-size: 1.25rem; }
+.sales-page--modal .sales-stock-notice { margin: 16px 20px 0; padding: 12px 14px; border: 1px solid var(--tool-warn-line); border-radius: 12px; color: var(--tool-warn); background: var(--tool-warn-soft); font-size: .85rem; }
+.sales-page--modal .sales-stock-notice a { color: var(--tool-accent); font-size: .85rem; }
+.sales-page--modal .sales-empty { min-height: 220px; color: var(--tool-muted); }
+.sales-page--modal .sales-empty strong { color: var(--tool-heading); font-size: 1rem; }
+.sales-page--modal .sales-empty p { max-width: 380px; font-size: .875rem; }
+
+/* Altura útil = diálogo (95dvh) − cabeçalho e borda (91px) − barra superior (67px) − respiro inferior (16px): o botão de confirmar nunca fica abaixo da dobra. */
+.sales-page--modal .sale-order { top: 12px; display: flex; flex-direction: column; max-height: calc(min(95dvh, 1000px) - 174px); padding: 18px 20px 16px; }
+.sales-page--modal .order-body { flex: 1 1 auto; min-height: 0; padding-bottom: 6px; overflow-y: auto; overscroll-behavior: contain; }
+.sales-page--modal .order-footer { position: relative; flex: 0 0 auto; margin-top: 4px; }
+.sales-page--modal .order-footer::before { position: absolute; top: -14px; right: 0; left: 0; height: 14px; background: linear-gradient(to bottom, transparent, rgb(15 23 42 / 7%)); content: ""; pointer-events: none; }
+.sales-page--modal .order-heading { padding-bottom: 10px; border-bottom: 1px solid var(--tool-line); }
+.sales-page--modal .order-heading .sales-eyebrow { display: none; }
+.sales-page--modal .order-count { width: 32px; height: 32px; border-radius: 10px; color: var(--tool-accent); background: var(--tool-accent-soft); font-size: .85rem; }
+.sales-page--modal .order-empty { padding: 28px 8px; color: var(--tool-muted); font-size: .875rem; }
+.sales-page--modal .order-lines { max-height: none; overflow: visible; }
+.sales-page--modal .order-line { gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--tool-line); }
+.sales-page--modal .order-line-info { grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 2px 12px; }
+.sales-page--modal .order-line-info strong { grid-column: 1 / -1; color: var(--tool-heading); font-size: .9rem; font-weight: 700; line-height: 1.3; }
+.sales-page--modal .order-line-info small { grid-column: 1; color: var(--tool-muted); font-size: .78rem; }
+.sales-page--modal .order-line-info b { grid-column: 2; margin-top: 0; color: var(--tool-heading); font-size: .9rem; font-variant-numeric: tabular-nums; }
+.sales-page--modal .quantity-stepper { overflow: hidden; border: 1px solid var(--tool-line-strong); border-radius: 10px; background: var(--tool-surface-solid); }
+.sales-page--modal .quantity-stepper button { width: 34px; height: 36px; color: var(--tool-accent); font-size: 1.1rem; }
+.sales-page--modal .quantity-stepper button:disabled { color: var(--tool-muted); opacity: .5; }
+.sales-page--modal .quantity-stepper span { min-width: 28px; color: var(--tool-ink); font-size: .9rem; font-weight: 700; }
+
+.sales-page--modal .settlement-fieldset { margin: 14px 0 12px; }
+.sales-page--modal .settlement-fieldset legend { margin-bottom: 8px; color: var(--tool-ink); }
+.sales-page--modal .settlement-options { gap: 8px; }
+.sales-page--modal .settlement-option { min-height: var(--modal-field-height, 42px); padding: 0 10px; border: 1px solid var(--tool-line-strong); border-radius: var(--modal-field-radius, 10px); color: var(--tool-ink); background: var(--tool-surface-solid); transition: background-color .25s ease, border-color .25s ease, color .2s ease, box-shadow .25s ease; }
+.sales-page--modal .settlement-option:hover { border-color: var(--tool-accent); }
+.sales-page--modal .settlement-option.chosen { border-color: var(--tool-accent); color: var(--tool-accent); background: var(--tool-accent-soft); box-shadow: inset 0 0 0 1px var(--tool-accent); }
+.sales-page--modal .settlement-option:focus-within { outline: 2px solid var(--tool-accent); outline-offset: 2px; }
+.sales-page--modal .sales-field { gap: 6px; }
+.sales-page--modal .sales-field small { color: var(--tool-muted); font-size: .8rem; font-weight: 500; line-height: 1.4; }
+.sales-page--modal .room-fields { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.sales-page--modal .room-fields .sales-field:last-child { grid-template-columns: auto minmax(0, 1fr); align-items: center; column-gap: 12px; }
+.sales-page--modal .order-total { margin-top: 0; padding-top: 12px; border-top: 1px solid var(--tool-line); color: var(--tool-muted); font-size: .9rem; }
+.sales-page--modal .order-total strong { color: var(--tool-heading); font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+.sales-page--modal .sale-submit { min-height: 46px; margin-top: 12px; border: 1px solid var(--tool-accent); border-radius: var(--modal-field-radius, 10px); color: #fff; background: var(--tool-accent); font-family: inherit; font-size: .95rem; font-weight: 750; transition: background-color .25s ease, border-color .25s ease, box-shadow .25s ease, transform .2s ease; }
+.sales-page--modal .sale-submit:hover:not(:disabled) { border-color: var(--tool-accent-hover); background: var(--tool-accent-hover); transform: translateY(-1px); }
+.sales-page--modal .sale-submit:disabled { border-color: var(--tool-line); color: var(--tool-muted); background: var(--tool-inset); }
+.sales-page--modal .sale-note { margin-top: 14px; color: var(--tool-muted); font-size: .78rem; }
+
+.sales-page--modal .pending-minibar-panel { gap: 4px; margin-top: var(--tool-gap); padding: 18px 20px; }
+.sales-page--modal .pending-minibar-panel p { margin: 4px 0 0; color: var(--tool-muted); font-size: .8rem; }
+.sales-page--modal .pending-minibar-sale { grid-template-columns: minmax(200px, 1fr) auto minmax(170px, 220px) auto; gap: 12px; margin-top: 8px; padding-top: 12px; border-top: 1px solid var(--tool-line); color: var(--tool-ink); font-size: .9rem; }
+.sales-page--modal .pending-minibar-sale > strong { color: var(--tool-heading); font-size: 1rem; font-variant-numeric: tabular-nums; }
+.sales-page--modal .pending-minibar-sale button { min-height: var(--modal-field-height, 42px); padding: 0 16px; border-radius: var(--modal-field-radius, 10px); color: #fff; background: var(--tool-accent); font-family: inherit; font-size: .85rem; transition: background-color .25s ease; }
+.sales-page--modal .pending-minibar-sale button:hover:not(:disabled) { background: var(--tool-accent-hover); }
+
+@media (max-width: 900px) {
+  .sales-page--modal .sales-layout { grid-template-columns: minmax(0, 1fr); }
+  .sales-page--modal .sale-order { position: static; grid-row: 1; max-height: none; }
+  .sales-page--modal .order-body { overflow: visible; }
+  .sales-page--modal .pending-minibar-sale { grid-template-columns: minmax(0, 1fr) auto; }
+  .sales-page--modal .pending-minibar-sale label,
+  .sales-page--modal .pending-minibar-sale button { grid-column: 1 / -1; }
+}
+
+@media (max-width: 640px) {
+  .sales-page--modal .sales-content { padding: 16px 16px 24px; }
+  .sales-modal-bar { align-items: flex-start; flex-direction: column; gap: 10px; }
+  .sales-page--modal .catalog-heading { align-items: stretch; flex-direction: column; }
+  .sales-page--modal .catalog-search { flex-basis: auto; }
+  .sales-page--modal .sales-product-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 14px; }
+}
+
 /* ===== DARK-GLASS (gerente) =====
    Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
    Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */

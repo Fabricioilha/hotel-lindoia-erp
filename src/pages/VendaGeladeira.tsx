@@ -62,6 +62,7 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
   const pendingSales = Object.values(data.sales).filter((sale) => sale.settlement === 'cobrar_no_checkout').sort((a, b) => a.createdAt.localeCompare(b.createdAt));
   const activeReservations = currentOccupants(activeStays, occupiedReservations, localDateKey(new Date(clock)), clock);
   const selectedReservation = activeReservations.find((item) => item.id === selectedReservationId);
+  const saleNote = <p className="sale-note">Bebidas atualizam o estoque. Extras da hospedagem são resolvidos pelo quarto.</p>;
 
 
   function changeQuantity(product: FrigobarProduct, change: number) {
@@ -124,18 +125,23 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
   }
 
   return (
-    <div className="sales-page">
-      <header className="sales-header">
+    <div className={`sales-page${modalOnly ? ' sales-page--modal' : ''}`}>
+      {!modalOnly && <header className="sales-header">
         <PanelHomeLink className="sales-brand"><span className="sales-brand-mark">HL</span><span><strong>Hotel Lindoia</strong><small>CAIXA DA RECEPÇÃO</small></span></PanelHomeLink>
-        {!modalOnly && <nav className="sales-header-links" aria-label="Navegação">{isAdmin && <><Link to="/reservas">Reservas</Link><Link to="/quartos">Serviço de quarto</Link><Link to="/estoque">Estoque</Link></>}<Link to="/recepcao">Caixa - Recepção</Link><Link to="/">Painel inicial</Link></nav>}
-      </header>
+        <nav className="sales-header-links" aria-label="Navegação">{isAdmin && <><Link to="/reservas">Reservas</Link><Link to="/quartos">Serviço de quarto</Link><Link to="/estoque">Estoque</Link></>}<Link to="/recepcao">Caixa - Recepção</Link><Link to="/">Painel inicial</Link></nav>
+      </header>}
 
       <main className="sales-content">
-        <PanelHomeLink className="sales-home-button" title="Voltar à página principal">← Voltar para a página principal</PanelHomeLink>
-        <div className="sales-title-row">
-          <div><p className="sales-eyebrow">PONTO DE VENDA <span>/</span> RECEPÇÃO</p><h1>Lançar Venda</h1><p>Selecione os produtos da geladeira e escolha como receber.</p></div>
+        {modalOnly ? <div className="sales-modal-bar">
+          <p>Selecione os produtos da geladeira e escolha como receber.</p>
           <span className="sales-operator">Atendente <strong>{actor}</strong></span>
-        </div>
+        </div> : <>
+          <PanelHomeLink className="sales-home-button" title="Voltar à página principal">← Voltar para a página principal</PanelHomeLink>
+          <div className="sales-title-row">
+            <div><p className="sales-eyebrow">PONTO DE VENDA <span>/</span> RECEPÇÃO</p><h1>Lançar Venda</h1><p>Selecione os produtos da geladeira e escolha como receber.</p></div>
+            <span className="sales-operator">Atendente <strong>{actor}</strong></span>
+          </div>
+        </>}
 
         {loadError && <div className="sales-alert" role="alert">Não foi possível carregar o estoque: {loadError}</div>}
         {saveError && <div className="sales-alert" role="alert">{saveError}</div>}
@@ -151,11 +157,15 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
               {filteredProducts.map((product) => {
                 const available = Number(data.stock[product.id] ?? 0);
                 const inCart = cart[product.id] ?? 0;
-                return <article className="sales-product" key={product.id}>
+                // No modal a quantidade já aparece no painel do pedido; o botão fica curto para caber no cartão.
+                const addLabel = modalOnly
+                  ? inCart >= available ? 'Limite atingido' : inCart ? 'Adicionar mais' : 'Adicionar ao pedido'
+                  : inCart >= available ? `Limite · ${inCart} no pedido` : inCart ? `Adicionar · ${inCart} no pedido` : 'Adicionar ao pedido';
+                return <article className={`sales-product${inCart > 0 ? ' is-in-cart' : ''}`} key={product.id}>
                   <div className="sales-product-top"><span className="sales-product-kind">BEBIDA</span><span className={available > 0 ? 'sales-stock-ok' : 'sales-stock-empty'}>{available > 0 ? `${available} ${product.unit}` : 'Sem saldo'}</span></div>
                   <strong className="sales-product-name">{product.name}</strong>
                   {product.salePrice > 0 ? <span className="sales-product-price">{money(product.salePrice)}</span> : <span className="sales-product-no-price">Preço não cadastrado</span>}
-                  {available <= 0 || product.salePrice <= 0 ? <span className="sales-product-no-price">Consulte a gerência</span> : <button className="sales-add-button" disabled={saving || inCart >= available} onClick={() => changeQuantity(product, 1)}>{inCart >= available ? `Limite · ${inCart} no pedido` : inCart ? `Adicionar · ${inCart} no pedido` : 'Adicionar ao pedido'} <span aria-hidden="true">+</span></button>}
+                  {available <= 0 || product.salePrice <= 0 ? <span className="sales-product-no-price">Consulte a gerência</span> : <button className="sales-add-button" disabled={saving || inCart >= available} onClick={() => changeQuantity(product, 1)}>{addLabel} <span aria-hidden="true">+</span></button>}
                 </article>;
               })}
             </div>}
@@ -163,6 +173,7 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
 
           <form className="sale-order" onSubmit={finishSale}>
             <div className="order-heading"><div><p className="sales-eyebrow">VENDA ATUAL</p><h2>Pedido</h2></div><span className="order-count">{totalItems}</span></div>
+            <div className="order-body">
             {cartItems.length === 0 ? <div className="order-empty">Adicione produtos para iniciar a venda.</div> : <div className="order-lines">
               {cartItems.map(({ product, quantity, available }) => {
                 return <div className="order-line" key={product.id}>
@@ -182,10 +193,14 @@ export function VendaGeladeira({ actor, isAdmin, modalOnly = false }: { actor: s
 
             {cartItems.length > 0 && settlement === 'pago_na_recepcao' && <label className="sales-field"><span>Forma de pagamento *</span><select required value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as MinibarPaymentMethod | '')}><option value="">Selecione</option><option value="dinheiro">Dinheiro</option><option value="pix">Pix</option><option value="cartao_debito">Cartão de débito</option><option value="cartao_credito">Cartão de crédito</option></select></label>}
             {cartItems.length > 0 && settlement === 'cobrar_no_checkout' ? <div className="room-fields"><label className="sales-field"><span>Quarto ocupado *</span><select required value={selectedReservationId} onChange={(event) => { const reservation = activeReservations.find((item) => item.id === event.target.value); setSelectedReservationId(event.target.value); setRoomNumber(reservation?.roomNumber ?? ''); setGuestName(reservation?.guestName ?? ''); }}><option value="">Selecione a hospedagem</option>{activeReservations.map((reservation) => <option key={reservation.id} value={reservation.id}>Quarto {reservation.roomNumber} · {reservation.guestName}</option>)}</select>{activeReservations.length === 0 && <small>Nenhuma hospedagem ativa. Faça check-in em Reservas antes de lançar no quarto.</small>}</label><label className="sales-field"><span>Hóspede vinculado</span><input value={selectedReservation?.guestName ?? ''} readOnly placeholder="Hóspede da hospedagem selecionada" /></label></div> : null}
+            {modalOnly && saleNote}
+            </div>
 
-            <div className="order-total"><span>Total</span><strong>{money(total)}</strong></div>
-            <button className="sale-submit" type="submit" disabled={saving || loading || cartItems.length === 0}>{saving ? 'Registrando venda...' : settlement === 'pago_na_recepcao' ? 'Confirmar venda' : 'Lançar para checkout'}</button>
-            <p className="sale-note">Bebidas atualizam o estoque. Extras da hospedagem são resolvidos pelo quarto.</p>
+            <div className="order-footer">
+              <div className="order-total"><span>Total</span><strong>{money(total)}</strong></div>
+              <button className="sale-submit" type="submit" disabled={saving || loading || cartItems.length === 0}>{saving ? 'Registrando venda...' : settlement === 'pago_na_recepcao' ? 'Confirmar venda' : 'Lançar para checkout'}</button>
+              {!modalOnly && saleNote}
+            </div>
           </form>
         </div>
         {pendingSales.length > 0 && <section className="pending-minibar-panel"><div><h2>Cobranças no checkout</h2><p>{pendingSales.length} venda(s) aguardando pagamento</p></div>{pendingSales.map((sale) => <div className="pending-minibar-sale" key={sale.id}><span>Quarto {sale.roomNumber} · {sale.guestName}</span><strong>{money(sale.amount)}</strong><label><span className="sr-only">Forma de pagamento</span><select value={settlementMethods[sale.id] ?? 'dinheiro'} onChange={(event) => setSettlementMethods((current) => ({ ...current, [sale.id]: event.target.value as MinibarPaymentMethod }))}><option value="dinheiro">Dinheiro</option><option value="pix">Pix</option><option value="cartao_debito">Cartão de débito</option><option value="cartao_credito">Cartão de crédito</option></select></label><button type="button" disabled={saving} onClick={() => void settlePendingSale(sale.id)}>Receber no checkout</button></div>)}</section>}

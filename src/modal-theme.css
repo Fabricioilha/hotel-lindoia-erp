@@ -196,12 +196,16 @@ html body :is(.modal-backdrop, .finance-modal-backdrop, .dashboard-room-charge-b
 .modal-backdrop .stock-modal .eyebrow,
 .modal-backdrop .stock-modal .schedule-eyebrow,
 .modal-backdrop .stock-modal .reservation-modal-heading .eyebrow,
+.dashboard-tool-backdrop .dashboard-tool-modal .dashboard-tool-eyebrow,
 .finance-modal-backdrop .finance-modal:not(.finance-expense-modal) .finance-eyebrow {
   color: #e69aa5 !important;
   font-family: var(--modal-font) !important;
   font-size: .6875rem !important;
   font-weight: 800 !important;
   letter-spacing: .08em;
+}
+.dashboard-tool-backdrop .dashboard-tool-modal .dashboard-tool-eyebrow {
+  margin: 0 0 5px;
 }
 
 .modal-backdrop .stock-modal .modal-header .close-button,
@@ -547,6 +551,10 @@ html body :is(.float-gate > .float-box, .dashboard-room-choice) {
 html body .dashboard-tool-modal {
   --glass-dialog-width: 700px;
 }
+/* Geladeira e Controle de Limpeza: janela larga e alta, com o mesmo cabeçalho dos formulários. */
+html body .dashboard-tool-modal--wide {
+  --glass-dialog-width: 1160px;
+}
 html body :is(.reception-overlay > .reception-modal, .reservation-modal-wide, .finance-modal-entrada, .finance-modal-entrada-prepaga, .finance-expense-modal) {
   --glass-dialog-width: 900px;
 }
@@ -561,6 +569,16 @@ html body .dashboard-tool-modal[role="dialog"] {
   -webkit-backdrop-filter: none;
   backdrop-filter: none;
   animation: modalBackdropFadeIn 180ms ease-out both;
+}
+@media (min-width: 641px) {
+  html body .dashboard-tool-modal.dashboard-tool-modal--wide[role="dialog"] {
+    height: min(95dvh, 1000px) !important;
+    max-height: min(95dvh, 1000px) !important;
+  }
+}
+/* Telas densas (pedido, quartos): fundo quase opaco para o painel de trás não aparecer no conteúdo. */
+html body .dashboard-tool-modal.dashboard-tool-modal--wide[role="dialog"] {
+  background: rgba(244, 247, 251, .97) !important;
 }
 html body :is(.reception-modal-body, .dashboard-tool-modal-content, .finance-expense-modal .finance-modal-body, .reservation-modal-content) {
   min-height: 0;
@@ -995,7 +1013,7 @@ html[data-manager-theme="dark-glass"] body :is(.modal-backdrop .stock-modal .mod
 html[data-manager-theme="dark-glass"] body :is(.float-box h2, .dashboard-room-charge-header h2, .dashboard-room-charge-header small, #cx-handoff-title) {
   color: var(--dg-text) !important;
 }
-html[data-manager-theme="dark-glass"] body :is(.finance-eyebrow, .eyebrow, .schedule-eyebrow, .dashboard-eyebrow, .cx-eyebrow, .float-eyebrow) {
+html[data-manager-theme="dark-glass"] body :is(.finance-eyebrow, .eyebrow, .schedule-eyebrow, .dashboard-eyebrow, .dashboard-tool-eyebrow, .cx-eyebrow, .float-eyebrow) {
   color: #fda4af !important;
 }
 html[data-manager-theme="dark-glass"] body :is(.modal-backdrop .stock-modal .modal-header .close-button, .modal-backdrop .stock-modal .schedule-modal-close, .modal-backdrop .stock-modal .schedule-modal-header > button, .finance-modal-backdrop .finance-modal .finance-close, .dashboard-tool-backdrop .dashboard-tool-modal .dashboard-tool-modal-header button, .dashboard-room-charge-modal .dashboard-room-charge-close) {

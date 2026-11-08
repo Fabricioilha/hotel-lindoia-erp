@@ -332,6 +332,37 @@
 .dashboard-arrivals { display: grid; gap: 8px; margin: 10px 0 0; padding: 0; list-style: none; }
 .dashboard-arrivals li { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 12px; border: 1px solid #d5deea; border-radius: 8px; background: #fff; }
 
+/* Modais largos do painel (Geladeira e Controle de Limpeza): tokens compartilhados pelo conteúdo de cada ferramenta.
+   Só o login de funcionário abre estes modais; o gerente usa as páginas /vendas e /limpeza (com o tema escuro próprio). */
+html body .dashboard-tool-modal--wide {
+  --tool-surface: rgba(255, 255, 255, .72);
+  --tool-surface-solid: #fff;
+  --tool-inset: rgba(20, 43, 77, .05);
+  --tool-line: rgba(20, 43, 77, .12);
+  --tool-line-strong: rgba(20, 43, 77, .24);
+  --tool-ink: #172f4e;
+  --tool-muted: #4e637b;
+  --tool-heading: #142b4d;
+  --tool-accent: #183c66;
+  --tool-accent-hover: #244e7d;
+  --tool-accent-soft: rgba(24, 60, 102, .09);
+  --tool-ok: #1f7a4a;
+  --tool-ok-strong: #1f7a4a;
+  --tool-ok-soft: rgba(31, 122, 74, .12);
+  --tool-warn: #7a5200;
+  --tool-warn-soft: rgba(250, 204, 21, .22);
+  --tool-warn-line: rgba(202, 138, 4, .55);
+  --tool-danger: #a52c3b;
+  --tool-danger-soft: rgba(197, 46, 67, .10);
+  --tool-radius: 16px;
+  --tool-gap: 18px;
+}
+html body .dashboard-tool-modal--wide .dashboard-tool-modal-content {
+  color: var(--tool-ink);
+  background: transparent;
+  font-family: var(--modal-font);
+}
+
 /* ===== DARK-GLASS (gerente) =====
    Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
    Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */

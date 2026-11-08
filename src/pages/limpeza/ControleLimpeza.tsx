@@ -16,7 +16,7 @@ import { findStaff, staffMembers } from '../../types/staff';
 const timeOf = (iso?: string) => iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '';
 const byRoom = (a: string, b: string) => a.localeCompare(b, 'pt-BR', { numeric: true });
 
-export function ControleLimpeza({ userRole }: { userRole: UserRole }) {
+export function ControleLimpeza({ userRole, modalOnly = false }: { userRole: UserRole; modalOnly?: boolean }) {
   const [searchParams] = useSearchParams();
   const focusedRoom = searchParams.get('room')?.trim() ?? '';
   const [clock, setClock] = useState(() => Date.now());
@@ -127,33 +127,42 @@ export function ControleLimpeza({ userRole }: { userRole: UserRole }) {
     void run(() => cancelTask(task, actor), `Limpeza do quarto ${task.roomNumber} cancelada.`);
   }
 
+  const summaryPanel = <section className="clean-panel clean-summary" aria-label="Resumo do dia">
+    <h2>Resumo de hoje</h2>
+    {pastNoon && pendingRooms.length > 0 && <p role="alert" className="clean-alert">Atenção: após as 12:00 ainda há {pendingRooms.length} quarto(s) a limpar e liberar: {pendingRooms.map((room) => room.number).join(', ')}.</p>}
+    <div className="clean-people">
+      {camareiras.map((item) => <div key={item.id} className="clean-person"><strong>{item.name}</strong><small>{doneToday.filter((task) => task.camareira === item.name).length} limpo(s) hoje · {inProgress.filter((task) => task.camareira === item.name).length} em limpeza</small></div>)}
+      <div className="clean-person"><strong>Faltam</strong><small>{pendingRooms.length} quarto(s) aguardando limpeza · {inProgress.length} em andamento</small></div>
+    </div>
+  </section>;
+
   return (
-    <div className="clean-page">
-      <BackToPanel />
-      <header className="clean-title">
-        <div>
-          <p className="clean-eyebrow">OPERAÇÃO <span>/</span> HOSPEDAGEM</p>
-          <h1>Controle de Limpeza de Quartos</h1>
-          <p>Escolha a camareira, toque nos quartos que ela vai limpar e confirme. Quando ela terminar, toque em <strong>Concluir limpeza</strong>.</p>
-        </div>
+    <div className={`clean-page${modalOnly ? ' clean-page--modal' : ''}`}>
+      {modalOnly ? <div className="clean-modal-bar">
+        <p>Escolha a camareira, toque nos quartos que ela vai limpar e confirme. Quando ela terminar, toque em <strong>Concluir limpeza</strong>.</p>
         <span className="clean-counter"><strong>{inProgress.length}</strong><small>em limpeza agora</small></span>
-      </header>
+      </div> : <>
+        <BackToPanel />
+        <header className="clean-title">
+          <div>
+            <p className="clean-eyebrow">OPERAÇÃO <span>/</span> HOSPEDAGEM</p>
+            <h1>Controle de Limpeza de Quartos</h1>
+            <p>Escolha a camareira, toque nos quartos que ela vai limpar e confirme. Quando ela terminar, toque em <strong>Concluir limpeza</strong>.</p>
+          </div>
+          <span className="clean-counter"><strong>{inProgress.length}</strong><small>em limpeza agora</small></span>
+        </header>
+      </>}
 
       {(error || staffError) && <div className="clean-alert" role="alert">{error || staffError}</div>}
       {notice && <div className="clean-success" role="status">{notice}</div>}
       {focusedRoom && <section className="clean-context" aria-label={`Limpeza do quarto ${focusedRoom}`}><div><strong>Quarto {focusedRoom}</strong><span>{guestOf(focusedRoom) ? `Ocupado · ${guestOf(focusedRoom)}` : 'Acompanhe a limpeza e a camareira responsável.'}</span>{cleaningDeclined(focusedRoom) && <span>O hóspede dispensou a limpeza de hoje. Atualize a solicitação em Gerenciar quartos para designar.</span>}</div><nav>{isAdmin && <><Link to={`/quartos?room=${encodeURIComponent(focusedRoom)}`}>Gerenciar quarto</Link><Link to={`/reservas?room=${encodeURIComponent(focusedRoom)}`}>Reservas e hospedagens</Link></>}<Link to="/limpeza">Todos os quartos</Link></nav></section>}
       {isAdmin && !focusedRoom && <nav className="clean-module-links"><Link to="/quartos">Gerenciar quartos</Link><Link to="/reservas">Reservas e hospedagens</Link></nav>}
 
-      <section className="clean-panel" aria-label="Resumo do dia">
-        <h2>Resumo de hoje</h2>
-        {pastNoon && pendingRooms.length > 0 && <p role="alert" className="clean-alert">Atenção: após as 12:00 ainda há {pendingRooms.length} quarto(s) a limpar e liberar: {pendingRooms.map((room) => room.number).join(', ')}.</p>}
-        <div className="clean-people">
-          {camareiras.map((item) => <div key={item.id} className="clean-person"><strong>{item.name}</strong><small>{doneToday.filter((task) => task.camareira === item.name).length} limpo(s) hoje · {inProgress.filter((task) => task.camareira === item.name).length} em limpeza</small></div>)}
-          <div className="clean-person"><strong>Faltam</strong><small>{pendingRooms.length} quarto(s) aguardando limpeza · {inProgress.length} em andamento</small></div>
-        </div>
-      </section>
+      {!modalOnly && summaryPanel}
 
-      <section className="clean-panel">
+      <div className="clean-body">
+      <div className="clean-main">
+      <section className="clean-panel clean-step-people">
         <h2><span className="clean-step">1</span> Quem vai limpar?</h2>
         {loading ? <p className="clean-muted">Carregando...</p> : <div className="clean-people">
           {camareiras.map((item) => {
@@ -167,7 +176,7 @@ export function ControleLimpeza({ userRole }: { userRole: UserRole }) {
         </div>}
       </section>
 
-      <section className="clean-panel">
+      <section className="clean-panel clean-step-rooms">
         <h2><span className="clean-step">2</span> Quais quartos?</h2>
         <div className="clean-legend"><span className="legend-free">Disponível para limpeza</span><span className="legend-selected">Selecionado</span><span className="legend-busy">Em limpeza</span><span className="legend-blocked">Bloqueado</span></div>
         <div className="clean-rooms">
@@ -193,8 +202,10 @@ export function ControleLimpeza({ userRole }: { userRole: UserRole }) {
         </button>
         {selected.length > 0 && <button type="button" className="clean-secondary" onClick={() => setSelected([])}>Limpar seleção</button>}
       </section>
+      </div>
 
-      <section className="clean-panel">
+      <div className="clean-side">
+      <section className="clean-panel clean-inprogress">
         <h2>{focusedRoom ? `Limpeza do quarto ${focusedRoom}` : 'Em limpeza agora'}</h2>
         {visibleInProgress.length === 0 ? <p className="clean-muted">Nenhuma tarefa de limpeza em andamento{focusedRoom ? ` para o quarto ${focusedRoom}` : ''}.</p> : <div className="clean-tasks">
           {visibleInProgress.map((task) => <article key={task.id} className="clean-task">
@@ -209,8 +220,11 @@ export function ControleLimpeza({ userRole }: { userRole: UserRole }) {
           </article>)}
         </div>}
       </section>
+      {modalOnly && summaryPanel}
+      </div>
+      </div>
 
-      <section className="clean-panel">
+      <section className="clean-panel clean-done-panel">
         <div className="clean-panel-head">
           <h2>{isAdmin ? 'Limpezas concluídas e canceladas' : 'Limpezas concluídas'}</h2>
           <label className="clean-date">Dia<input type="date" value={viewDate} onChange={(event) => event.target.value && setViewDate(event.target.value)} /></label>

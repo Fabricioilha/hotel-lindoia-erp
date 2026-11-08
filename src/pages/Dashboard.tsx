@@ -36,6 +36,15 @@ const ManagerRoomDialog = lazy(() => import('../components/ManagerRoomDialog').t
 
 type DashboardTool = 'geladeira' | 'saida-caixa' | 'limpeza' | 'estoque' | 'escala';
 
+// Geladeira e Controle de Limpeza usam o modal largo, com cabeçalho no padrão dos demais formulários.
+const TOOL_HEADINGS: Record<DashboardTool, { title: string; eyebrow?: string; wide?: boolean }> = {
+  geladeira: { title: 'Geladeira', eyebrow: 'PONTO DE VENDA / RECEPÇÃO', wide: true },
+  'saida-caixa': { title: 'Saída de Caixa' },
+  limpeza: { title: 'Controle de Limpeza', eyebrow: 'OPERAÇÃO / HOSPEDAGEM', wide: true },
+  estoque: { title: 'Estoque' },
+  escala: { title: 'Escala' },
+};
+
 interface DashboardProps {
   userRole: UserRole;
   onLogout: () => void;
@@ -477,9 +486,11 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
       </Suspense>}
 
       {activeTool && <div className="dashboard-tool-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) closeTool(); }}>
-        <section className="dashboard-tool-modal" role="dialog" aria-modal="true" aria-labelledby="dashboard-tool-title">
+        <section className={`dashboard-tool-modal${TOOL_HEADINGS[activeTool].wide ? ' dashboard-tool-modal--wide' : ''}`} data-tool={activeTool} role="dialog" aria-modal="true" aria-labelledby="dashboard-tool-title">
           <header className="dashboard-tool-modal-header">
-            <h2 id="dashboard-tool-title">{{ geladeira: 'Geladeira', 'saida-caixa': 'Saída de Caixa', limpeza: 'Controle de Limpeza', estoque: 'Estoque', escala: 'Escala' }[activeTool]}</h2>
+            {TOOL_HEADINGS[activeTool].eyebrow
+              ? <div><p className="dashboard-tool-eyebrow">{TOOL_HEADINGS[activeTool].eyebrow}</p><h2 id="dashboard-tool-title">{TOOL_HEADINGS[activeTool].title}</h2></div>
+              : <h2 id="dashboard-tool-title">{TOOL_HEADINGS[activeTool].title}</h2>}
             <button type="button" aria-label="Fechar e voltar ao painel" onClick={closeTool}>×</button>
           </header>
           <div className="dashboard-tool-modal-content">
@@ -487,7 +498,7 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
               <Suspense fallback={<p className="dashboard-tool-loading" role="status">Carregando…</p>}>
                 {activeTool === 'geladeira' && <SalesModalPage actor={salesActor} isAdmin={userRole === 'admin'} modalOnly />}
                 {activeTool === 'saida-caixa' && <CashOutModalPage userRole={userRole} />}
-                {activeTool === 'limpeza' && <CleaningModalPage userRole={userRole} />}
+                {activeTool === 'limpeza' && <CleaningModalPage userRole={userRole} modalOnly />}
                 {activeTool === 'estoque' && <StockOutputModalPage userRole={userRole} />}
                 {activeTool === 'escala' && <ScheduleModalPage userRole={userRole} />}
               </Suspense>
