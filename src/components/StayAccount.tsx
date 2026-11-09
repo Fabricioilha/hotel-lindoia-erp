@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { PAYMENT_METHOD_LABELS, type FinancePaymentMethod } from '../types/finance';
-import { roomChargePayments, stayAmountDue, stayPayments, type GuestStay, type RoomCharge } from '../types/reception';
+import { FOLIO_PAYMENT_METHODS, roomChargePayments, stayAmountDue, stayBillingLines, stayPayments, type GuestStay, type RoomCharge } from '../types/reception';
 import { subscribeFrigobar } from '../services/frigobarStore';
 import type { FrigobarSale } from '../types/frigobar';
 import { existingStayReceipts } from '../services/stayReceipts';
@@ -23,6 +23,7 @@ export function StayAccount({ stay, attendant, charges = [], onSaved }: { stay: 
   const [operationId, setOperationId] = useState(() => `recepcao-${stay.id}-${crypto.randomUUID()}`);
   const due = stayAmountDue(stay);
   const paid = stayPayments(stay).reduce((sum, receipt) => sum + Math.round(receipt.amount * 100), 0) / 100;
+  const courtesies = stayBillingLines(stay).filter((line) => line.method === 'courtesy');
   const additionalDue = charges.reduce((sum, charge) => sum + Math.max(0, Math.round(charge.amount * 100) - roomChargePayments(charge).reduce((paid, payment) => paid + Math.round(payment.amount * 100), 0)), 0) / 100;
   const minibarDue = (sales ?? []).filter((sale) => sale.settlement === 'cobrar_no_checkout').reduce((sum, sale) => sum + Math.round(sale.amount * 100), 0) / 100;
 
@@ -38,6 +39,7 @@ export function StayAccount({ stay, attendant, charges = [], onSaved }: { stay: 
 
   return <section data-guard-unsaved className="stay-account" aria-label="Conta da hospedagem">
     <h3>Conta da hospedagem</h3><p>Recebido: <strong>{money(paid)}</strong> · Pendente: <strong>{money(due)}</strong></p>
+    {courtesies.length > 0 && <p>Cortesia: {courtesies.map((line) => line.label).join(' · ')}</p>}
     <p className="stay-account-hint">Hospedagem: {money(due)} · Adicionais: {money(additionalDue)} · Geladeira: {sales === null ? 'consultando…' : money(minibarDue)} em aberto.</p>
     {sales !== null && !salesError && <p>Saldo total para checkout: <strong>{money(due + additionalDue + minibarDue)}</strong></p>}
     {salesError && <p role="alert">Não foi possível conferir a geladeira: {salesError}</p>}
@@ -55,7 +57,7 @@ export function StayAccount({ stay, attendant, charges = [], onSaved }: { stay: 
       <label className="modal-field">
         <span>Forma</span>
         <select value={method} onChange={(event) => setMethod(event.target.value as FinancePaymentMethod)}>
-          {Object.entries(PAYMENT_METHOD_LABELS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}
+          {FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}
         </select>
       </label>
       <div className="modal-field stay-account-date-field">

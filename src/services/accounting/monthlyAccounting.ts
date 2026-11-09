@@ -1,4 +1,4 @@
-import { expenseCashMovements } from '../cardStatements';
+import { expenseCashMovements, expenseRegistrationDate } from '../cardStatements';
 import { balancesAt } from '../financeAnalytics';
 import { expensePaymentEvents, payrollPaymentEvents } from '../financePayments';
 import { financeDataIssues } from '../financeValidation';
@@ -129,12 +129,13 @@ export function buildMonthlyAccountingReport(data: FinanceData, month: string, g
     if (data.suppressed[expense.id]) continue;
     const paidAtClosing = sum(expensePaymentEvents(expense).filter((payment) => payment.date <= to), (payment) => payment.amount);
     const pending = rounded(Math.max(0, expense.plannedAmount - paidAtClosing));
-    if (inMonth(expense.dueDate) || (expense.dueDate < from && pending > 0)) {
+    const registrationDate = expenseRegistrationDate(data, expense);
+    if (inMonth(registrationDate) || inMonth(expense.dueDate) || (expense.dueDate < from && pending > 0)) {
       const withoutStatement = pending > 0 && expense.purchaseMethod === 'card' && !expense.cardStatementId;
-      obligations.push({ dueDate: withoutStatement ? '' : expense.dueDate, type: 'Despesa', competence: expense.dueDate.slice(0, 7),
+      obligations.push({ dueDate: withoutStatement ? '' : expense.dueDate, type: 'Despesa', competence: registrationDate.slice(0, 7),
         category: expense.category, employee: expense.employee ?? '', planned: expense.plannedAmount, paid: rounded(paidAtClosing), pending,
         status: pending <= 0 ? 'Quitada até o fechamento' : withoutStatement ? 'Sem fatura' : expense.dueDate < from ? 'Pendente de mês anterior' : paidAtClosing > 0 ? 'Parcialmente paga' : 'A pagar',
-        reference: expense.id, note: [expense.note, expense.cardStatementId ? 'Fatura ' + expense.cardStatementId : ''].filter(Boolean).join(' · ') });
+        reference: expense.id, note: [expense.note, expense.purchaseMethod === 'card' ? 'Compra em ' + registrationDate.split('-').reverse().join('/') : '', expense.cardStatementId ? 'Fatura ' + expense.cardStatementId : ''].filter(Boolean).join(' · ') });
     }
   }
 

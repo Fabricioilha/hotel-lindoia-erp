@@ -4,7 +4,7 @@ import { FinanceMetric as Metric } from '../../components/finance/FinanceMetric'
 import { FinanceOverviewCards } from '../../components/finance/FinanceOverviewCards';
 import { FinancePeriodFilter } from '../../components/finance/FinancePeriodFilter';
 import { CardStatements } from '../../components/finance/CardStatements';
-import { expenseCashMovements } from '../../services/cardStatements';
+import { cardPurchasePending, expenseCashMovements, expenseRegistrationDate, scheduleCardPurchase } from '../../services/cardStatements';
 import { OyoReconciliation } from '../../components/finance/OyoReconciliation';
 import { latestOyoClosing, oyoClosingBalance, oyoEstimatedPosition, oyoMonthPendingCash, subscribeOyoClosings, type OyoClosingRecord, type OyoClosingRecords } from '../../services/oyoReconciliation';
 import { CashOutForm } from '../../components/finance/CashOutForm';
@@ -163,8 +163,9 @@ export function FluxoDeCaixa() {
 		&& matchesText('Repasse da OYO', entry.note, WALLET_LABELS[entry.to])) : [];
 	const expenses = Object.values(data.expenses).filter((entry) => {
 		const payments = expensePaymentEvents(entry);
-		return (dateWithinRange(entry.dueDate, activeRange) || paymentsInRange(payments, activeRange.from, activeRange.to).length > 0)
-			&& matchesText(entry.category, entry.employee, entry.note)
+		return (dateWithinRange(entry.dueDate, activeRange) || dateWithinRange(expenseRegistrationDate(data, entry), activeRange)
+			|| paymentsInRange(payments, activeRange.from, activeRange.to).length > 0)
+			&& matchesText(entry.category, entry.employee, entry.note, entry.cardCategory)
 			&& (!isMovementTab || walletFilter === 'all' || paymentsInRange(payments, activeRange.from, activeRange.to).some((payment) => payment.wallet === walletFilter));
 	}).sort((a, b) => a.dueDate.localeCompare(b.dueDate));
 	const payroll = Object.values(data.payroll).filter((entry) => {
@@ -364,7 +365,9 @@ export function FluxoDeCaixa() {
 		const paymentMethodField = String(form.get('purchaseMethod') ?? '');
 		const purchaseMethod = (['cash', 'pix', 'card'] as const).find((method) => method === paymentMethodField);
 		const cardCategory = String(form.get('cardCategory') ?? '').trim();
+		const purchaseDate = String(form.get('purchaseDate') ?? '');
 		if (purchaseMethod === 'card' && !expenseCategories.some((name) => isCardCategory(name) && name === cardCategory) && cardCategory !== original?.cardCategory) { setError('Selecione o cartão utilizado na compra.'); return; }
+		if (purchaseMethod === 'card' && (!isFinanceDateKey(purchaseDate) || purchaseDate > localDateKey() || dueDate < purchaseDate)) { setError('Informe a data da compra e um vencimento da fatura igual ou posterior.'); return; }
 		if (!original && purchaseMethod && paidOyo !== 0) { setError('Compras em cartão, Pix ou dinheiro não podem usar retidos OYO.'); return; }
 		const timestamp = new Date().toISOString();
 		const recordId = original?.id ?? id();
@@ -373,7 +376,7 @@ export function FluxoDeCaixa() {
     if (category === SALARY_ADVANCE_CATEGORY && !/^\d{4}-(0[1-9]|1[0-2])$/.test(advanceMonth)) { setError('Informe a competência do adiantamento.'); return; }
 		const immediate = !original && purchaseMethod ? purchaseImmediatePayment(purchaseMethod, plannedAmount) : undefined;
 		if (immediate && (immediate.paidCash || immediate.paidBank) && dueDate > localDateKey()) { setError('Compras em dinheiro ou Pix são debitadas no dia da compra, que não pode ser futuro. Use cartão ou deixe a compra a pagar.'); return; }
-    const item: FinanceExpense = { id: recordId, ...(category === SALARY_ADVANCE_CATEGORY ? { advanceMonth, ...(staffMembers(staff).find((member) => member.name === employee) ? { employeeId: staffMembers(staff).find((member) => member.name === employee)!.id } : {}) } : {}), dueDate, category, ...(employee && category === SALARY_ADVANCE_CATEGORY ? { employee } : {}), ...(purchaseMethod ? { purchaseMethod, ...(purchaseMethod === 'card' ? { cardCategory } : {}) } : {}), plannedAmount, paidCash: immediate?.paidCash ?? paidCash, paidBank: immediate?.paidBank ?? paidBank, paidOyo, note: String(form.get('note') ?? '').trim(), createdAt: original?.createdAt ?? timestamp, updatedAt: timestamp, ...(original ? { operationalOverride: true } : {}) };
+    const item: FinanceExpense = { id: recordId, ...(category === SALARY_ADVANCE_CATEGORY ? { advanceMonth, ...(staffMembers(staff).find((member) => member.name === employee) ? { employeeId: staffMembers(staff).find((member) => member.name === employee)!.id } : {}) } : {}), dueDate, category, ...(employee && category === SALARY_ADVANCE_CATEGORY ? { employee } : {}), ...(purchaseMethod ? { purchaseMethod, ...(purchaseMethod === 'card' ? { cardCategory, purchaseDate } : {}) } : {}), plannedAmount, paidCash: immediate?.paidCash ?? paidCash, paidBank: immediate?.paidBank ?? paidBank, paidOyo, note: String(form.get('note') ?? '').trim(), createdAt: original?.createdAt ?? timestamp, updatedAt: timestamp, ...(original ? { operationalOverride: true } : {}) };
 		void commit((latest) => {
 			const current = latest.expenses[recordId];
 			if (original && (!current || current.updatedAt !== original.updatedAt)) throw new Error('A despesa mudou enquanto você editava. Reabra o lançamento para atualizar os dados.');
@@ -387,8 +390,10 @@ export function FluxoDeCaixa() {
 				if (!payment) throw new Error('Uma parcela foi alterada ou excluída enquanto você editava. Reabra o lançamento.');
 				if (eventDates[index] !== originalEvents[eventId]?.date || confirmedDates.has(eventId)) datePatches[eventId] = eventDates[index];
 			});
-			return { ...latest, expenses: { ...latest.expenses, [recordId]: { ...next, payments: patchPaymentDates(events, datePatches) } } };
-		}, original ? 'Despesa e pagamentos atualizados.' : item.paidCash + item.paidBank + paidOyo ? 'Despesa e pagamento registrados.' : 'Conta a pagar registrada.');
+			const expense = { ...next, payments: patchPaymentDates(events, datePatches) };
+			if (expense.purchaseMethod === 'card' && cardPurchasePending(expense) > 0) return scheduleCardPurchase(latest, expense, operationId, timestamp);
+			return { ...latest, expenses: { ...latest.expenses, [recordId]: expense } };
+		}, purchaseMethod === 'card' && plannedAmount > item.paidCash + item.paidBank + paidOyo ? 'Compra registrada na fatura do cartão.' : original ? 'Despesa e pagamentos atualizados.' : item.paidCash + item.paidBank + paidOyo ? 'Despesa e pagamento registrados.' : 'Conta a pagar registrada.');
 	}
 
 	function saveTransfer(event: FormEvent<HTMLFormElement>, current?: FinanceTransfer) {
@@ -530,7 +535,22 @@ export function FluxoDeCaixa() {
 		...incomes.map((item) => ({ id: item.id, date: item.date, title: item.category, detail: `${item.note}${item.note ? ' · ' : ''}${incomeItems(item).map((line) => line.description).join(', ')}`, amount: item.amount, paid: item.amount, type: 'entrada' as const, wallet: incomePaymentSummary(item) })),
 		...incomingTransfers.map((item) => ({ id: item.id, date: item.date, title: 'Repasse da OYO', detail: item.note, amount: item.amount, paid: item.amount,
 			type: 'entrada' as const, wallet: WALLET_LABELS[item.to], transfer: true })),
-		...expenses.map((item) => { const payments = paymentsInRange(expensePaymentEvents(item), activeRange.from, activeRange.to).filter((payment) => !isMovementTab || walletFilter === 'all' || payment.wallet === walletFilter); const movementDate = payments.map((payment) => payment.date).sort().at(-1) || item.dueDate; return { id: item.id, date: movementDate, title: item.category, detail: [`${item.purchaseMethod === 'card' && !item.cardStatementId ? 'Data da compra' : 'Vencimento'} ${dateLabel(item.dueDate)}`, item.purchaseMethod ? `Compra: ${PURCHASE_METHOD_LABELS[item.purchaseMethod]}${item.purchaseMethod === 'card' && item.cardCategory ? ` (${item.cardCategory})` : ''}${isPendingCardPurchase(item) ? ' · aguardando pagamento do cartão' : ''}` : '', item.employee ? `Para: ${item.employee}` : '', compensatedAdvances.has(item.id) ? `Compensado na folha ${compensatedAdvances.get(item.id)!.month.slice(5)}/${compensatedAdvances.get(item.id)!.month.slice(0, 4)} · não sai do caixa de novo` : '', item.note].filter(Boolean).join(' · '), amount: item.plannedAmount, paid: item.paidCash + item.paidBank + (item.paidOyo ?? 0), periodPaid: paymentItemTotal(payments), type: 'saida' as const, wallet: `${money(item.paidCash)} em caixa · ${money(item.paidBank)} em banco · ${money(item.paidOyo ?? 0)} retidos OYO` }; }),
+		...expenses.map((item) => {
+			const payments = paymentsInRange(expensePaymentEvents(item), activeRange.from, activeRange.to).filter((payment) => !isMovementTab || walletFilter === 'all' || payment.wallet === walletFilter);
+			const onCard = item.purchaseMethod === 'card';
+			const registeredOn = expenseRegistrationDate(data, item);
+			const movementDate = onCard && dateWithinRange(registeredOn, activeRange) && walletFilter === 'all'
+				? registeredOn : payments.map((payment) => payment.date).sort().at(-1) || item.dueDate;
+			return { id: item.id, date: movementDate, title: item.category, detail: [
+				onCard ? `Compra em ${dateLabel(registeredOn)}` : '',
+				!onCard || item.cardStatementId ? `Vencimento ${dateLabel(item.dueDate)}` : '',
+				item.purchaseMethod ? `${PURCHASE_METHOD_LABELS[item.purchaseMethod]}${item.cardCategory ? ` (${item.cardCategory})` : ''}` : '',
+				isPendingCardPurchase(item) ? 'Aguardando pagamento da fatura' : '',
+				item.employee ? `Para: ${item.employee}` : '',
+				compensatedAdvances.has(item.id) ? `Compensado na folha ${compensatedAdvances.get(item.id)!.month.slice(5)}/${compensatedAdvances.get(item.id)!.month.slice(0, 4)}` : '',
+				item.note,
+			].filter(Boolean).join(' · '), amount: item.plannedAmount, paid: item.paidCash + item.paidBank + (item.paidOyo ?? 0), periodPaid: paymentItemTotal(payments), type: 'saida' as const, wallet: `${money(item.paidCash)} em caixa · ${money(item.paidBank)} em banco · ${money(item.paidOyo ?? 0)} retidos OYO` };
+		}),
 		...payroll.map((item) => { const payments = paymentsInRange(payrollPaymentEvents(item), activeRange.from, activeRange.to).filter((payment) => !isMovementTab || walletFilter === 'all' || payment.wallet === walletFilter); return { id: item.id, date: payments.map((payment) => payment.date).sort().at(-1) || item.dueDate, title: item.employee, detail: [`Vencimento ${dateLabel(item.dueDate)}`, item.position || 'Folha de pagamento', Object.keys(item.advances ?? {}).length ? `Vales compensados: ${money(Object.values(item.advances ?? {}).reduce((sum, amount) => sum + amount, 0))} (já saíram do caixa)` : ''].filter(Boolean).join(' · '), amount: payrollNet(item), paid: item.paidCash + item.paidBank, periodPaid: paymentItemTotal(payments), type: 'folha' as const, wallet: `${money(item.paidCash)} em caixa · ${money(item.paidBank)} em banco` }; }),
 	].sort((a, b) => b.date.localeCompare(a.date));
 	const financeActions = <>
@@ -812,7 +832,7 @@ function IncomeForm({ record, month, categories, initialPaymentMethod = 'cash', 
 		<div className="finance-income-section finance-field-wide"><div className="finance-income-section-heading"><div><strong>{isDaily ? 'Composição da diária' : 'Itens recebidos'}</strong><small>Defina o valor e o pagamento de cada item.</small></div><button type="button" className="finance-button finance-button-soft" disabled={isDaily && !nextDailyItem} onClick={() => setItems((current) => [...current, newIncomeItem(isDaily ? nextDailyItem ?? DAILY_INCOME_ITEMS[1] : category, initialPaymentMethod)])}>{isDaily ? '+ Adicional' : '+ Dividir recebimento'}</button></div>
 			<div className="finance-income-lines">{items.map((item, index) => <div className="finance-income-line" key={item.id}>
 				<label className="finance-field"><span>{isDaily && index === 0 ? 'Diária' : 'Item'}</span>{isDaily && index === 0 ? <input value="Diária" readOnly aria-label="Item Diária" /> : isDaily ? <select value={item.description} onChange={(event) => updateItem(item.id, { description: event.target.value })}>{DAILY_INCOME_ITEMS.slice(1).map((part) => <option key={part} value={part}>{part}</option>)}</select> : <input value={item.description} readOnly aria-label={`Item ${item.description}`} />}</label>
-				<label className="finance-field"><span>Forma de pagamento</span><select value={item.paymentMethod} onChange={(event) => updateItem(item.id, { paymentMethod: event.target.value as FinancePaymentMethod, cardFeeRate: undefined, cardFeeAmount: undefined, netAmount: undefined })}>{(Object.entries(PAYMENT_METHOD_LABELS) as [FinancePaymentMethod, string][]).map(([method, label]) => <option key={method} value={method}>{label}</option>)}</select></label>
+				<label className="finance-field"><span>Forma de pagamento</span><select value={item.paymentMethod} onChange={(event) => updateItem(item.id, { paymentMethod: event.target.value as FinancePaymentMethod, cardFeeRate: undefined, cardFeeAmount: undefined, netAmount: undefined })}>{(Object.entries(PAYMENT_METHOD_LABELS) as [FinancePaymentMethod, string][]).filter(([method]) => incomePaymentWallet(method)).map(([method, label]) => <option key={method} value={method}>{label}</option>)}</select></label>
 				<label className="finance-field"><span>Valor (R$)</span><input type="number" min="0.01" step="0.01" required value={item.amount || ''} onChange={(event) => updateItem(item.id, { amount: Number(event.target.value) })} aria-label={`Valor de ${item.description}`} /></label>
 				{items.length > 1 && !(isDaily && index === 0) && <button type="button" className="finance-remove-line" title={`Remover ${item.description}`} aria-label={`Remover ${item.description}`} onClick={() => setItems((current) => current.filter((line) => line.id !== item.id))}>×</button>}
 			</div>)}</div>
@@ -831,6 +851,8 @@ function ExpenseForm({ record, month, categories, employees, saving, onClose, on
 	const [bank, setBank] = useState(String(record?.paidBank ?? 0));
 	const [oyo, setOyo] = useState(String(record?.paidOyo ?? 0));
 	const [method, setMethod] = useState<PurchaseMethod | ''>(record?.purchaseMethod ?? '');
+	const [purchaseDate, setPurchaseDate] = useState(record?.purchaseDate ?? record?.dueDate ?? monthDueDate(month));
+	const onCard = method === 'card';
 	const cards = categories.filter(isCardCategory);
 	const chooseMethod = (next: PurchaseMethod | '') => {
 		setMethod(next);
@@ -845,30 +867,29 @@ function ExpenseForm({ record, month, categories, employees, saving, onClose, on
 	const totalPaid = Number(shownCash || 0) + Number(shownBank || 0) + Number(oyo || 0);
 	return <form data-guard-unsaved onSubmit={(event) => onSubmit(event, original)}><ModalHeader title={record ? 'Editar despesa' : 'Nova despesa'} onClose={onClose} /><div className="finance-modal-body finance-expense-body">
 		<section className="finance-expense-section" aria-labelledby="finance-expense-details-title">
-			<div className="finance-expense-step"><span>1</span><div><strong id="finance-expense-details-title">Conta e vencimento</strong><small>O valor previsto fica separado dos pagamentos realizados.</small></div></div>
+			<div className="finance-expense-step"><span>1</span><div><strong id="finance-expense-details-title">Dados da despesa</strong><small>Informe a forma de pagamento e as datas do lançamento.</small></div></div>
 			<div className="finance-expense-grid">
-				<label className="finance-field"><span>{method === 'card' || isCardCategory(category) ? 'Data da compra *' : 'Vencimento *'}</span><DateInput name="dueDate" required defaultValue={record?.dueDate ?? monthDueDate(month)} /></label>
+				<label className="finance-field"><span>Forma de pagamento da compra</span><select name="purchaseMethod" value={method} onChange={(event) => chooseMethod(event.target.value as PurchaseMethod | '')}><option value="">Não informada / a pagar</option>{(Object.keys(PURCHASE_METHOD_LABELS) as PurchaseMethod[]).map((key) => <option key={key} value={key}>{PURCHASE_METHOD_LABELS[key]}</option>)}</select></label>
+				{method === 'card' && <label className="finance-field"><span>Cartão *</span><select name="cardCategory" required defaultValue={record?.cardCategory ?? ''}><option value="" disabled>{cards.length ? 'Selecione o cartão' : 'Nenhum cartão cadastrado'}</option>{record?.cardCategory && !cards.includes(record.cardCategory) && <option value={record.cardCategory}>{record.cardCategory} (histórico)</option>}{cards.map((card) => <option key={card} value={card}>{card}</option>)}</select></label>}
+				{onCard && <label className="finance-field"><span>Data da compra *</span><DateInput name="purchaseDate" required value={purchaseDate} onValueChange={setPurchaseDate} max={localDateKey()} /></label>}
+				<label className="finance-field"><span>{onCard ? 'Vencimento da fatura *' : method ? 'Data da compra *' : 'Vencimento *'}</span><DateInput key={onCard ? 'statement' : 'expense'} name="dueDate" required min={onCard ? purchaseDate : undefined} defaultValue={onCard ? (record && (record.purchaseDate || !isPendingCardPurchase(record)) ? record.dueDate : '') : record?.dueDate ?? monthDueDate(month)} /></label>
 				<label className="finance-field"><span>Categoria *</span><select name="category" value={category} onChange={(event) => setCategory(event.target.value)} required><option value="" disabled>Selecione uma categoria</option>{record && !categories.includes(record.category) && <option value={record.category}>{record.category} (histórica)</option>}{categories.map((item) => <option key={item} value={item}>{item}</option>)}</select></label>
 				<label className="finance-field"><span>Valor previsto (R$) *</span><input name="plannedAmount" type="number" min="0.01" step="0.01" required value={planned} onChange={(event) => setPlanned(event.target.value)} /></label>
 				<label className="finance-field"><span>Observação</span><textarea name="note" rows={2} defaultValue={record?.note} /></label>
 			</div>
-			{isCardCategory(category) && <p className="finance-form-hint">Compra no cartão: o gasto fica registrado nesta data, mas o dinheiro só sai da conta quando o pagamento do cartão for registrado.</p>}
 		</section>
 		<section className="finance-expense-section" aria-labelledby="finance-expense-payments-title">
-			<div className="finance-expense-step"><span>2</span><div><strong id="finance-expense-payments-title">Forma de pagamento e pagamentos realizados</strong><small>Pix e dinheiro debitam a carteira no dia da compra. Cartão só debita quando o pagamento do cartão for registrado.</small></div></div>
-			{!isCardCategory(category) && <div className="finance-expense-grid">
-				<label className="finance-field"><span>Forma de pagamento da compra</span><select name="purchaseMethod" value={method} onChange={(event) => chooseMethod(event.target.value as PurchaseMethod | '')}><option value="">Não informada / a pagar</option>{(Object.keys(PURCHASE_METHOD_LABELS) as PurchaseMethod[]).map((key) => <option key={key} value={key}>{PURCHASE_METHOD_LABELS[key]}</option>)}</select></label>
-				{method === 'card' && <label className="finance-field"><span>Cartão *</span><select name="cardCategory" required defaultValue={record?.cardCategory ?? ''}><option value="" disabled>{cards.length ? 'Selecione o cartão' : 'Nenhum cartão cadastrado'}</option>{record?.cardCategory && !cards.includes(record.cardCategory) && <option value={record.cardCategory}>{record.cardCategory} (histórico)</option>}{cards.map((card) => <option key={card} value={card}>{card}</option>)}</select></label>}
-			</div>}
-			{method === 'card' && <p className="finance-form-hint">Use a aba Faturas para agrupar as compras, informar o vencimento e registrar o pagamento do cartão.</p>}
-			<div className="finance-expense-grid">
+			<div className="finance-expense-step"><span>2</span><div><strong id="finance-expense-payments-title">Pagamentos realizados</strong><small>Pix e dinheiro debitam a carteira no dia da compra.</small></div></div>
+			{onCard && <p className="finance-form-hint">A compra entra na fatura desse vencimento. Registre a saída da carteira na aba Faturas quando o pagamento for realizado.</p>}
+			{!onCard && <><div className="finance-expense-grid">
 				<label className="finance-field"><span>Pago em dinheiro (R$)</span><input name="paidCash" type="number" min="0" step="0.01" value={shownCash} readOnly={Boolean(immediate)} onChange={(event) => setCash(event.target.value)} /></label>
 				<label className="finance-field"><span>Pago pelo banco (R$)</span><input name="paidBank" type="number" min="0" step="0.01" value={shownBank} readOnly={Boolean(immediate)} onChange={(event) => setBank(event.target.value)} /></label>
 				<label className="finance-field"><span>Compensado com retidos OYO (R$)</span><input name="paidOyo" type="number" min="0" step="0.01" value={oyo} readOnly={Boolean(immediate)} onChange={(event) => setOyo(event.target.value)} /></label>
 				<label className="finance-field"><span>Data do novo pagamento ou correção</span><DateInput name="paymentDate" defaultValue={month === localDateKey().slice(0, 7) ? localDateKey() : monthDueDate(month)} max={localDateKey()} /></label>
 			</div>
 			<div className="finance-payment-shortcuts"><button type="button" className="finance-button finance-button-soft" disabled={Boolean(immediate) || !Number(planned)} onClick={() => setCash(String(Math.max(0, Number(planned) - Number(bank || 0) - Number(oyo || 0))))}>Quitar em dinheiro</button><button type="button" className="finance-button finance-button-soft" disabled={Boolean(immediate) || !Number(planned)} onClick={() => setBank(String(Math.max(0, Number(planned) - Number(cash || 0) - Number(oyo || 0))))}>Quitar pelo banco</button><span>Pago {money(totalPaid)} · falta {money(Math.max(0, Number(planned || 0) - totalPaid))}</span></div>
-			<p className="finance-form-hint">Pagamentos anteriores conservam suas datas. Um novo pagamento ou ajuste utiliza a data acima.</p>
+			<p className="finance-form-hint">Pagamentos anteriores conservam suas datas. Um novo pagamento ou ajuste utiliza a data acima.</p></>}
+			{onCard && record && <><input type="hidden" name="paidCash" value={record.paidCash} /><input type="hidden" name="paidBank" value={record.paidBank} /><input type="hidden" name="paidOyo" value={record.paidOyo ?? 0} /></>}
 			{events.length > 0 && <div className="finance-payment-history"><h3>Histórico de parcelas</h3><p>Corrija a data de uma parcela sem alterar as demais.</p>{events.map((payment) => <div className="finance-payment-event" key={payment.id}><input type="hidden" name="paymentEventId" value={payment.id} /><div><strong>{money(payment.amount)} · {WALLET_LABELS[payment.wallet]}</strong>{payment.amount < 0 && <small>Correção / estorno</small>}{payment.dateSource === 'legacy_due_date' && <small>Data histórica ausente: vencimento utilizado</small>}</div><label className="finance-field"><span>Data desta parcela</span><DateInput name="paymentEventDate" required max={localDateKey()} value={eventDates[payment.id]} onValueChange={(date) => setEventDates((current) => ({ ...current, [payment.id]: date }))} /></label>{payment.dateSource === 'legacy_due_date' && <label className="finance-confirm-date"><input type="checkbox" name="paymentEventConfirmed" value={payment.id} />Confirmar esta data de pagamento</label>}</div>)}</div>}
 		</section>
 		{category === SALARY_ADVANCE_CATEGORY && <section className="finance-expense-section" aria-labelledby="finance-expense-employee-title"><div className="finance-expense-step"><span>3</span><div><strong id="finance-expense-employee-title">Beneficiário e compensação na folha</strong><small>Selecione quem receberá o valor.</small></div></div><label className="finance-field"><span>Competência para descontar na folha *</span><input name="advanceMonth" type="month" required defaultValue={record?.advanceMonth ?? month} /></label><label className="finance-field"><span>Funcionário *</span><select name="employee" required defaultValue={record?.employee ?? ''}><option value="" disabled>Selecione um funcionário</option>{employeeOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>{employeeOptions.length === 0 && <p className="finance-form-hint">Nenhum funcionário ativo no quadro de funcionários.</p>}</section>}

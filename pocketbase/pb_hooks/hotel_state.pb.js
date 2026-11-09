@@ -165,6 +165,21 @@ routerAdd("POST", "/api/hotel/state/commit", (event) => {
     for (const part of parts.slice(2)) value = value && typeof value === "object" ? value[part] : undefined
     return value
   }
+  const courtesyFields = (stay) => {
+    const fields = []
+    if (stay?.courtesy) fields.push("stay")
+    for (const item of ["daily", "breakfast", "tax"]) {
+      if (stay?.[item + "Method"] === "courtesy") fields.push(item)
+      if (stay?.[item + "Split"]?.method === "courtesy") fields.push(item + "Split")
+    }
+    if (Array.isArray(stay?.extras)) {
+      for (const extra of stay.extras) if (extra?.method === "courtesy") fields.push("extra/" + extra.id)
+    }
+    for (const [id, receipt] of Object.entries(stay?.receipts ?? {})) {
+      if (receipt?.method === "courtesy") fields.push("receipt/" + id)
+    }
+    return JSON.stringify(fields.sort())
+  }
   const validViewerCleaningWrite = (path, entries) => {
     const parts = path.split("/")
     if (parts[0] !== "erp_geral") return false
@@ -331,6 +346,12 @@ routerAdd("POST", "/api/hotel/state/commit", (event) => {
         const normalized = String(path).replace(/^\/+|\/+$/g, "")
         if (viewerCleaningPath(normalized) && !validViewerCleaningWrite(normalized, entries)) {
           throw new ForbiddenError("A transição de limpeza não é válida para este perfil.")
+        }
+        if (normalized.startsWith("erp_geral/recepcao/stays/")) {
+          const stayPath = normalized.split("/").slice(0, 4).join("/")
+          if (courtesyFields(stateValue(entries, stayPath, true)) !== courtesyFields(stateValue(entries, stayPath, false))) {
+            throw new ForbiddenError("Somente a gerência pode alterar cortesias na hospedagem.")
+          }
         }
       }
     }

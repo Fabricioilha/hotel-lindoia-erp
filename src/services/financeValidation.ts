@@ -38,6 +38,9 @@ export function financeDataIssues(data: FinanceData): FinanceIssue[] {
   Object.values(data.expenses).filter((entry) => !data.suppressed[entry.id]).forEach((entry) => {
     if (!entry.id || !isFinanceDateKey(entry.dueDate) || !Number.isFinite(entry.plannedAmount) || entry.plannedAmount <= 0
       || typeof entry.category !== 'string' || !entry.category.trim()) add(entry.id, 'expense', 'Há despesa com vencimento ou valor previsto inválido.');
+    if (entry.purchaseDate !== undefined && (!isFinanceDateKey(entry.purchaseDate) || entry.purchaseDate > entry.dueDate)) {
+      add(entry.id, 'expense', 'A data da compra precisa ser válida e anterior ou igual ao vencimento.');
+    }
     const events = expensePaymentEvents(entry);
     paymentIssues(entry, events, false).forEach((message) => add(entry.id, 'expense', message));
     const totals = paymentEventTotals(events);

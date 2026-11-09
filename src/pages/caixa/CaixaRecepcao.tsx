@@ -1,4 +1,4 @@
-import { existingStayReceipts, initializeStayReceipts } from '../../services/stayReceipts';
+import { initializeStayReceipts } from '../../services/stayReceipts';
 import { financeDateKeyFromTimestamp } from '../../services/financePayments';
 import { operationalDateKey } from '../../services/cashShiftDate';
 import { useEffect, useState, type FormEvent } from 'react';
@@ -22,7 +22,15 @@ import '../venda-geladeira.css';
 import './recepcao.css';
 
 const money = (value: number) => value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
-const taxLabel = (method: FinancePaymentMethod) => method === 'prepaid' ? 'Pré-pago (já quitado)' : `Balcão - ${PAYMENT_METHOD_LABELS[method]}`;
+const taxLabel = (method: FinancePaymentMethod) => method === 'prepaid' ? 'Pré-pago (já quitado)'
+  : method === 'courtesy' ? PAYMENT_METHOD_LABELS.courtesy : `Balcão - ${PAYMENT_METHOD_LABELS[method]}`;
+const MANAGER_STAY_PAYMENT_METHODS: FinancePaymentMethod[] = [...FOLIO_PAYMENT_METHODS, 'courtesy'];
+
+function paymentBreakdown(total: number, method: FinancePaymentMethod, splitAmount = 0, splitMethod = method) {
+  const prepaid = (method === 'prepaid' ? total - splitAmount : 0) + (splitMethod === 'prepaid' ? splitAmount : 0);
+  const courtesy = (method === 'courtesy' ? total - splitAmount : 0) + (splitMethod === 'courtesy' ? splitAmount : 0);
+  return { prepaid, courtesy, hotel: Math.max(0, Math.round((total - prepaid - courtesy) * 100) / 100) };
+}
 const DAY_MS = 86_400_000;
 
 function dateKeyAfterDays(dateKey: string, days: number): string {
@@ -104,8 +112,10 @@ export function CaixaRecepcao(props: CaixaRecepcaoProps) {
   return <CaixaRecepcaoContent key={formKey} {...props} />;
 }
 
-function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hospede', initialRoom = '', editingStay, entryContext, onModalClose }: CaixaRecepcaoProps) {
+function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hospede', initialRoom = '', editingStay: stayToEdit, entryContext, onModalClose }: CaixaRecepcaoProps) {
+  const [editingStay] = useState(stayToEdit);
   const isAdmin = userRole === 'admin';
+  const stayPaymentMethods = isAdmin && editingStay ? MANAGER_STAY_PAYMENT_METHODS : FOLIO_PAYMENT_METHODS;
   const [receptionData, setReceptionData] = useState<ReceptionData>(() => emptyReception());
   const [rateSettings, setRateSettings] = useState<ReceptionRateSettings>(() => emptyReceptionRateSettings());
   const [subscribedRoomDirectory, setSubscribedRoomDirectory] = useState<Record<string, HousekeepingRoom>>({});
@@ -132,7 +142,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   const formKind: StayKind | null = requested === 'hospede' ? 'hospede' : requested === 'rotativo' ? 'periodo' : null;
   const initialCheckIn = editingStay?.checkInDate ?? operationalDateKey();
   const initialNights = Math.max(1, editingStay?.nights ?? 1);
-  const initialRate = editingStay ? stayDailyAmount(editingStay) / initialNights : 0;
+  const initialRate = editingStay ? stayDailyAmount({ ...editingStay, courtesy: false }) / initialNights : 0;
   const initialRateText = editingStay?.kind === 'hospede' ? String(Math.round(initialRate * 100) / 100).replace('.', ',') : '';
   const [checkInDate, setCheckInDate] = useState(() => initialCheckIn);
   const [checkOutDate, setCheckOutDate] = useState(() => editingStay?.checkOutDate ?? dateKeyAfterDays(initialCheckIn, initialNights));
@@ -227,39 +237,33 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
     && dailyRateText === initialRateText
     && checkInDate === editingStay.checkInDate
     && checkOutDate === (editingStay.checkOutDate ?? dateKeyAfterDays(editingStay.checkInDate, initialNights)));
-  const dailyTotal = courtesy ? 0 : formKind === 'hospede'
-    ? unchangedStayRateAndPeriod ? stayDailyAmount(editingStay!) : Math.round((enteredDailyRate ?? 0) * draftNights * 100) / 100
+  const dailyTotal = formKind === 'hospede'
+    ? unchangedStayRateAndPeriod ? stayDailyAmount({ ...editingStay!, courtesy: false }) : Math.round((enteredDailyRate ?? 0) * draftNights * 100) / 100
     : parseAmount(dailyRate) * draftNights;
-  const breakfastTotal = courtesy ? 0 : parseAmount(breakfastRate) * draftBreakfastCount * draftBreakfastDays;
+  const lodgingCharge = Math.max(0, dailyTotal - (editingStay?.creditApplied ?? 0));
+  const breakfastTotal = hasBreakfast ? parseAmount(breakfastRate) * draftBreakfastCount * draftBreakfastDays : 0;
   const breakfastSplit = breakfastSplitPayment ? parseAmount(breakfastSplitAmount) : 0;
-  const appliedBreakfastSplit = breakfastSplitPayment && breakfastSplit > 0 && breakfastSplit < breakfastTotal ? breakfastSplit : 0;
-  const breakfastPrepaidAmount = hasBreakfast
-    ? (breakfastMethod === 'prepaid' ? breakfastTotal - appliedBreakfastSplit : 0)
-      + (breakfastSplitPayment && breakfastSplitMethod === 'prepaid' ? appliedBreakfastSplit : 0)
-    : 0;
-  const breakfastHotelAmount = Math.max(0, Math.round((breakfastTotal - breakfastPrepaidAmount) * 100) / 100);
+  const appliedBreakfastSplit = breakfastSplit > 0 && breakfastSplit < breakfastTotal ? breakfastSplit : 0;
+  const breakfastPayment = paymentBreakdown(breakfastTotal, courtesy ? 'courtesy' : breakfastMethod, courtesy ? 0 : appliedBreakfastSplit, breakfastSplitMethod);
   const tax = parseAmount(taxAmount);
   const taxSplit = taxSplitPayment ? parseAmount(taxSplitAmount) : 0;
-  const appliedTaxSplit = taxSplitPayment && taxSplit > 0 && taxSplit < tax ? taxSplit : 0;
-  const taxHotelAmount = hasTax
-    ? (taxMethod !== 'prepaid' ? tax - (taxSplitMethod === 'prepaid' ? appliedTaxSplit : 0) : 0)
-      + (taxSplitMethod !== 'prepaid' ? appliedTaxSplit : 0)
-    : 0;
-  const taxPrepaidAmount = hasTax
-    ? (taxMethod === 'prepaid' ? tax - (taxSplitMethod === 'prepaid' ? appliedTaxSplit : 0) : 0)
-      + (taxSplitMethod === 'prepaid' ? appliedTaxSplit : 0)
-    : 0;
+  const appliedTaxSplit = taxSplit > 0 && taxSplit < tax ? taxSplit : 0;
+  const taxPayment = paymentBreakdown(hasTax ? tax : 0, taxMethod, hasTax ? appliedTaxSplit : 0, taxSplitMethod);
   const draftSplit = splitPayment ? parseAmount(splitAmount) : 0;
-  const appliedDailySplit = splitPayment && draftSplit > 0 && draftSplit < dailyTotal ? draftSplit : 0;
-  const dailyPrepaidAmount = (dailyMethod === 'prepaid' ? dailyTotal - appliedDailySplit : 0)
-    + (splitPayment && splitMethod === 'prepaid' ? appliedDailySplit : 0);
-  const dailyHotelAmount = Math.max(0, Math.round((dailyTotal - dailyPrepaidAmount) * 100) / 100);
+  const appliedDailySplit = draftSplit > 0 && draftSplit < lodgingCharge ? draftSplit : 0;
+  const dailyPayment = paymentBreakdown(lodgingCharge, courtesy ? 'courtesy' : dailyMethod, courtesy ? 0 : appliedDailySplit, splitMethod);
   const draftExtras = extras.map((extra) => ({ ...extra, amount: parseAmount(extra.amount) }));
-  const extrasTotal = draftExtras.reduce((total, extra) => total + extraTotal(extra, draftNights), 0);
-  const extrasPrepaidTotal = draftExtras.filter((extra) => extra.method === 'prepaid').reduce((total, extra) => total + extraTotal(extra, draftNights), 0);
-  const extrasHotelTotal = Math.max(0, Math.round((extrasTotal - extrasPrepaidTotal) * 100) / 100);
+  const extrasPayment = draftExtras.reduce((totals, extra) => {
+    const payment = paymentBreakdown(extraTotal(extra, draftNights), extra.method);
+    return { prepaid: totals.prepaid + payment.prepaid, courtesy: totals.courtesy + payment.courtesy, hotel: totals.hotel + payment.hotel };
+  }, { prepaid: 0, courtesy: 0, hotel: 0 });
+  const { hotel: dailyHotelAmount, prepaid: dailyPrepaidAmount } = dailyPayment;
+  const { hotel: breakfastHotelAmount, prepaid: breakfastPrepaidAmount } = breakfastPayment;
+  const { hotel: taxHotelAmount, prepaid: taxPrepaidAmount } = taxPayment;
+  const { hotel: extrasHotelTotal, prepaid: extrasPrepaidTotal } = extrasPayment;
+  const courtesyTotal = dailyPayment.courtesy + breakfastPayment.courtesy + taxPayment.courtesy + extrasPayment.courtesy;
   const oyoRetainedTotal = dailyPrepaidAmount + breakfastPrepaidAmount + extrasPrepaidTotal;
-  const draftTotal = (formKind === 'hospede' ? dailyHotelAmount : dailyTotal)
+  const draftTotal = (formKind === 'hospede' ? dailyHotelAmount : lodgingCharge - dailyPayment.courtesy)
     + (formKind === 'hospede' && hasBreakfast ? breakfastHotelAmount : 0)
     + (formKind === 'hospede' ? taxHotelAmount : 0)
     + extrasHotelTotal;
@@ -353,11 +357,11 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
     if (!Number.isInteger(draftGuestCount) || draftGuestCount < 1 || draftGuestCount > 10) return setError('Informe de 1 a 10 pessoas no quarto.');
     if (formKind === 'hospede' && enteredDailyRate === undefined) return setError('Informe um valor válido para a diária.');
     if (formKind === 'periodo' && !rate) return setError('Informe o valor do rotativo.');
-    if (!courtesy && splitPayment && (!draftSplit || draftSplit >= dailyTotal)) return setError('O valor da segunda forma de pagamento deve ser maior que zero e menor que o valor total da hospedagem.');
+    if (!courtesy && splitPayment && (!draftSplit || draftSplit >= lodgingCharge)) return setError('O valor da segunda forma de pagamento deve ser maior que zero e menor que o valor total da hospedagem.');
     if (withBreakfast && (!Number.isInteger(draftBreakfastCount) || draftBreakfastCount < 1 || draftBreakfastCount > draftGuestCount)) return setError('A quantidade de cafés deve ficar entre 1 e o número de hóspedes.');
     if (withBreakfast && (!Number.isInteger(draftBreakfastDays) || draftBreakfastDays < 1 || draftBreakfastDays > draftNights)) return setError('A quantidade de dias com café deve ficar entre 1 e o número de diárias.');
     if (withBreakfast && !breakfast) return setError('Informe o valor de cada café.');
-    if (withBreakfast && breakfastSplitPayment && (!breakfastSplit || breakfastSplit >= breakfastTotal || breakfastSplitMethod === breakfastMethod)) return setError('Escolha duas formas diferentes para o café e informe um valor positivo menor que o total do café na segunda forma.');
+    if (!courtesy && withBreakfast && breakfastSplitPayment && (!breakfastSplit || breakfastSplit >= breakfastTotal || breakfastSplitMethod === breakfastMethod)) return setError('Escolha duas formas diferentes para o café e informe um valor positivo menor que o total do café na segunda forma.');
     if (withTax && !tax) return setError('Informe o valor da taxa ou desmarque "Cobrar taxa".');
     if (withTax && taxSplitPayment && (!taxSplit || taxSplit >= tax || taxSplitMethod === taxMethod)) return setError('Escolha duas formas diferentes para a taxa e informe um valor positivo menor que o total na segunda forma.');
     if (formKind === 'hospede' && draftExtras.some((extra) => !extra.amount || !extra.label.trim())) return setError('Preencha o nome e o valor de todos os extras.');
@@ -373,6 +377,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
       ...(formKind === 'periodo' ? { hours: draftHours } : {}),
       dailyRate: rate,
       ...(formKind === 'hospede' ? { lodgingTotal: dailyTotal } : {}),
+      ...(unchangedStayRateAndPeriod && editingStay?.nightlyRates ? { nightlyRates: editingStay.nightlyRates } : {}),
       ...(editingStay?.creditApplied !== undefined ? { creditApplied: editingStay.creditApplied } : {}),
       ...(editingStay?.convertedFromStayId ? { convertedFromStayId: editingStay.convertedFromStayId } : {}),
       ...(editingStay?.voidedPayments ? { voidedPayments: editingStay.voidedPayments } : {}),
@@ -392,18 +397,13 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
       note: note.trim(),
       attendant: editingStay?.attendant ?? attendant,
       status: editingStay?.status ?? 'hospedado',
+      ...(editingStay?.checkedOutAt ? { checkedOutAt: editingStay.checkedOutAt } : {}),
       createdAt: editingStay?.createdAt ?? new Date().toISOString(),
     };
-    if (stay.courtesy && editingStay) {
-      // Pagamentos de diária e café já recebidos deixam de compor a receita da cortesia.
-      const voided = { ...stay.voidedPayments };
-      Object.values(editingStay.receipts ?? {}).filter((receipt) => receipt.category === 'Diária' || receipt.category === 'Café').forEach((receipt) => { voided[receipt.id] = true; });
-      stay = { ...stay, voidedPayments: voided };
+    if (!editingStay) {
+      if (!receiptDate || receiptDate > financeDateKeyFromTimestamp(new Date().toISOString())) return setError('Confira a data de recebimento.');
+      stay = initializeStayReceipts(stay, receiptDate, receiveNow);
     }
-    if (!receiptDate || receiptDate > financeDateKeyFromTimestamp(new Date().toISOString())) return setError('Confira a data de recebimento.');
-    stay = editingStay
-      ? { ...stay, receiptsInitialized: true, receipts: existingStayReceipts(editingStay), ...(editingStay.lastReceiptAt ? { lastReceiptAt: editingStay.lastReceiptAt } : {}) }
-      : initializeStayReceipts(stay, receiptDate, receiveNow);
     if (!reservationDirectoryLoaded) return setError('Aguarde o carregamento da disponibilidade dos quartos e tente novamente.');
     const chosenRoom = Object.values(roomDirectory).find((room) => room.number === stay.roomNumber);
     if (!stay.awaitingArrival && (!editingStay || editingStay.roomNumber !== stay.roomNumber) && chosenRoom && (chosenRoom.maintenanceStatus === 'em_manutencao' || chosenRoom.cleaningStatus !== 'limpo')) return setError('Este quarto está bloqueado. Aguarde a conclusão da limpeza e a liberação da manutenção.');
@@ -423,7 +423,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
       ? `Hospedagem do quarto ${stay.roomNumber} atualizada.`
       : formKind === 'periodo' ? `Rotativo do quarto ${stay.roomNumber} registrado com sucesso.` : `Hóspede do quarto ${stay.roomNumber} registrado com sucesso.`;
     await run(async () => {
-      if (editingStay) await updateStayAndFinance(stay);
+      if (editingStay) await updateStayAndFinance(stay, editingStay);
       else await saveStay(stay);
       if (modalOnly) {
         onModalClose?.(message);
@@ -511,19 +511,19 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
               {formKind === 'periodo' && <label className="sales-field"><span>Quantidade de horas</span><input type="number" min={1} max={24} value={hours} onChange={(event) => setHours(event.target.value)} /></label>}
               {formKind === 'hospede' && <label className="sales-field"><span>Hóspede titular</span><input value={guestName} onChange={(event) => setGuestName(event.target.value)} maxLength={120} required /></label>}
               {formKind === 'hospede' ? <label className="sales-field"><span>Valor da Diária (R$)</span><span className="reception-money-input"><span>R$</span><input inputMode="decimal" value={dailyRateText} onChange={(event) => setDailyRateText(event.target.value)} required /></span></label> : <label className="sales-field"><span>Valor do rotativo (R$)</span><input inputMode="decimal" value={dailyRate} onChange={(event) => setDailyRate(event.target.value)} required /></label>}
-              {formKind === 'hospede' && <div className="reception-step-heading reception-wide"><span>2</span><div><strong>Pagamento das diárias</strong><small>{editingStay ? "Alterar a estadia preserva os recebimentos já registrados. Novos pagamentos são lançados na conta do quarto." : "Escolha uma forma ou divida o valor entre duas."}</small></div></div>}
+              {formKind === 'hospede' && <div className="reception-step-heading reception-wide"><span>2</span><div><strong>Pagamento das diárias</strong><small>{editingStay ? "Escolha Cortesia para dispensar a cobrança do item. Se houver recebimento registrado, ele será retirado do fluxo de caixa." : "Escolha uma forma ou divida o valor entre duas."}</small></div></div>}
               {!editingStay && <div className="reception-wide reception-receipt-options"><label className="reception-check"><input type="checkbox" checked={receiveNow} onChange={(event) => setReceiveNow(event.target.checked)} />Registrar os pagamentos informados agora</label>{receiveNow ? <label className="sales-field"><span>Data do recebimento</span><DateInput name="receiptDate" value={receiptDate} onValueChange={setReceiptDate} max={financeDateKeyFromTimestamp(new Date().toISOString())} required /></label> : <p>O valor ficará pendente na conta da hospedagem. Receba pela ficha do quarto.</p>}</div>}
               <label className="sales-field"><span>{splitPayment ? '1ª forma de pagamento' : 'Forma de pagamento (FP)'}</span><select value={dailyMethod} onChange={(event) => setDailyMethod(event.target.value as FinancePaymentMethod)}>
-                {FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}
+                {stayPaymentMethods.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}
               </select></label>
               <label className="reception-check reception-wide"><input type="checkbox" checked={splitPayment} onChange={(event) => setSplitPayment(event.target.checked)} /> Combinar pagamento (o cliente vai pagar com duas formas)</label>
               {splitPayment && <div className="reception-split reception-wide">
                 <label className="sales-field"><span>2ª forma de pagamento</span><select value={splitMethod} onChange={(event) => setSplitMethod(event.target.value as FinancePaymentMethod)}>
-                  {FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}
+                  {stayPaymentMethods.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}
                 </select></label>
                 <label className="sales-field"><span>Valor na 2ª forma (R$)</span><input inputMode="decimal" value={splitAmount} onChange={(event) => setSplitAmount(event.target.value)} /></label>
-                <p className="reception-hint">{dailyTotal > 0 && draftSplit > 0 && draftSplit < dailyTotal
-                  ? <>{PAYMENT_METHOD_LABELS[dailyMethod]}: <strong>{money(dailyTotal - draftSplit)}</strong> · {PAYMENT_METHOD_LABELS[splitMethod]}: <strong>{money(draftSplit)}</strong></>
+                <p className="reception-hint">{appliedDailySplit > 0
+                  ? <>{PAYMENT_METHOD_LABELS[dailyMethod]}: <strong>{money(lodgingCharge - appliedDailySplit)}</strong> · {PAYMENT_METHOD_LABELS[splitMethod]}: <strong>{money(appliedDailySplit)}</strong></>
                   : 'Informe quanto será pago na 2ª forma; o restante da diária fica na 1ª.'}</p>
               </div>}
               {formKind === 'periodo' && <p className="reception-hint reception-wide">Rotativo por hora, sem café da manhã e sem taxa. Altere a quantidade de horas se precisar.</p>}
@@ -547,10 +547,10 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
                     const method = event.target.value as FinancePaymentMethod;
                     setBreakfastMethod(method);
                     if (breakfastSplitMethod === method) setBreakfastSplitMethod(FOLIO_PAYMENT_METHODS.find((option) => option !== method) ?? method);
-                  }}>{FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}</select></label>
+                  }}>{stayPaymentMethods.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}</select></label>
                   <label className="reception-check"><input type="checkbox" checked={breakfastSplitPayment} onChange={(event) => setBreakfastSplitPayment(event.target.checked)} /> Combinar pagamento do café</label>
                   {breakfastSplitPayment && <div className="reception-split reception-wide">
-                    <label className="sales-field"><span>2ª forma do café</span><select value={breakfastSplitMethod} onChange={(event) => setBreakfastSplitMethod(event.target.value as FinancePaymentMethod)}>{FOLIO_PAYMENT_METHODS.filter((method) => method !== breakfastMethod).map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}</select></label>
+                    <label className="sales-field"><span>2ª forma do café</span><select value={breakfastSplitMethod} onChange={(event) => setBreakfastSplitMethod(event.target.value as FinancePaymentMethod)}>{stayPaymentMethods.filter((method) => method !== breakfastMethod).map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}</select></label>
                     <label className="sales-field"><span>Valor na 2ª forma do café (R$)</span><input inputMode="decimal" value={breakfastSplitAmount} onChange={(event) => setBreakfastSplitAmount(event.target.value)} required /></label>
                   </div>}
                   <p className="reception-hint reception-wide">Total do café: {money(breakfastTotal)} ({draftBreakfastCount || 0} café(s) por dia × {draftBreakfastDays || 0} dia(s)). O café é cobrado apenas pelos dias informados, independentemente do pagamento das diárias.</p>
@@ -568,11 +568,11 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
                     setTaxMethod(method);
                     if (taxSplitMethod === method) setTaxSplitMethod(FOLIO_PAYMENT_METHODS.find((option) => option !== method) ?? method);
                   }}>
-                    {FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{taxLabel(method)}</option>)}
+                    {stayPaymentMethods.map((method) => <option key={method} value={method}>{taxLabel(method)}</option>)}
                   </select></label>
                   <label className="reception-check reception-wide"><input type="checkbox" checked={taxSplitPayment} onChange={(event) => setTaxSplitPayment(event.target.checked)} /> Combinar pagamento da taxa</label>
                   {taxSplitPayment && <div className="reception-split reception-wide">
-                    <label className="sales-field"><span>2ª forma da taxa</span><select value={taxSplitMethod} onChange={(event) => setTaxSplitMethod(event.target.value as FinancePaymentMethod)}>{FOLIO_PAYMENT_METHODS.filter((method) => method !== taxMethod).map((method) => <option key={method} value={method}>{taxLabel(method)}</option>)}</select></label>
+                    <label className="sales-field"><span>2ª forma da taxa</span><select value={taxSplitMethod} onChange={(event) => setTaxSplitMethod(event.target.value as FinancePaymentMethod)}>{stayPaymentMethods.filter((method) => method !== taxMethod).map((method) => <option key={method} value={method}>{taxLabel(method)}</option>)}</select></label>
                     <label className="sales-field"><span>Valor na 2ª forma (R$)</span><input inputMode="decimal" value={taxSplitAmount} onChange={(event) => setTaxSplitAmount(event.target.value)} required /></label>
                   </div>}
                   <p className="reception-hint reception-wide">A pagar no hotel: {money(taxHotelAmount)}. Taxa já pré-paga e quitada, fora do fluxo financeiro: {money(taxPrepaidAmount)}. Se combinar, o valor informado na 2ª forma será descontado do saldo da 1ª.</p>
@@ -593,7 +593,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
                   <input aria-label={`Valor de ${extra.label || 'extra'}`} inputMode="decimal" placeholder="Valor (R$)" value={extra.amount} onChange={(event) => updateExtra(extra.id, { amount: event.target.value })} />
                   <select aria-label={`Cobrança de ${extra.label || 'extra'}`} value={extra.mode} onChange={(event) => updateExtra(extra.id, { mode: event.target.value as 'fixo' | 'por_diaria' })}><option value="fixo">Valor único</option><option value="por_diaria">Por diária</option></select>
                   <select aria-label="Forma de pagamento do extra" value={extra.method} onChange={(event) => updateExtra(extra.id, { method: event.target.value as FinancePaymentMethod })}>
-                    {FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}
+                    {stayPaymentMethods.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}
                   </select>
                   <button type="button" className="reception-link-button" onClick={() => setExtras((current) => current.filter((item) => item.id !== extra.id))}>Remover</button>
                 </div>
@@ -613,6 +613,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
               {hasTax && taxPrepaidAmount > 0 && <small>Taxa pré-paga e quitada, fora do fluxo financeiro: {money(taxPrepaidAmount)}</small>}
               {extrasHotelTotal > 0 && <p><span>Extras a pagar no hotel</span><strong>{money(extrasHotelTotal)}</strong></p>}
               {extrasPrepaidTotal > 0 && <p><span>Extras pré-pagos · retido pela OYO</span><strong>{money(extrasPrepaidTotal)}</strong></p>}
+              {courtesyTotal > 0 && <p><span>Itens em cortesia</span><strong>{money(courtesyTotal)}</strong></p>}
               {oyoRetainedTotal > 0 && <small>Total pré-pago retido pela OYO (sem taxa): {money(oyoRetainedTotal)}</small>}
               <p className="reception-total"><span>Total a pagar no hotel</span><strong>{money(draftTotal)}</strong></p>
             </div> : <p className="reception-total">Total: <strong>{money(draftTotal)}</strong></p>}

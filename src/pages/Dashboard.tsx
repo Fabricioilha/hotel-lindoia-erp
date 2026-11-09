@@ -19,7 +19,7 @@ import { emptyCleaning, subscribeActiveCleaningTasks, subscribeDashboardCleaning
 import { subscribeInventoryProducts } from '../services/inventoryStore';
 import { useInternalOutputSync } from '../services/internalOutputs';
 import type { CleaningData, CleaningTask } from '../types/cleaning';
-import { FOLIO_PAYMENT_METHODS, ROOM_TYPE_LABELS, stayBreakfastDays, stayDailyAmount, weekdayKey, type CashOut, type GuestStay, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge, type RoomChargeKind, type StayKind } from '../types/reception';
+import { FOLIO_PAYMENT_METHODS, ROOM_TYPE_LABELS, stayBillingLines, stayBreakfastDays, weekdayKey, type CashOut, type GuestStay, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge, type RoomChargeKind, type StayKind } from '../types/reception';
 import { PAYMENT_METHOD_LABELS, type FinancePaymentMethod } from '../types/finance';
 import type { StockProduct } from '../types/inventory';
 import type { FrigobarData } from '../types/frigobar';
@@ -747,8 +747,12 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
   const selectedStock = selectedProduct ? Number(addOnInventory?.stock[selectedProduct.id] ?? 0) : 0;
   const quantityPerDayValue = Number(quantityPerDay);
   const totalDrinkQuantity = Number.isInteger(validDays) && Number.isInteger(quantityPerDayValue) ? validDays * quantityPerDayValue : 0;
+  const conversionStay = selectedOccupant?.sourceType === 'stay' ? stays[selectedOccupant.sourceId] : undefined;
+  const conversionCredit = conversionStay?.kind === 'periodo' ? stayBillingLines(conversionStay)
+    .filter((line) => line.category === 'Rotativo' && line.method !== 'courtesy')
+    .reduce((sum, line) => sum + Math.round(line.amount * 100), 0) / 100 : 0;
   const conversionDailyTotal = chargeKind === 'conversao_diaria'
-    ? Math.max(0, parseRoomChargeAmount(chargeAmount) * (Number.isInteger(validDays) ? validDays : 0) - (selectedOccupant?.sourceType === 'stay' ? stayDailyAmount(stays[selectedOccupant.sourceId]) : 0))
+    ? Math.max(0, parseRoomChargeAmount(chargeAmount) * (Number.isInteger(validDays) ? validDays : 0) - conversionCredit)
     : 0;
   const conversionBreakfastTotal = chargeKind === 'conversao_diaria' && hasConversionBreakfast
     ? parseRoomChargeAmount(conversionBreakfastRate) * (selectedOccupant?.peopleCount ?? 1) * (Number.isInteger(validDays) ? validDays : 0)
@@ -815,14 +819,14 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
       const dailyStay: GuestStay = {
         id: crypto.randomUUID(), kind: 'hospede', checkInDate: today, nights: days, roomNumber: selectedOccupant.roomNumber,
         guestName: chargeGuest, dailyRate: parseRoomChargeAmount(chargeAmount),
-        creditApplied: Math.round(rotativo.dailyRate * rotativo.nights * 100) / 100,
+        creditApplied: conversionCredit,
         dailyMethod: paymentMethod,
         ...(conversionDailyTotal > 0 && splitPayment && secondAmount ? { dailySplit: { method: splitMethod, amount: secondAmount } } : {}),
         guestCount: selectedOccupant.peopleCount, hasBreakfast: hasConversionBreakfast,
         breakfastCount: hasConversionBreakfast ? selectedOccupant.peopleCount : 0,
         breakfastRate: hasConversionBreakfast ? parseRoomChargeAmount(conversionBreakfastRate) : 0,
         ...(hasConversionBreakfast ? { breakfastMethod: conversionBreakfastMethod, ...(conversionBreakfastSplit ? { breakfastSplit: { method: conversionBreakfastSplitMethod, amount: breakfastSecondAmount } } : {}) } : {}),
-        taxAmount: 0, taxMethod: paymentMethod, extras: [], note: `Conversão do rotativo ${rotativo.id}; crédito aplicado de ${money(rotativo.dailyRate * rotativo.nights)}.`,
+        taxAmount: 0, taxMethod: paymentMethod, extras: [], note: `Conversão do rotativo ${rotativo.id}; crédito aplicado de ${money(conversionCredit)}.`,
         attendant: attendant.trim(), status: 'hospedado', checkOutDate, createdAt,
       };
       setSavingCharge(true);
@@ -1122,7 +1126,7 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
             <label className="dashboard-room-charge-field"><span>Valor na 2ª forma (R$)</span><input inputMode="decimal" value={splitAmount} onChange={(event) => setSplitAmount(event.target.value)} placeholder="0,00" required /></label>
           </>}
         </div>
-        <div className="dashboard-room-charge-total"><span>{chargeKind === 'conversao_diaria' ? `Total da diária após crédito de ${money(selectedOccupant.sourceType === 'stay' ? stayDailyAmount(stays[selectedOccupant.sourceId]) : 0)}` : 'Total cobrado'}</span><strong>{money(chargeTotal)}</strong>
+        <div className="dashboard-room-charge-total"><span>{chargeKind === 'conversao_diaria' ? `Total da diária após crédito de ${money(conversionCredit)}` : 'Total cobrado'}</span><strong>{money(chargeTotal)}</strong>
           {chargeKind === 'bebida' && selectedProduct && <small>{totalDrinkQuantity} unidade(s) · {money(selectedProduct.salePrice)} cada · estoque disponível {selectedStock}</small>}
           {chargeKind === 'conversao_diaria' && <small>Diárias após crédito: {money(conversionDailyTotal)}{hasConversionBreakfast ? ` · café: ${money(conversionBreakfastTotal)}` : ''}</small>}
           {chargeKind !== 'conversao_diaria' && chargeKind !== 'bebida' && <small>{validDays} dia(s) × {money(parseRoomChargeAmount(chargeAmount))} por dia</small>}

@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react';
 import { WALLET_LABELS, type CardStatement, type FinanceData } from '../../types/finance';
-import { cardPurchasePending, cardStatementPending, groupCardPurchases, payCardStatement, reopenCardStatement, unassignedCardPurchases, ungroupCardStatement } from '../../services/cardStatements';
+import { cardPurchasePending, cardStatementPending, expenseRegistrationDate, groupCardPurchases, payCardStatement, reopenCardStatement, unassignedCardPurchases, ungroupCardStatement } from '../../services/cardStatements';
 import { financeCents } from '../../services/financePayments';
 import { formatBRL } from '../../services/money';
 import { DateInput } from '../ui/DateInput';
@@ -58,7 +58,7 @@ export function CardStatements({ data, month, today, saving, onCommit }: {
             onChange={(event) => setSelected(event.target.checked ? purchases.map((expense) => expense.id) : [])} /></th><th>Data registrada</th><th>Compra</th><th className="numeric">Em aberto</th></tr></thead>
           <tbody>{purchases.map((expense) => <tr key={expense.id}><td><input type="checkbox" aria-label={'Selecionar ' + (expense.note || expense.category)}
             checked={selected.includes(expense.id)} onChange={(event) => setSelected((current) => event.target.checked ? [...current, expense.id] : current.filter((id) => id !== expense.id))} /></td>
-            <td>{dateLabel(expense.dueDate)}</td><td>{expense.category}<small>{expense.note}</small></td><td className="numeric">{formatBRL(cardPurchasePending(expense))}</td></tr>)}</tbody>
+            <td>{dateLabel(expenseRegistrationDate(data, expense))}</td><td>{expense.category}<small>{expense.note}</small></td><td className="numeric">{formatBRL(cardPurchasePending(expense))}</td></tr>)}</tbody>
         </table></div>}
         <div className="finance-heading-actions"><strong>{selectedPurchases.length} compra(s) · {formatBRL(selectedAmount)}</strong>
           <button className="finance-button finance-button-primary" disabled={saving || selectedAmount <= 0}>Criar fatura</button></div>
@@ -73,7 +73,7 @@ export function CardStatements({ data, month, today, saving, onCommit }: {
           <summary><strong>{statement.cardCategory} · {formatBRL(amount)}</strong> · vence {dateLabel(statement.dueDate)} · {statement.payment ? 'Quitada' : statement.dueDate < today ? 'Vencida' : 'Em aberto'}</summary>
           <ul>{Object.keys(statement.originalDueDates).map((id) => {
             const expense = data.expenses[id];
-            return <li key={id}>{expense ? `${expense.category} · ${expense.note || dateLabel(statement.originalDueDates[id])} · ${formatBRL(expense.plannedAmount)}` : 'Compra indisponível'}</li>;
+            return <li key={id}>{expense ? [dateLabel(expenseRegistrationDate(data, expense)), expense.category, expense.note, formatBRL(expense.plannedAmount)].filter(Boolean).join(' · ') : 'Compra indisponível'}</li>;
           })}</ul>
           {statement.payment ? <div className="finance-heading-actions">
             <span>Pagamento de {formatBRL(amount)} em {dateLabel(statement.payment.date)} · {WALLET_LABELS[statement.payment.wallet]}</span>
@@ -83,7 +83,7 @@ export function CardStatements({ data, month, today, saving, onCommit }: {
               }
             }}>Reabrir fatura</button>
           </div> : paying === statement.id ? <form data-guard-unsaved className="finance-settings-form" onSubmit={(event) => void pay(event, statement, amount)}>
-            <label className="finance-field"><span>Data efetiva do pagamento</span><DateInput name="date" required max={today} defaultValue={today} /></label>
+            <label className="finance-field"><span>Data efetiva do pagamento</span><DateInput name="date" required max={today} defaultValue={statement.dueDate <= today ? statement.dueDate : today} /></label>
             <label className="finance-field"><span>Carteira utilizada</span><select name="wallet"><option value="bank">Banco</option><option value="cash">Caixa físico</option></select></label>
             <button className="finance-button finance-button-primary" disabled={saving || amount <= 0}>Registrar pagamento de {formatBRL(amount)}</button>
             <button type="button" className="finance-button finance-button-soft" disabled={saving} onClick={() => setPaying('')}>Cancelar</button>

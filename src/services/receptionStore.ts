@@ -1,4 +1,4 @@
-import { addStayReceipt, changedStayPaymentMethods, initializeStayReceipts, withSyncedReceiptMethods } from './stayReceipts';
+import { addStayReceipt, existingStayReceipts, initializeStayReceipts, withSyncedReceiptMethods } from './stayReceipts';
 import { snapshotStayCardFees } from './cardFeeStore';
 import type { FinancePaymentMethod } from '../types/finance';
 import { db, endAt, equalTo, get, increment, onValue, orderByChild, query, ref, remove, runTransaction, set, startAt, update } from './pocketbaseRealtime';
@@ -9,9 +9,11 @@ import { reservationIncomeContext } from './reservationFinance';
 import { roomCleaningTaskUpdates } from './cleaningStore';
 import { withStockProductLocks } from './frigobarStore';
 import { withTransactionData } from './pocketbaseTransactions';
+import { withFinanceWriteLock } from './financeTransactions';
+import { buildAuditEvents } from '../types/audit';
 import type { FinanceIncome } from '../types/finance';
 import type { HousekeepingRoom } from '../types/housekeeping';
-import { emptyReceptionRateSettings, type CashOut, type FloatCheck, type GuestStay, type ReceptionData, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge } from '../types/reception';
+import { emptyReceptionRateSettings, stayBillingLines, type CashOut, type FloatCheck, type GuestStay, type ReceptionData, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge } from '../types/reception';
 import { cashShiftDate, operationalDateKey } from './cashShiftDate';
 import { isFinanceDateKey } from './financePayments';
 import { staffReference } from './staffStore';
@@ -231,24 +233,40 @@ export async function confirmStayArrival(stayId: string): Promise<void> {
   await set(ref(db, `${PATH}/stays/${stayId}/awaitingArrival`), null);
 }
 
-export async function updateStayAndFinance(stay: GuestStay): Promise<void> {
+export function updateStayAndFinance(stay: GuestStay, expected?: GuestStay): Promise<void> {
+  return withFinanceWriteLock(() => commitStayAndFinance(stay, expected));
+}
+
+async function commitStayAndFinance(stay: GuestStay, expected?: GuestStay): Promise<void> {
   const stayRef = ref(db, `${PATH}/stays/${stay.id}`);
   const snapshot = await get(stayRef);
   if (!snapshot.exists()) throw new Error('Esta hospedagem já foi excluída. Atualize a lista antes de editar.');
 
   const previous = snapshot.val() as GuestStay;
+  if (expected && JSON.stringify(previous) !== JSON.stringify(expected)) {
+    throw new Error('Esta hospedagem mudou enquanto você editava. Reabra o lançamento e tente novamente.');
+  }
+  const previousReceipts = existingStayReceipts(previous);
   const voidedPayments = { ...previous.voidedPayments, ...stay.voidedPayments };
+  if (stay.courtesy && !previous.courtesy) {
+    for (const receipt of Object.values(previousReceipts)) {
+      if (receipt.category === 'Diária' || receipt.category === 'Café') voidedPayments[receipt.id] = true;
+    }
+  }
   const updatedStay = await snapshotStayCardFees(withSyncedReceiptMethods(previous, { ...stay, ...staffReference(stay.attendant),
     ...(Object.keys(voidedPayments).length ? { voidedPayments } : {}) }));
-  const methodChangedIds = new Set(changedStayPaymentMethods(previous, updatedStay));
+  const methodChangedIds = new Set(Object.values(updatedStay.receipts ?? {}).filter((receipt) => previousReceipts[receipt.id]?.method !== receipt.method).map((receipt) => receipt.id));
+  const courtesyIds = new Set([...stayBillingLines(updatedStay), ...Object.values(updatedStay.receipts ?? {})].filter((line) => line.method === 'courtesy').map((line) => line.id));
+  const courtesyTaxIds = (record: GuestStay) => stayBillingLines(record).filter((line) => line.category === 'Taxas' && line.method === 'courtesy').map((line) => line.id);
+  const taxCourtesyChanged = JSON.stringify(courtesyTaxIds(previous)) !== JSON.stringify(courtesyTaxIds(updatedStay));
   const previousIds = stayFinanceEntryIds({ ...previous, voidedPayments: undefined });
   const nextEntries = stayFinanceEntries(updatedStay);
   const allIncomeIds = new Set([...previousIds, ...stayFinanceEntryIds({ ...updatedStay, voidedPayments: undefined })]);
   const incomeIds = [...allIncomeIds];
-  const [savedIncomeSnapshots, savedFeeSnapshot, suppressedSnapshot, chargesSnapshot, roomsSnapshot] = await Promise.all([
+  const suppressedSnapshot = await get(ref(db, 'erp_geral/financeiro/suppressed'));
+  const [savedIncomeSnapshots, savedFeeSnapshot, chargesSnapshot, roomsSnapshot] = await Promise.all([
     Promise.all(incomeIds.map((id) => get(ref(db, `erp_geral/financeiro/incomes/${id}`)))),
     get(ref(db, `erp_geral/financeiro/expenses/recepcao-${stay.id}-oyo-fee`)),
-    get(ref(db, 'erp_geral/financeiro/suppressed')),
     get(ref(db, `${PATH}/roomCharges`)),
     get(ref(db, 'erp_geral/quartos/rooms')),
   ]);
@@ -257,6 +275,7 @@ export async function updateStayAndFinance(stay: GuestStay): Promise<void> {
   const suppressed = (suppressedSnapshot.val() ?? {}) as Record<string, boolean>;
   const timestamp = new Date().toISOString();
   const updates: Record<string, unknown> = { [`${PATH}/stays/${stay.id}`]: updatedStay };
+  const removedIncomes: Record<string, FinanceIncome> = {};
 
   allIncomeIds.forEach((id) => {
     const entry = nextEntries[id];
@@ -266,19 +285,24 @@ export async function updateStayAndFinance(stay: GuestStay): Promise<void> {
       updates[`erp_geral/financeiro/incomes/${id}`] = saved?.operationalOverride && !methodChangedIds.has(id)
         ? { ...reservationIncomeContext(saved, previous, updatedStay), updatedAt: timestamp }
         : { ...entry, createdAt: saved?.createdAt ?? entry.createdAt, updatedAt: timestamp };
-    } else {
+    } else if (savedIncomes[id]) {
       updates[`erp_geral/financeiro/incomes/${id}`] = null;
-      updates[`erp_geral/financeiro/suppressed/${id}`] = true;
+      if (courtesyIds.has(id)) {
+        removedIncomes[id] = savedIncomes[id]!;
+        updates[`erp_geral/financeiro/expenses/card-fee-${id}`] = null;
+        updates[`erp_geral/financeiro/expenses/oyo-fee-${id}`] = null;
+      }
     }
   });
 
   const feeId = `recepcao-${stay.id}-oyo-fee`;
   const fee = stayOyoFeeExpense(updatedStay);
   const feeHasManagerOverride = Boolean(fee && (savedFeeSnapshot.val() as { operationalOverride?: boolean } | null)?.operationalOverride);
-  if (!feeHasManagerOverride && !suppressed[feeId]) {
+  if ((!feeHasManagerOverride || taxCourtesyChanged) && !suppressed[feeId]) {
     updates[`erp_geral/financeiro/expenses/${feeId}`] = fee ? { ...fee, updatedAt: timestamp } : null;
-    updates[`erp_geral/financeiro/suppressed/${feeId}`] = fee ? null : true;
   }
+  const audit = buildAuditEvents(crypto.randomUUID(), timestamp, [{ entity: 'finance-income', before: removedIncomes, after: {} }]);
+  for (const [id, event] of Object.entries(audit)) updates[`erp_geral/financeiro/auditLog/${id}`] = event;
   const linkedCharges = (Object.values(chargesSnapshot.val() ?? {}) as RoomCharge[]).filter((charge) => charge.sourceType === 'stay' && charge.sourceId === stay.id);
   for (const charge of linkedCharges) {
     const nextCharge = { ...charge, roomNumber: updatedStay.roomNumber,
@@ -300,7 +324,7 @@ export async function updateStayAndFinance(stay: GuestStay): Promise<void> {
       Object.assign(updates, await roomCleaningTaskUpdates(previousRoom, 'sujo', 'Gerência'));
     }
   }
-  await update(ref(db), updates);
+  await update(ref(db), updates, { ...snapshot.versions, ...suppressedSnapshot.versions });
 }
 
 export async function saveRoomCharge(charge: RoomCharge): Promise<void> {

@@ -95,6 +95,7 @@ export interface GuestStay {
 }
 
 export interface StayReceipt {
+  billingLineId?: string;
   cardFeeRate?: number;
   cardFeeAmount?: number;
   netAmount?: number;
@@ -263,33 +264,56 @@ export function stayTaxPayments(stay: Pick<GuestStay, 'taxAmount' | 'taxMethod' 
   return parts;
 }
 
-export function stayPayments(stay: GuestStay): { id: string; method: FinancePaymentMethod; amount: number; label: string }[] {
-  if (stay.receiptsInitialized || stay.receipts) return Object.values(stay.receipts ?? {}).filter((receipt) => !stay.voidedPayments?.[receipt.id]);
-  const list: { id: string; method: FinancePaymentMethod; amount: number; label: string }[] = [];
-  const add = (suffix: string, method: FinancePaymentMethod, amount: number, label: string) => {
+const EXTRA_FINANCE_CATEGORIES: Record<ExtraType, string> = {
+  cama_extra: 'Cama extra',
+  checkin_antecipado: 'Check-in antecipado',
+  checkout_tardio: 'Checkout tardio',
+  hospede_extra: 'Adicional de hóspede',
+  outros: 'Extras',
+};
+
+interface StayBillingLine {
+  id: string;
+  method: FinancePaymentMethod;
+  amount: number;
+  label: string;
+  description: string;
+  category: string;
+}
+
+export function stayBillingLines(stay: GuestStay): StayBillingLine[] {
+  const list: StayBillingLine[] = [];
+  const add = (suffix: string, method: FinancePaymentMethod, amount: number, label: string, category = label, description = label) => {
     const id = `recepcao-${stay.id}-${suffix}`;
-    if (amount > 0 && !stay.voidedPayments?.[id]) list.push({ id, method, amount: Math.round(amount * 100) / 100, label });
+    if (Number.isFinite(amount) && amount > 0) list.push({ id, method, amount: Math.round(amount * 100) / 100, label, category, description });
   };
   const dailyTotal = Math.max(0, stayDailyAmount(stay) - (stay.creditApplied ?? 0));
   const split = stay.dailySplit && stay.dailySplit.amount > 0 && stay.dailySplit.amount < dailyTotal ? stay.dailySplit : undefined;
   const dailyLabel = stay.kind === 'periodo' ? 'Rotativo' : 'Diária';
-  add('diaria', stay.dailyMethod, dailyTotal - (split?.amount ?? 0), dailyLabel);
-  if (split) add('diaria-2', split.method, split.amount, `${dailyLabel} (2ª forma)`);
+  const dailyDescription = stay.kind === 'periodo' ? `Rotativo (${stay.hours ?? 4}h)` : `Diária × ${stay.nights}`;
+  add('diaria', stay.dailyMethod, dailyTotal - (split?.amount ?? 0), dailyLabel, dailyLabel, dailyDescription);
+  if (split) add('diaria-2', split.method, split.amount, `${dailyLabel} (2ª forma)`, dailyLabel, `${dailyDescription} (2ª forma)`);
   if (stay.hasBreakfast) {
     const total = Math.round(stayBreakfastTotal(stay) * 100) / 100;
     const split = stay.breakfastSplit && stay.breakfastSplit.amount > 0 && stay.breakfastSplit.amount < total ? stay.breakfastSplit : undefined;
-    add('cafe', stay.breakfastMethod ?? stay.dailyMethod, total - (split?.amount ?? 0), 'Café');
-    if (split) add('cafe-2', split.method, split.amount, 'Café (2ª forma)');
+    const description = `${stay.breakfastCount ?? 1} café(s) por dia × ${stayBreakfastDays(stay)} dia(s)`;
+    add('cafe', stay.breakfastMethod ?? stay.dailyMethod, total - (split?.amount ?? 0), 'Café', 'Café', description);
+    if (split) add('cafe-2', split.method, split.amount, 'Café (2ª forma)', 'Café', `${description} (2ª forma)`);
   }
   // A parte pré-paga já foi paga diretamente à OYO, não é um valor a cobrar no caixa do hotel.
   stayTaxPayments(stay).filter((payment) => payment.method !== 'prepaid')
-    .forEach((payment) => add(payment.id, payment.method, payment.amount, 'Taxa'));
-  (stay.extras ?? []).forEach((extra) => add(`extra-${extra.id}`, extra.method ?? stay.dailyMethod, extraTotal(extra, stay.nights), extra.label));
+    .forEach((payment) => add(payment.id, payment.method, payment.amount, 'Taxa', 'Taxas', payment.id === 'taxa' ? 'Taxa' : 'Taxa (2ª forma)'));
+  (stay.extras ?? []).forEach((extra) => add(`extra-${extra.id}`, extra.method ?? stay.dailyMethod, extraTotal(extra, stay.nights), extra.label, EXTRA_FINANCE_CATEGORIES[extra.type] ?? 'Extras'));
   return list;
 }
 
+export function stayPayments(stay: GuestStay): { id: string; method: FinancePaymentMethod; amount: number; label: string }[] {
+  const lines = stay.receiptsInitialized || stay.receipts ? Object.values(stay.receipts ?? {}) : stayBillingLines(stay);
+  return lines.filter((line) => line.method !== 'courtesy' && !stay.voidedPayments?.[line.id]);
+}
+
 export function stayAmountDue(stay: GuestStay): number {
-  const expected = stayPayments({ ...stay, receiptsInitialized: false, receipts: undefined, voidedPayments: undefined }).reduce((sum, payment) => sum + Math.round(payment.amount * 100), 0);
+  const expected = stayBillingLines(stay).filter((line) => line.method !== 'courtesy').reduce((sum, line) => sum + Math.round(line.amount * 100), 0);
   const paid = stayPayments(stay).reduce((sum, payment) => sum + Math.round(payment.amount * 100), 0);
   return Math.max(0, expected - paid) / 100;
 }

@@ -1,8 +1,13 @@
-import type { CardStatement, FinanceData, FinanceExpense, FinancePaymentEvent } from '../types/finance';
+import { isCardCategory, type CardStatement, type FinanceData, type FinanceExpense, type FinancePaymentEvent } from '../types/finance';
 import { expensePaymentEvents, financeCents, financeDateKeyFromTimestamp, isFinanceDateKey, paymentEventTotals } from './financePayments';
 
 export function cardPurchasePending(expense: FinanceExpense): number {
   return (financeCents(expense.plannedAmount) - expensePaymentEvents(expense).reduce((sum, event) => sum + financeCents(event.amount), 0)) / 100;
+}
+
+export function expenseRegistrationDate(data: FinanceData, expense: FinanceExpense): string {
+  const statement = expense.cardStatementId ? data.cardStatements?.[expense.cardStatementId] : undefined;
+  return expense.purchaseDate ?? statement?.originalDueDates[expense.id] ?? expense.dueDate;
 }
 
 export function unassignedCardPurchases(data: FinanceData) {
@@ -23,13 +28,16 @@ function saveStatement(data: FinanceData, statement: CardStatement, expenses: Fi
 
 export function groupCardPurchases(data: FinanceData, input: {
   id: string; cardCategory: string; dueDate: string; expenseIds: string[]; expectedAmount: number;
-}, stamp: string): FinanceData {
+}, stamp: string, append = false): FinanceData {
   const { id, cardCategory, dueDate, expenseIds, expectedAmount } = input;
   if (!isFinanceDateKey(dueDate) || !cardCategory || !expenseIds.length || new Set(expenseIds).size !== expenseIds.length) {
     throw new Error('Selecione as compras de um cartão e informe o vencimento da fatura.');
   }
-  if (data.cardStatements?.[id]) throw new Error('Esta fatura já foi registrada.');
-  const statement: CardStatement = { id, cardCategory, dueDate, originalDueDates: {} };
+  const existing = data.cardStatements?.[id];
+  if (existing && (!append || existing.payment || existing.cardCategory !== cardCategory || existing.dueDate !== dueDate)) {
+    throw new Error('Esta fatura já foi registrada.');
+  }
+  const statement: CardStatement = { id, cardCategory, dueDate, originalDueDates: { ...existing?.originalDueDates } };
   const expenses = { ...data.expenses };
   let pending = 0;
   for (const expenseId of expenseIds) {
@@ -38,7 +46,8 @@ export function groupCardPurchases(data: FinanceData, input: {
       || expense.cardCategory !== cardCategory || cardPurchasePending(expense) <= 0) {
       throw new Error('Uma das compras mudou ou já está em outra fatura. Confira a seleção.');
     }
-    statement.originalDueDates[expenseId] = expense.dueDate;
+    if (expense.purchaseDate && expense.purchaseDate > dueDate) throw new Error('O vencimento da fatura deve ser na data da compra ou depois dela.');
+    statement.originalDueDates[expenseId] = expense.purchaseDate ?? expense.dueDate;
     pending += financeCents(cardPurchasePending(expense));
     // Mantém a data usada pelos pagamentos antigos ao trocar o vencimento.
     const payments = Object.fromEntries(expensePaymentEvents(expense).map((event) => [event.id, event]));
@@ -46,6 +55,23 @@ export function groupCardPurchases(data: FinanceData, input: {
   }
   if (pending !== financeCents(expectedAmount)) throw new Error('O valor das compras mudou. Confira o total antes de salvar.');
   return saveStatement(data, statement, expenses);
+}
+
+export function scheduleCardPurchase(data: FinanceData, expense: FinanceExpense, statementId: string, stamp: string): FinanceData {
+  const { purchaseDate, dueDate, cardCategory } = expense;
+  if (expense.purchaseMethod !== 'card' || !cardCategory || !isCardCategory(cardCategory) || !data.expenseCategories.includes(cardCategory)) {
+    throw new Error('Selecione um cartão cadastrado.');
+  }
+  if (!purchaseDate || !isFinanceDateKey(purchaseDate) || purchaseDate > financeDateKeyFromTimestamp(stamp)
+    || !isFinanceDateKey(dueDate) || dueDate < purchaseDate) {
+    throw new Error('Confira a data da compra e o vencimento da fatura.');
+  }
+  const statements = Object.values(data.cardStatements ?? {}).filter((statement) => statement.cardCategory === cardCategory && statement.dueDate === dueDate);
+  const open = statements.find((statement) => !statement.payment);
+  if (!open && statements.length) throw new Error('A fatura deste vencimento está quitada. Reabra a fatura para incluir a compra.');
+  return groupCardPurchases({ ...data, expenses: { ...data.expenses, [expense.id]: expense } }, {
+    id: open?.id ?? statementId, cardCategory, dueDate, expenseIds: [expense.id], expectedAmount: cardPurchasePending(expense),
+  }, stamp, true);
 }
 
 function withEvents(expense: FinanceExpense, events: FinancePaymentEvent[], stamp: string): FinanceExpense {
@@ -72,7 +98,9 @@ export function payCardStatement(data: FinanceData, id: string, payment: NonNull
     if (!expense || data.suppressed[expenseId] || expense.cardStatementId !== id) throw new Error('Há uma compra sem vínculo com a fatura.');
     const events = expensePaymentEvents(expense);
     const pending = cardPurchasePending(expense);
-    if (pending <= 0 || events.some((event) => event.date > payment.date)) throw new Error('Confira a data e os pagamentos anteriores das compras.');
+    if (pending <= 0 || (expense.purchaseDate && expense.purchaseDate > payment.date) || events.some((event) => event.date > payment.date)) {
+      throw new Error('O pagamento da fatura deve ocorrer na data das compras e dos pagamentos anteriores ou depois deles.');
+    }
     events.push({ id: 'card-statement-' + id, cardStatementId: id, date: payment.date, wallet: payment.wallet, amount: pending, dateSource: 'informed' });
     expenses[expenseId] = withEvents(expense, events, stamp);
   }

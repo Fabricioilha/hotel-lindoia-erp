@@ -1,7 +1,7 @@
 import type { AuditEvent } from './audit';
 
 export type FinanceWallet = 'cash' | 'bank' | 'oyo';
-export type FinancePaymentMethod = 'credit' | 'debit' | 'cash' | 'pix' | 'bank_transfer' | 'prepaid';
+export type FinancePaymentMethod = 'credit' | 'debit' | 'cash' | 'pix' | 'bank_transfer' | 'prepaid' | 'courtesy';
 
 export interface FinanceIncomeItem {
   cardFeeRate?: number;
@@ -68,6 +68,7 @@ export interface FinanceExpense {
   payments?: Record<string, FinancePaymentEvent>;
   // Forma escolhida na compra; compras no cartão guardam o cartão e só debitam as carteiras quando a fatura é paga.
   purchaseMethod?: PurchaseMethod;
+  purchaseDate?: string;
   cardCategory?: string;
   cardStatementId?: string;
   note: string;
@@ -81,7 +82,7 @@ export type PurchaseMethod = 'cash' | 'pix' | 'card';
 export const PURCHASE_METHOD_LABELS: Record<PurchaseMethod, string> = {
   cash: 'Dinheiro',
   pix: 'Pix',
-  card: 'Cartão',
+  card: 'Cartão de crédito',
 };
 
 export interface FinanceTransfer {
@@ -177,6 +178,7 @@ export const PAYMENT_METHOD_LABELS: Record<FinancePaymentMethod, string> = {
   pix: 'Pix',
   bank_transfer: 'Transferência bancária',
   prepaid: 'Pré-pago (pago à OYO)',
+  courtesy: 'Cortesia',
 };
 
 export function incomePaymentWallet(method: FinancePaymentMethod): FinanceWallet | null {

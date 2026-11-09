@@ -204,7 +204,7 @@ export function ConferirCaixa({ userRole }: { userRole: UserRole }) {
 
   Object.values(data.stays).forEach((stay) => {
     if (stay.receiptsInitialized || stay.receipts) {
-      Object.values(stay.receipts ?? {}).filter((receipt) => !stay.voidedPayments?.[receipt.id] && (findStaff(staff, receipt.attendant)?.name ?? receipt.attendant) === attendant).forEach((receipt) => {
+      Object.values(stay.receipts ?? {}).filter((receipt) => receipt.method !== 'courtesy' && !stay.voidedPayments?.[receipt.id] && (findStaff(staff, receipt.attendant)?.name ?? receipt.attendant) === attendant).forEach((receipt) => {
         dayOf(shiftDay(receipt.receivedAt)).entries.push({ time: receipt.receivedAt, kind: 'stay', edit: isAdmin ? stayEdit(stay, [receipt]) : undefined, title: 'Recebimento · Quarto ' + stay.roomNumber, detail: stay.guestName + ' · ' + receipt.label, total: receipt.amount, payments: [{ method: receipt.method, amount: receipt.amount }] });
       });
       return;

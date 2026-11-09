@@ -574,6 +574,38 @@ test('a card statement uses its due date and records one withdrawal for the rema
   assert.deepEqual(analytics.balancesAt(restored, '2026-11'), analytics.balancesAt(before, '2026-11'));
 });
 
+test('card purchases register on their own dates and join the same payable statement', async () => {
+  const cardCategory = 'Cartão Nubank · Ana';
+  const state = db({ expenseCategories: [cardCategory] });
+  const { load } = isolatedDomain(state);
+  const { updateFinance, loadFinanceForMonth } = load('src/services/financeStore.ts');
+  const { expenseCashMovements, payCardStatement, scheduleCardPurchase } = load('src/services/cardStatements.ts');
+  const { financeOverview } = load('src/services/financeOverview.ts');
+  const { outstandingAccounts } = load('src/services/outstandingAccounts.ts');
+  const { buildMonthlyAccountingReport } = load('src/services/accounting/monthlyAccounting.ts');
+  const now = '2026-11-12T15:00:00Z';
+  const first = expense({ id: 'first', purchaseMethod: 'card', cardCategory, purchaseDate: '2026-10-30', dueDate: '2026-11-12', plannedAmount: 50 });
+  const second = { ...first, id: 'second', purchaseDate: '2026-11-02', plannedAmount: 20 };
+  await assert.rejects(updateFinance((current) => scheduleCardPurchase(current, { ...first, dueDate: '2026-10-29' }, 'fatura', now)), /data da compra/);
+  await updateFinance((current) => scheduleCardPurchase(current, first, 'fatura', now));
+  await updateFinance((current) => scheduleCardPurchase(current, second, 'outra', now));
+
+  const open = await loadFinanceForMonth('2026-10');
+  assert.deepEqual(Object.keys(open.cardStatements), ['fatura']);
+  assert.deepEqual(outstandingAccounts(open, '2026-11-11').map(({ dueDate, pending }) => [dueDate, pending]), [['2026-11-12', 70]]);
+  assert.equal(financeOverview(open, { from: '2026-10-01', to: '2026-10-31' }, '2026-11-12').expenses, 50);
+  assert.equal(financeOverview(open, { from: '2026-11-01', to: '2026-11-30' }, '2026-11-12').expenses, 20);
+  assert.equal(buildMonthlyAccountingReport(open, '2026-10').obligations[0].competence, '2026-10');
+  assert.equal(expenseCashMovements(open).length, 0);
+  assert.equal(analytics.balancesAt(open, '2026-11').bank, 200);
+
+  await updateFinance((current) => payCardStatement(current, 'fatura', { date: '2026-11-12', amount: 70, wallet: 'bank' }, now));
+  const paid = await loadFinanceForMonth('2026-11');
+  assert.deepEqual(expenseCashMovements(paid).map(({ payment }) => [payment.date, payment.amount]), [['2026-11-12', 70]]);
+  assert.equal(analytics.balancesAt(paid, '2026-11').bank, 130);
+  assert.equal(outstandingAccounts(paid, '2026-11-12').length, 0);
+});
+
 test('old payroll editors automatically preserve history and add only the new paid difference', async () => {
   const prior = payroll({ dueDate: '2026-10-31', paidCash: 40 });
   const state = db({ payroll: { p1: prior } });
@@ -711,6 +743,67 @@ test('manager stay edit moves a stored receipt to the new payment method even af
   assert.equal(state.erp_geral.financeiro.incomes['recepcao-s-diaria'].items[0].paymentMethod, 'pix');
   assert.equal(state.erp_geral.financeiro.incomes['recepcao-s-diaria'].wallet, 'bank');
   assert.equal(viewOf(domain, state).incomes['recepcao-s-diaria'].items[0].paymentMethod, 'pix');
+});
+
+test('individual stay courtesies waive the selected charges and remove their receipts and fees', async () => {
+  const state = db({ cardFeeSchedule: { old: { effectiveAt: '2026-01-01T00:00:00Z', credit: 5, debit: 0 } } });
+  const domain = isolatedDomain(state);
+  const { updateStayAndFinance } = domain.load('src/services/receptionStore.ts');
+  const { addStayReceipt } = domain.load('src/services/stayReceipts.ts');
+  const { stayAmountDue, stayPayments } = domain.load('src/types/reception.ts');
+  const { loadFinanceForMonth, updateFinance } = domain.load('src/services/financeStore.ts');
+  const stay = editableStay({ receiptsInitialized: true, hasBreakfast: true, breakfastRate: 20, breakfastMethod: 'cash',
+    taxAmount: 12, extras: [{ id: 'waive', type: 'outros', label: 'Primeiro extra', amount: 8, method: 'cash' },
+      { id: 'keep', type: 'outros', label: 'Segundo extra', amount: 9, method: 'cash' }] });
+  const paid = addStayReceipt(stay, { id: 'checkout', amount: 144, method: 'credit', date: stay.checkInDate, attendant: stay.attendant }, stamp);
+  // Simulate the earlier allocation format, which identified checkout payments by description and category.
+  for (const entry of Object.values(paid.receipts)) delete entry.billingLineId;
+  state.erp_geral.recepcao.stays.s = paid;
+  await updateFinance((current) => current);
+  const before = await loadFinanceForMonth('2026-10');
+  assert.equal(stayAmountDue(paid), 5);
+  assert.equal(before.expenses['recepcao-s-oyo-fee'].plannedAmount, 12);
+
+  await updateStayAndFinance({ ...paid, dailyMethod: 'courtesy', breakfastMethod: 'courtesy', taxMethod: 'courtesy',
+    extras: [{ ...paid.extras[0], method: 'courtesy' }, paid.extras[1]] }, paid);
+  const updated = state.erp_geral.recepcao.stays.s;
+  const finance = await loadFinanceForMonth('2026-10');
+  assert.deepEqual(stayPayments(updated).map(({ amount }) => amount), [4]);
+  assert.equal(stayAmountDue(updated), 5);
+  assert.deepEqual(Object.keys(finance.incomes), ['checkout-5']);
+  assert.deepEqual(Object.keys(finance.expenses), ['card-fee-checkout-5']);
+  assert.equal(state.erp_geral.financeiro.incomes.checkout, undefined);
+  assert.equal(state.erp_geral.financeiro.expenses['card-fee-checkout'], undefined);
+  assert.equal(updated.receipts.checkout.method, 'courtesy');
+  const settled = addStayReceipt(updated, { id: 'remaining', amount: 5, method: 'pix', date: stay.checkInDate, attendant: stay.attendant }, stamp);
+  assert.equal(settled.receipts.remaining.billingLineId, 'recepcao-s-extra-keep');
+  assert.equal(stayAmountDue(settled), 0);
+});
+
+test('courtesy clears the whole legacy lodging split and an unpaid item without disturbing other items', async () => {
+  const state = db();
+  const { load } = isolatedDomain(state);
+  const { updateStayAndFinance } = load('src/services/receptionStore.ts');
+  const { stayAmountDue } = load('src/types/reception.ts');
+  const { stayFinanceEntries } = load('src/services/operationalLedger.ts');
+  const previous = editableStay({ dailyMethod: 'pix', dailySplit: { method: 'cash', amount: 50 },
+    hasBreakfast: true, breakfastRate: 20, breakfastMethod: 'cash' });
+  state.erp_geral.recepcao.stays.s = previous;
+  await updateStayAndFinance({ ...previous, dailyMethod: 'courtesy', dailySplit: undefined });
+  const waived = state.erp_geral.recepcao.stays.s;
+  assert.deepEqual(Object.keys(stayFinanceEntries(waived)), ['recepcao-s-cafe']);
+  assert.equal(stayAmountDue(waived), 0);
+  await updateStayAndFinance({ ...waived, dailyMethod: 'pix' });
+  const restored = state.erp_geral.recepcao.stays.s;
+  assert.equal(stayAmountDue(restored), 0);
+  assert.deepEqual(Object.values(stayFinanceEntries(restored)).filter((income) => income.category === 'Diária').map(({ amount, wallet }) => [amount, wallet]), [[50, 'bank'], [50, 'bank']]);
+
+  const unpaid = editableStay({ receiptsInitialized: true, taxAmount: 12, hasBreakfast: true, breakfastRate: 20, breakfastMethod: 'cash' });
+  state.erp_geral.recepcao.stays.s = unpaid;
+  await updateStayAndFinance({ ...unpaid, breakfastMethod: 'courtesy' });
+  const updated = state.erp_geral.recepcao.stays.s;
+  assert.equal(stayAmountDue(updated), 112);
+  assert.deepEqual(stayFinanceEntries(updated), {});
 });
 
 test('cash review corrections reach the cash flow for receipts, legacy stays, extra charges, fridge sales and cash outs', async () => {

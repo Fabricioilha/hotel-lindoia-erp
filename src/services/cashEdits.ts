@@ -57,7 +57,7 @@ export async function updateStayReceipts(stayId: string, changes: Record<string,
 
   for (const [id, change] of Object.entries(changes)) {
     const receipt = receipts[id];
-    if (!receipt || stay.voidedPayments?.[id]) throw new Error('O recebimento não existe mais. Atualize a tela e tente novamente.');
+    if (!receipt || receipt.method === 'courtesy' || stay.voidedPayments?.[id]) throw new Error('O recebimento não existe mais. Atualize a tela e tente novamente.');
     assertMethod(change.method);
     assertAmount(change.amount);
     if (!isFinanceDateKey(change.date) || change.date > today) throw new Error('Informe uma data válida, que não seja futura.');
@@ -70,7 +70,7 @@ export async function updateStayReceipts(stayId: string, changes: Record<string,
   }
 
   const expected = stayPayments({ ...stay, receiptsInitialized: false, receipts: undefined, voidedPayments: undefined }).reduce((sum, payment) => sum + cents(payment.amount), 0);
-  const paid = Object.values(receipts).filter((receipt) => !stay.voidedPayments?.[receipt.id]).reduce((sum, receipt) => sum + cents(receipt.amount), 0);
+  const paid = stayPayments({ ...stay, receipts }).reduce((sum, receipt) => sum + cents(receipt.amount), 0);
   if (paid > expected) throw new Error('O valor recebido não pode ultrapassar o total da hospedagem.');
 
   const next = await snapshotStayCardFees({ ...updatedMethods, receiptsInitialized: true, receipts });
@@ -112,7 +112,7 @@ export async function updateStayReceipts(stayId: string, changes: Record<string,
     }
   }
   withAudit(updates, timestamp, { before: incomeBefore, after: incomeAfter }, { before: expenseBefore, after: expenseAfter });
-  await update(ref(db), updates);
+  await update(ref(db), updates, snapshot.versions);
 }
 
 /** Troca a forma de pagamento de uma linha de adicional do quarto. */

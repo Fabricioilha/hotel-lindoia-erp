@@ -22,7 +22,7 @@ export function FinanceOverviewCards({ data, overview, closings, oyoReadError }:
         <Metric label="Entrou em cartão" value={money(overview.cardGross)} tone="blue" detail={`${money(overview.cardNet)} após taxas registradas`}
           help="Soma crédito e débito na data registrada do recebimento. A linha de baixo mostra o valor líquido após as taxas da máquina registradas. A data de crédito pode diferir no extrato." />
         <Metric label="Total de despesas" value={money(overview.expenses)} tone="coral" detail={`${money(overview.expensesPaid)} pagos no período`}
-          help="O total soma despesas e folha com vencimento no período, pagas ou em aberto. Compras em fatura usam o vencimento da fatura. A linha de baixo soma pagamentos e compensações pela data em que ocorreram, inclusive de contas com outros vencimentos." />
+          help="Compras no cartão entram no total pela data da compra. As demais despesas e a folha entram pelo vencimento. Os pagamentos e compensações aparecem pela data em que ocorreram." />
       </div>
     </section>
     <section className="finance-summary-section" aria-labelledby="overview-sales-heading">

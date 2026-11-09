@@ -1,5 +1,5 @@
 import { incomeItems, incomePaymentWallet, type FinancePaymentMethod } from '../types/finance';
-import { stayAmountDue, type GuestStay, type StayReceipt } from '../types/reception';
+import { stayAmountDue, stayBillingLines, type GuestStay, type StayReceipt } from '../types/reception';
 import { financeDateKeyFromTimestamp, isFinanceDateKey } from './financePayments';
 import { cashShiftDate } from './cashShiftDate';
 import { stayFinanceEntries } from './operationalLedger';
@@ -44,44 +44,63 @@ export function addStayReceipt(stay: GuestStay, input: { id: string; amount: num
   if (!Number.isFinite(amount) || amount <= 0 || amount > stayAmountDue(stay) || !incomePaymentWallet(input.method) || !isFinanceDateKey(input.date) || input.date > financeDateKeyFromTimestamp(now)) throw new Error('Confira o valor, a forma e a data do recebimento. O valor não pode superar o saldo pendente.');
   const receivedAt = receiptTimestamp(input.date, now);
   const receipts = existingStayReceipts(stay);
-  const paidByCategory: Record<string, number> = {};
-  for (const receipt of Object.values(receipts)) if (!stay.voidedPayments?.[receipt.id]) paidByCategory[receipt.category] = (paidByCategory[receipt.category] ?? 0) + Math.round(receipt.amount * 100);
+  const targets = receiptBillingLineIds(stay, receipts);
+  const paidByLine: Record<string, number> = {};
+  for (const receipt of Object.values(receipts)) {
+    const target = targets[receipt.id];
+    if (target && receipt.method !== 'courtesy' && !stay.voidedPayments?.[receipt.id]) {
+      paidByLine[target] = (paidByLine[target] ?? 0) + Math.round(receipt.amount * 100);
+    }
+  }
   let remaining = Math.round(amount * 100);
   let index = 0;
-  for (const expected of Object.values(stayFinanceEntries({ ...stay, receiptsInitialized: false, receipts: undefined, voidedPayments: undefined }))) {
-    const expectedCents = Math.round(expected.amount * 100);
-    const paid = Math.min(expectedCents, paidByCategory[expected.category] ?? 0);
-    paidByCategory[expected.category] = (paidByCategory[expected.category] ?? 0) - paid;
-    const allocated = Math.min(remaining, expectedCents - paid);
+  for (const line of stayBillingLines(stay)) {
+    if (line.method === 'courtesy') continue;
+    const available = Math.max(0, Math.round(line.amount * 100) - (paidByLine[line.id] ?? 0));
+    const allocated = Math.min(remaining, available);
     if (!allocated) continue;
     const id = index++ === 0 ? input.id : `${input.id}-${index}`;
-    receipts[id] = { ...input, id, amount: allocated / 100, receivedAt, createdAt: now, label: incomeItems(expected)[0].description, category: expected.category };
+    receipts[id] = { ...input, id, billingLineId: line.id, amount: allocated / 100, receivedAt, createdAt: now, label: line.description, category: line.category };
     remaining -= allocated;
   }
   if (remaining) throw new Error('Não foi possível distribuir o recebimento. Revise a conta da hospedagem.');
   return { ...stay, receiptsInitialized: true, receipts, lastReceiptAt: [stay.lastReceiptAt ?? '', receivedAt].sort().at(-1)! };
 }
 
-const withoutVoids = (stay: GuestStay): GuestStay => ({ ...stay, receiptsInitialized: false, receipts: undefined, voidedPayments: undefined });
-
-// Ids dos lançamentos previstos cuja forma de pagamento foi trocada entre duas versões da hospedagem.
-export function changedStayPaymentMethods(previous: GuestStay, next: GuestStay): string[] {
-  const before = stayFinanceEntries(withoutVoids(previous));
-  const after = stayFinanceEntries(withoutVoids(next));
-  return Object.keys(after).filter((id) => before[id] && incomeItems(before[id])[0].paymentMethod !== incomeItems(after[id])[0].paymentMethod);
+function receiptBillingLineIds(stay: GuestStay, receipts: Record<string, StayReceipt>): Record<string, string> {
+  const lines = stayBillingLines(stay);
+  const ids: Record<string, string> = {};
+  const remaining = new Map(lines.map((line) => [line.id, Math.round(line.amount * 100)]));
+  const ordered = Object.values(receipts).sort((a, b) => a.receivedAt.localeCompare(b.receivedAt));
+  for (const receipt of ordered) {
+    const category = lines.filter((line) => line.category === receipt.category);
+    const matchingLabel = category.filter((line) => line.description === receipt.label || line.label === receipt.label);
+    const line = receipt.billingLineId ?? lines.find((item) => item.id === receipt.id)?.id
+      ?? (matchingLabel.find((item) => (remaining.get(item.id) ?? 0) > 0) ?? matchingLabel[0])?.id
+      ?? (category.find((item) => (remaining.get(item.id) ?? 0) > 0) ?? category[0])?.id;
+    if (!line) continue;
+    ids[receipt.id] = line;
+    if (!stay.voidedPayments?.[receipt.id]) remaining.set(line, (remaining.get(line) ?? 0) - Math.round(receipt.amount * 100));
+  }
+  return ids;
 }
 
 // Recebimentos já gravados continuam valendo na hospedagem; sem isto a troca da forma no formulário não chega ao Financeiro.
 export function withSyncedReceiptMethods(previous: GuestStay, next: GuestStay): GuestStay {
-  if (!next.receiptsInitialized && !next.receipts) return next;
-  const after = stayFinanceEntries(withoutVoids(next));
-  const receipts = { ...next.receipts };
-  for (const id of changedStayPaymentMethods(previous, next)) {
-    const receipt = receipts[id];
-    if (!receipt) continue;
+  const before = new Map(stayBillingLines(previous).map((line) => [line.id, line.method]));
+  const after = new Map(stayBillingLines(next).map((line) => [line.id, line.method]));
+  const receipts = existingStayReceipts(previous);
+  const targets = receiptBillingLineIds(previous, receipts);
+  for (const [id, receipt] of Object.entries(receipts)) {
+    const target = targets[id];
+    const prior = before.get(target);
+    const primary = /-(diaria|cafe|taxa)-2$/.test(target ?? '') ? target.slice(0, -2) : undefined;
+    const mergedCourtesy = primary && !after.has(target) && after.get(primary) === 'courtesy';
+    const method = mergedCourtesy ? 'courtesy' : after.get(target);
+    if (!method || (!mergedCourtesy && prior === method) || (id !== target && method !== 'courtesy' && receipt.method !== 'courtesy')) continue;
     const { cardFeeRate: _rate, cardFeeAmount: _fee, netAmount: _net, ...rest } = receipt;
     void _rate; void _fee; void _net;
-    receipts[id] = { ...rest, method: incomeItems(after[id])[0].paymentMethod };
+    receipts[id] = { ...rest, billingLineId: mergedCourtesy ? primary : target, method };
   }
-  return { ...next, receipts };
+  return { ...next, receiptsInitialized: true, receipts, ...(previous.lastReceiptAt ? { lastReceiptAt: previous.lastReceiptAt } : {}) };
 }

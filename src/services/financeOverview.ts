@@ -1,5 +1,6 @@
 import { financeReceiptItems, isOyoFeeItem, payrollNet, type FinanceData, type FinanceIncome, type FinanceIncomeItem, type FinancePaymentMethod, type FinancePaymentEvent } from '../types/finance';
 import { balancesAtDate } from './financeAnalytics';
+import { expenseRegistrationDate } from './cardStatements';
 import { expensePaymentEvents, financeCents, financeDateBuckets, payrollPaymentEvents } from './financePayments';
 
 export type FinanceRange = { from: string; to: string };
@@ -22,7 +23,7 @@ export function financeOverview(data: FinanceData, range: FinanceRange, today: s
   const inPeriod = (date: string) => date >= range.from && date <= asOf;
   const dueInPeriod = (date: string) => date >= range.from && date <= range.to;
   const bucket = (date: string) => timeline[indexOf(date)];
-  const methods: Record<FinancePaymentMethod, number> = { cash: 0, credit: 0, debit: 0, pix: 0, bank_transfer: 0, prepaid: 0 };
+  const methods: Record<Exclude<FinancePaymentMethod, 'courtesy'>, number> = { cash: 0, credit: 0, debit: 0, pix: 0, bank_transfer: 0, prepaid: 0 };
   const sales = { geladeira: 0, breakfast: 0, extras: 0 };
   let counterFees = 0;
   let cardFees = 0;
@@ -41,7 +42,7 @@ export function financeOverview(data: FinanceData, range: FinanceRange, today: s
     const day = bucket(entry.date);
     if (!day) continue;
     for (const item of financeReceiptItems(entry)) {
-      if (!Object.hasOwn(methods, item.paymentMethod) || !Number.isFinite(item.amount)) continue;
+      if (item.paymentMethod === 'courtesy' || !Object.hasOwn(methods, item.paymentMethod) || !Number.isFinite(item.amount)) continue;
       const amount = financeCents(item.amount);
       const oyoFee = isOyoFeeItem(entry, item);
       methods[item.paymentMethod] += amount;
@@ -82,8 +83,7 @@ export function financeOverview(data: FinanceData, range: FinanceRange, today: s
   }
   for (const entry of Object.values(data.expenses)) {
     if (data.suppressed[entry.id]) continue;
-    const statement = entry.cardStatementId ? data.cardStatements?.[entry.cardStatementId] : undefined;
-    if (dueInPeriod(statement?.dueDate ?? entry.dueDate)) plannedExpenses += financeCents(entry.plannedAmount);
+    if (dueInPeriod(expenseRegistrationDate(data, entry))) plannedExpenses += financeCents(entry.plannedAmount);
     collectPayments(entry.category, expensePaymentEvents(entry));
   }
   for (const entry of Object.values(data.payroll)) {

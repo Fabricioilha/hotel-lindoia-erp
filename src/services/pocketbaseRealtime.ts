@@ -12,6 +12,7 @@ export interface DatabaseReference {
 }
 
 export interface DataSnapshot {
+  versions?: Record<string, number | null>;
   val<T = unknown>(): T | null;
   exists(): boolean;
   child(path: string): DataSnapshot;
@@ -81,13 +82,14 @@ function isIncrement(value: unknown): value is { [incrementKey]: number } {
   return Boolean(value && typeof value === 'object' && incrementKey in value);
 }
 
-async function commit(updates: Record<string, unknown>): Promise<void> {
+async function commit(updates: Record<string, unknown>, expectedVersions: Record<string, number | null> = {}): Promise<void> {
   const absolute = Object.fromEntries(Object.entries(updates).map(([path, value]) => [cleanPath(path), value]));
   const roots = [...new Set(Object.keys(absolute).map(storagePath))];
 
   for (let attempt = 0; attempt < 8; attempt++) {
     const versions: Record<string, number | null> = {};
     await Promise.all(roots.map(async (root) => {
+      if (Object.hasOwn(expectedVersions, root)) { versions[root] = expectedVersions[root]; return; }
       const current = await fetchState(root, true);
       versions[root] = current.versions[root] ?? null;
     }));
@@ -103,7 +105,9 @@ async function commit(updates: Record<string, unknown>): Promise<void> {
       });
       return;
     } catch (error) {
-      if (!(error && typeof error === 'object' && 'status' in error && error.status === 409) || attempt === 7) throw error;
+      if (!(error && typeof error === 'object' && 'status' in error && error.status === 409)) throw error;
+      if (Object.keys(expectedVersions).length) throw new Error('Os dados mudaram enquanto você editava. Reabra o lançamento e tente novamente.', { cause: error });
+      if (attempt === 7) throw error;
     }
   }
 }
@@ -164,7 +168,7 @@ function sharedFetchState(path: string) {
 
 export async function get(reference: DatabaseReference): Promise<DataSnapshot> {
   const result = await sharedFetchState(reference.path);
-  return makeSnapshot(applyQuery(result.value, reference));
+  return { ...makeSnapshot(applyQuery(result.value, reference)), versions: result.versions };
 }
 
 export function onValue(reference: DatabaseReference, onChange: Listener, onError?: (error: Error) => void): () => void {
@@ -210,12 +214,12 @@ export async function remove(reference: DatabaseReference): Promise<void> {
   await set(reference, null);
 }
 
-export async function update(reference: DatabaseReference, values: Record<string, unknown>): Promise<void> {
+export async function update(reference: DatabaseReference, values: Record<string, unknown>, expectedVersions?: Record<string, number | null>): Promise<void> {
   const updates = Object.fromEntries(Object.entries(values).map(([path, value]) => [
     cleanPath([reference.path, path].filter(Boolean).join('/')),
     value,
   ]));
-  await commit(updates);
+  await commit(updates, expectedVersions);
 }
 
 export async function runTransaction<T = unknown>(

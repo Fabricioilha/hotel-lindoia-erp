@@ -1,5 +1,5 @@
 import { incomeItems, incomePaymentWallet, isOyoFeeItem, type FinanceData, type FinanceExpense, type FinanceIncome, type FinancePaymentEvent, type FinancePaymentMethod } from '../types/finance';
-import { MANAGEMENT_COLLECTION_REASON, extraTotal, stayBreakfastDays, stayBreakfastTotal, stayDailyAmount, stayTaxPayments, type CashOut, type GuestStay, type RoomCharge, type StayExtra } from '../types/reception';
+import { MANAGEMENT_COLLECTION_REASON, stayBillingLines, stayTaxPayments, type CashOut, type GuestStay, type RoomCharge } from '../types/reception';
 import type { FrigobarSale } from '../types/frigobar';
 import type { ReservationCollection } from '../types/housekeeping';
 import type { Reservation } from '../types/housekeeping';
@@ -19,14 +19,6 @@ export interface OperationalFinanceSources {
 }
 
 const cents = (value: number) => Math.round(value * 100) / 100;
-const extraCategories: Record<StayExtra['type'], string> = {
-  cama_extra: 'Cama extra',
-  checkin_antecipado: 'Check-in antecipado',
-  checkout_tardio: 'Checkout tardio',
-  hospede_extra: 'Adicional de hóspede',
-  outros: 'Extras',
-};
-
 function income(id: string, date: string, category: string, description: string, amount: number, paymentMethod: FinancePaymentMethod, note: string, createdAt: string): FinanceIncome {
   return { id, date, category, amount: cents(amount), wallet: incomePaymentWallet(paymentMethod)!,
     items: [{ id, description, amount: cents(amount), paymentMethod }], note, createdAt, updatedAt: createdAt };
@@ -36,44 +28,24 @@ export function stayFinanceEntries(stay: GuestStay): Record<string, FinanceIncom
   const entries: Record<string, FinanceIncome> = {};
   if (stay.receiptsInitialized || stay.receipts) {
     for (const receipt of Object.values(stay.receipts ?? {})) {
-      if (stay.voidedPayments?.[receipt.id]) continue;
+      if (stay.voidedPayments?.[receipt.id] || receipt.method === 'courtesy') continue;
       entries[receipt.id] = income(receipt.id, receipt.date, receipt.category, receipt.label, receipt.amount, receipt.method, 'Quarto ' + stay.roomNumber + ' · ' + stay.guestName + ' · Plantão ' + receipt.attendant, receipt.createdAt);
       if (receipt.cardFeeRate !== undefined) entries[receipt.id].items![0] = { ...entries[receipt.id].items![0], cardFeeRate: receipt.cardFeeRate, cardFeeAmount: receipt.cardFeeAmount, netAmount: receipt.netAmount };
     }
     return entries;
   }
-  const prefix = `recepcao-${stay.id}-`;
-  const category = stay.kind === 'periodo' ? 'Rotativo' : 'Diária';
-  const dailyTotal = cents(Math.max(0, stayDailyAmount(stay) - (stay.creditApplied ?? 0)));
-  const dailySplit = stay.dailySplit && stay.dailySplit.amount > 0 && stay.dailySplit.amount < dailyTotal ? stay.dailySplit : undefined;
   const note = [stay.kind === 'periodo' ? `Rotativo ${stay.hours ?? 4}h` : '', stay.creditApplied ? `Crédito do rotativo: R$ ${stay.creditApplied.toFixed(2)}` : '', `Quarto ${stay.roomNumber}`, stay.guestName, `Plantão ${stay.attendant}`, stay.note].filter(Boolean).join(' · ');
-  const add = (suffix: string, entryCategory: string, description: string, amount: number, method: FinancePaymentMethod) => {
-    if (!Number.isFinite(amount) || amount <= 0 || stay.voidedPayments?.[`${prefix}${suffix}`]) return;
-    const entry = income(`${prefix}${suffix}`, stay.checkInDate, entryCategory, description, amount, method, note, stay.createdAt);
-    entries[entry.id] = entry;
-  };
-  const description = stay.kind === 'periodo' ? `Rotativo (${stay.hours ?? 4}h)` : `Diária × ${stay.nights}`;
-  add('diaria', category, description, dailyTotal - (dailySplit?.amount ?? 0), stay.dailyMethod);
-  if (dailySplit) add('diaria-2', category, `${description} (2ª forma)`, dailySplit.amount, dailySplit.method);
-  if (stay.hasBreakfast) {
-    const total = cents(stayBreakfastTotal(stay));
-    const split = stay.breakfastSplit && stay.breakfastSplit.amount > 0 && stay.breakfastSplit.amount < total ? stay.breakfastSplit : undefined;
-    const breakfastDescription = `${stay.breakfastCount ?? 1} café(s) por dia × ${stayBreakfastDays(stay)} dia(s)`;
-    // Registros antigos mantêm o pagamento original; novos cadastros informam o método do café.
-    add('cafe', 'Café', breakfastDescription, total - (split?.amount ?? 0), stay.breakfastMethod ?? stay.dailyMethod);
-    if (split) add('cafe-2', 'Café', `${breakfastDescription} (2ª forma)`, split.amount, split.method);
+  for (const line of stayBillingLines(stay)) {
+    if (line.method === 'courtesy' || stay.voidedPayments?.[line.id]) continue;
+    entries[line.id] = income(line.id, stay.checkInDate, line.category, line.description, line.amount, line.method, note, stay.createdAt);
   }
-  stayTaxPayments(stay).filter((payment) => payment.method !== 'prepaid').forEach((payment) => {
-    add(payment.id, 'Taxas', payment.id === 'taxa' ? 'Taxa' : 'Taxa (2ª forma)', payment.amount, payment.method);
-  });
-  (stay.extras ?? []).forEach((extra) => add(`extra-${extra.id}`, extraCategories[extra.type] ?? 'Extras', extra.label, extraTotal(extra, stay.nights), extra.method ?? stay.dailyMethod));
   return entries;
 }
 
 export function stayFinanceEntryIds(stay: GuestStay): string[] {
   const prefix = `recepcao-${stay.id}-`;
   return [...new Set([
-    ...Object.keys(stayFinanceEntries(stay)),
+    ...stayBillingLines(stay).filter((line) => line.method === 'courtesy' || !stay.receiptsInitialized && !stay.receipts).map((line) => line.id),
     ...Object.keys(stay.receipts ?? {}),
     ...stayTaxPayments(stay).map((payment) => `${prefix}${payment.id}`),
   ])];
@@ -215,6 +187,9 @@ export function withOperationalFinance(data: FinanceData, sources: OperationalFi
   };
   Object.values(sources.stays).forEach((stay) => {
     Object.entries(stay.voidedPayments ?? {}).forEach(([id, voided]) => { if (voided) delete incomes[id]; });
+    for (const line of [...stayBillingLines(stay), ...Object.values(stay.receipts ?? {})]) {
+      if (line.method === 'courtesy') delete incomes[line.id];
+    }
     Object.values(stayFinanceEntries(stay)).forEach(addIncome);
     stayTaxPayments(stay).filter((payment) => payment.method === 'prepaid').forEach((payment) => {
       delete incomes[`recepcao-${stay.id}-${payment.id}`];
