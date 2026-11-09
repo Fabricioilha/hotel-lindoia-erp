@@ -1,8 +1,9 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { FinanceMetric } from '../../components/finance/FinanceMetric';
 import { FinanceOverviewCards } from '../../components/finance/FinanceOverviewCards';
 import { FinancePeriodFilter } from '../../components/finance/FinancePeriodFilter';
+import { dailyRevenueRows, revenueTimeline } from '../../services/dailyRevenue';
 import { financeOverview, type FinanceRange } from '../../services/financeOverview';
 import { financeDateKeyFromTimestamp, financeDateLabel, financeMonthRange, financeMoney, isFinanceDateKey } from '../../services/financePayments';
 import { subscribeFinance } from '../../services/financeStore';
@@ -11,15 +12,18 @@ import { subscribeOyoClosings, type OyoClosingRecords } from '../../services/oyo
 import type { FinanceData } from '../../types/finance';
 import './financeiro.css';
 
-type Timeline = ReturnType<typeof financeOverview>['timeline'];
+type TimelinePoint = { from: string; to: string };
+type ChartSeries<Point> = { label: string; className: string; value: (point: Point) => number };
 type Breakdown = { label: string; value: number }[];
 const axisMoney = new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 2 });
 const shortDate = (date: string) => `${date.slice(8, 10)}/${date.slice(5, 7)}`;
-const pointLabel = (point: Timeline[number]) => point.from === point.to ? financeDateLabel(point.from)
+const pointLabel = (point: TimelinePoint) => point.from === point.to ? financeDateLabel(point.from)
   : `${financeDateLabel(point.from)} a ${financeDateLabel(point.to)}`;
 
-function CashChart({ points }: { points: Timeline }) {
-  const values = points.flatMap(({ incoming, outgoing }) => [incoming, outgoing]);
+function TimelineChart<Point extends TimelinePoint>({ title, description, points, series, empty, total }: {
+  title: string; description: string; points: Point[]; series: ChartSeries<Point>[]; empty: string; total?: number;
+}) {
+  const values = points.flatMap((point) => series.map((line) => line.value(point)));
   const highest = Math.max(0, ...values);
   const lowest = Math.min(0, ...values);
   const width = 860;
@@ -30,17 +34,22 @@ function CashChart({ points }: { points: Timeline }) {
   const bottom = 32;
   const plotHeight = height - top - bottom;
   const band = (width - left - right) / Math.max(points.length, 1);
-  const bar = Math.min(24, band * .32);
+  const bar = Math.min(26, band * .7 / series.length);
   const y = (value: number) => top + ((highest - value) * plotHeight) / (highest - lowest || 1);
   const tickStep = Math.max(1, Math.ceil((points.length - 1) / 5));
   const ticks = Array.from({ length: 5 }, (_, i) => lowest + (highest - lowest) * i / 4);
 
-  return <section className="finance-panel finance-chart-wide">
-    <div className="finance-panel-heading"><div><h2>Movimento de caixa e banco</h2><p>Recebimentos e pagamentos nas datas lançadas no ERP.</p></div></div>
-    {highest === lowest ? <p className="finance-empty-inline">Nenhum movimento de caixa ou banco neste período.</p> : <>
-      <div className="finance-chart-legend"><span className="finance-chart-incoming">Entradas</span><span className="finance-chart-outgoing">Saídas</span></div>
+  return <section className={`finance-panel finance-chart-wide${total !== undefined ? ' finance-chart-primary' : ''}`}>
+    <div className="finance-panel-heading">
+      <div><h2>{title}</h2><p>{description}</p></div>
+      {total !== undefined && <div className="finance-chart-total"><span>Total do período</span><strong>{money(total)}</strong></div>}
+    </div>
+    {highest === lowest ? <p className="finance-empty-inline">{empty}</p> : <>
+      {series.length > 1 && <div className="finance-chart-legend">
+        {series.map((line) => <span key={line.label} className={line.className}>{line.label}</span>)}
+      </div>}
       <div className="finance-chart-scroll">
-        <svg className="finance-movement-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Gráfico de barras comparando entradas e saídas ao longo do período">
+        <svg className="finance-movement-chart" viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`Gráfico de barras · ${title}`}>
           {ticks.map((tick, i) => <g key={i}>
             <line x1={left} x2={width - right} y1={y(tick)} y2={y(tick)} />
             <text x={left - 9} y={y(tick)} textAnchor="end" dominantBaseline="middle">R$ {axisMoney.format(tick)}</text>
@@ -49,9 +58,13 @@ function CashChart({ points }: { points: Timeline }) {
           {points.map((point, index) => {
             const center = left + band * (index + .5);
             return <g key={point.from}>
-              <title>{`${pointLabel(point)} · Entradas ${money(point.incoming)} · Saídas ${money(point.outgoing)}`}</title>
-              <rect className="finance-chart-incoming" x={center - bar - 1} width={bar} y={Math.min(y(0), y(point.incoming))} height={Math.abs(y(point.incoming) - y(0))} rx="2" />
-              <rect className="finance-chart-outgoing" x={center + 1} width={bar} y={Math.min(y(0), y(point.outgoing))} height={Math.abs(y(point.outgoing) - y(0))} rx="2" />
+              <title>{[pointLabel(point), ...series.map((line) => `${line.label} ${money(line.value(point))}`)].join(' · ')}</title>
+              {series.map((line, seriesIndex) => {
+                const value = line.value(point);
+                return <rect key={line.label} className={line.className}
+                  x={center + (bar + 2) * (seriesIndex - (series.length - 1) / 2) - bar / 2}
+                  width={bar} y={Math.min(y(0), y(value))} height={Math.abs(y(value) - y(0))} rx="2" />;
+              })}
               {(index === points.length - 1 || (index % tickStep === 0 && points.length - 1 - index >= tickStep / 2)) &&
                 <text x={center} y={height - 10} textAnchor="middle">{shortDate(point.from)}</text>}
             </g>;
@@ -59,8 +72,10 @@ function CashChart({ points }: { points: Timeline }) {
         </svg>
       </div>
       <details className="finance-chart-data"><summary>Ver valores do gráfico</summary>
-        <div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Data ou intervalo</th><th className="numeric">Entradas</th><th className="numeric">Saídas</th></tr></thead>
-          <tbody>{points.map((point) => <tr key={point.from}><td>{pointLabel(point)}</td><td className="numeric">{money(point.incoming)}</td><td className="numeric">{money(point.outgoing)}</td></tr>)}</tbody>
+        <div className="finance-table-wrap"><table className="finance-table"><thead><tr><th>Data ou intervalo</th>
+          {series.map((line) => <th key={line.label} className="numeric">{line.label}</th>)}</tr></thead>
+          <tbody>{points.map((point) => <tr key={point.from}><td>{pointLabel(point)}</td>
+            {series.map((line) => <td key={line.label} className="numeric">{money(line.value(point))}</td>)}</tr>)}</tbody>
         </table></div>
       </details>
     </>}
@@ -100,6 +115,8 @@ export function RelatoriosFinanceiros() {
   }
 
   const overview = data ? financeOverview(data, range, today) : null;
+  const revenueRows = useMemo(() => data ? dailyRevenueRows(data.incomes, data.stays ?? {}, data.suppressed) : [], [data]);
+  const revenue = revenueTimeline(revenueRows, range);
   const expenseRows = overview?.expenseCategories.slice(0, 7) ?? [];
   if (overview && overview.expenseCategories.length > 7) {
     expenseRows.push({ label: 'Demais categorias', value: financeMoney(overview.expenseCategories.slice(7).reduce((sum, row) => sum + row.value, 0)) });
@@ -112,13 +129,17 @@ export function RelatoriosFinanceiros() {
     </header>
     <main className="finance-content">
       <div className="finance-page-heading">
-        <div><p className="finance-eyebrow">GESTÃO <span>/</span> FINANCEIRO</p><h1>Relatórios e gráficos</h1><p>Acompanhe os recebimentos, as vendas e as despesas registradas no hotel.</p></div>
-        {overview && <span className="finance-report-cutoff">Movimentos até {financeDateLabel(overview.asOf)}</span>}
+        <div><p className="finance-eyebrow">GESTÃO <span>/</span> FINANCEIRO</p><h1>Relatórios e gráficos</h1><p>Acompanhe o faturamento, os recebimentos e as despesas do hotel.</p></div>
+        {overview && <span className="finance-report-cutoff">Movimentos de caixa até {financeDateLabel(overview.asOf)}</span>}
       </div>
       <FinancePeriodFilter key={`${range.from}:${range.to}`} range={range} today={today} onChange={changePeriod} />
       {error && <p className="finance-alert" role="alert">Não foi possível atualizar os lançamentos. {error}</p>}
       {!overview && !error && <p className="finance-empty" role="status">Carregando relatórios financeiros...</p>}
       {overview && <>
+        <TimelineChart title="Faturamento do período"
+          description="Receita do hotel por data do serviço ou lançamento, incluindo a parte do hotel nos pré-pagos e excluindo taxas da OYO."
+          points={revenue.points} total={revenue.total} empty="Nenhum faturamento registrado neste período."
+          series={[{ label: 'Faturamento', className: 'finance-chart-revenue', value: (point) => point.revenue }]} />
         <section className="finance-metrics finance-report-totals" aria-label="Totais do período">
           <FinanceMetric label="Entradas em caixa e banco" value={money(overview.received)} detail="Recebimentos e repasses da OYO" tone="green"
             help="Soma recebimentos diretos e repasses da OYO. Pré-pagos retidos pela OYO e transferências entre caixa e banco ficam fora deste total." />
@@ -128,7 +149,12 @@ export function RelatoriosFinanceiros() {
             help="Soma as despesas e a folha pagas no período, incluindo compensações com valores retidos pela OYO. As datas dos pagamentos determinam o período." />
         </section>
         <div className="finance-report-charts">
-          <CashChart points={overview.timeline} />
+          <TimelineChart title="Movimento de caixa e banco" description="Recebimentos e pagamentos nas datas lançadas no ERP."
+            points={overview.timeline} empty="Nenhum movimento de caixa ou banco neste período."
+            series={[
+              { label: 'Entradas', className: 'finance-chart-incoming', value: (point) => point.incoming },
+              { label: 'Saídas', className: 'finance-chart-outgoing', value: (point) => point.outgoing },
+            ]} />
           <BreakdownChart title="Recebimentos por forma de pagamento" description="Pagamentos diretos e repasses efetivamente registrados." tone="is-income" rows={[
             { label: 'Dinheiro', value: overview.methods.cash }, { label: 'Crédito', value: overview.methods.credit }, { label: 'Débito', value: overview.methods.debit },
             { label: 'Pix', value: overview.methods.pix }, { label: 'Transferência bancária', value: overview.methods.bankTransfer }, { label: 'Repasses da OYO', value: overview.repasses },

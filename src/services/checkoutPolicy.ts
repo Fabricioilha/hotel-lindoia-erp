@@ -5,6 +5,9 @@ import type { FinanceIncome } from '../types/finance';
 import type { FrigobarSale } from '../types/frigobar';
 import type { CleaningTask } from '../types/cleaning';
 import { stayCheckOutDate } from './reservationAnalytics';
+import { hotelClock, hotelDate, HOTEL_CHECKOUT_TIME } from './hotelSchedule';
+
+export { hotelDate } from './hotelSchedule';
 
 export interface CheckoutState {
   quartos?: { reservations?: Record<string, Reservation>; reservationIndex?: Record<string, unknown>; rooms?: Record<string, HousekeepingRoom>; reservationSlots?: Record<string, unknown> };
@@ -18,9 +21,12 @@ export interface CheckoutState {
   checkoutAudit?: Record<string, unknown>;
 }
 export interface CheckoutTarget { sourceType: 'stay' | 'reservation'; sourceId: string }
-export function hotelDate(now: Date) {
-  return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+export interface CheckoutAlert extends CheckoutTarget {
+  roomNumber: string;
+  guestName: string;
+  pending: number;
 }
+
 export function checkoutPending(state: CheckoutState, target: CheckoutTarget): number {
   const source = target.sourceType === 'stay' ? state.recepcao?.stays?.[target.sourceId] : state.quartos?.reservations?.[target.sourceId];
   if (!source) throw new Error('Hospedagem não encontrada.');
@@ -39,13 +45,12 @@ export function checkoutPending(state: CheckoutState, target: CheckoutTarget): n
 }
 
 export function dueCheckouts(state: CheckoutState, now: Date): CheckoutTarget[] {
-  const date = hotelDate(now);
-  const hour = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Sao_Paulo', hour: '2-digit', hourCycle: 'h23' }).format(now));
+  const { date, time } = hotelClock(now);
+  if (time < HOTEL_CHECKOUT_TIME) return [];
   // Do not retroactively close legacy records or dirty their former rooms.
-  const eligible = (end: string) => end === date && hour >= 12;
   return [
-    ...Object.values(state.quartos?.reservations ?? {}).filter((r) => r.status === 'hospedado' && r.channel !== 'rotativo' && eligible(r.checkOutDate)).map((r) => ({ sourceType: 'reservation' as const, sourceId: r.id })),
-    ...Object.values(state.recepcao?.stays ?? {}).filter((s) => s.status === 'hospedado' && s.kind !== 'periodo' && eligible(stayCheckOutDate(s))).map((s) => ({ sourceType: 'stay' as const, sourceId: s.id })),
+    ...Object.values(state.quartos?.reservations ?? {}).filter((r) => r.status === 'hospedado' && r.channel !== 'rotativo' && !r.checkedOutAt && r.checkOutDate === date).map((r) => ({ sourceType: 'reservation' as const, sourceId: r.id })),
+    ...Object.values(state.recepcao?.stays ?? {}).filter((s) => s.status === 'hospedado' && s.kind !== 'periodo' && !s.awaitingArrival && !s.checkedOutAt && stayCheckOutDate(s) === date).map((s) => ({ sourceType: 'stay' as const, sourceId: s.id })),
   ];
 }
 

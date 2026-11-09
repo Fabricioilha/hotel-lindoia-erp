@@ -1,6 +1,15 @@
 import type { ReservationDirectoryEntry } from '../types/housekeeping';
 import { stayBreakfastDays, type GuestStay, type RoomCharge } from '../types/reception';
 import { reservationGuestCount, stayCheckOutDate } from './reservationAnalytics';
+import { hotelClock, HOTEL_BREAKFAST_END_TIME } from './hotelSchedule';
+
+export function breakfastForecastDay(now: Date) {
+  const { date, time } = hotelClock(now);
+  if (time < HOTEL_BREAKFAST_END_TIME) return { date, isTomorrow: false };
+  const tomorrow = new Date(`${date}T00:00:00Z`);
+  tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
+  return { date: tomorrow.toISOString().slice(0, 10), isTomorrow: true };
+}
 
 export function breakfastsOnDate(
   date: string,

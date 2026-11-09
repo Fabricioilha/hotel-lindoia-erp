@@ -1,13 +1,10 @@
 import { financeReceiptItems, isOyoFeeItem, payrollNet, type FinanceData, type FinanceIncome, type FinanceIncomeItem, type FinancePaymentMethod, type FinancePaymentEvent } from '../types/finance';
 import { balancesAtDate } from './financeAnalytics';
-import { expensePaymentEvents, financeCents, payrollPaymentEvents } from './financePayments';
+import { expensePaymentEvents, financeCents, financeDateBuckets, payrollPaymentEvents } from './financePayments';
 
 export type FinanceRange = { from: string; to: string };
 
 const extraLabels = new Set(['Extras', 'Cama extra', 'Colchão extra', 'Adicional de hóspede', 'Adicional de troca de quarto', 'Check-in antecipado', 'Checkout tardio', 'Modificação de reserva']);
-const DAY = 86_400_000;
-const dayTime = (date: string) => Date.parse(`${date}T00:00:00Z`);
-const dateKey = (time: number) => new Date(time).toISOString().slice(0, 10);
 
 function saleGroup(entry: FinanceIncome, item: FinanceIncomeItem) {
   const description = (item.description ?? '').split(' · ')[0];
@@ -20,17 +17,11 @@ function saleGroup(entry: FinanceIncome, item: FinanceIncomeItem) {
 
 export function financeOverview(data: FinanceData, range: FinanceRange, today: string) {
   const asOf = range.to < today ? range.to : today;
-  const fromTime = dayTime(range.from);
-  const toTime = dayTime(asOf);
-  const days = Math.max(0, (toTime - fromTime) / DAY + 1);
-  const bucketDays = days <= 31 ? 1 : days <= 217 ? 7 : Math.ceil(days / 31);
-  const timeline = Array.from({ length: Math.ceil(days / bucketDays) }, (_, index) => {
-    const start = fromTime + index * bucketDays * DAY;
-    return { from: dateKey(start), to: dateKey(Math.min(toTime, start + (bucketDays - 1) * DAY)), incoming: 0, outgoing: 0 };
-  });
+  const { periods, indexOf } = financeDateBuckets(range.from, asOf);
+  const timeline = periods.map((period) => ({ ...period, incoming: 0, outgoing: 0 }));
   const inPeriod = (date: string) => date >= range.from && date <= asOf;
   const dueInPeriod = (date: string) => date >= range.from && date <= range.to;
-  const bucket = (date: string) => timeline[Math.floor((dayTime(date) - fromTime) / (bucketDays * DAY))];
+  const bucket = (date: string) => timeline[indexOf(date)];
   const methods: Record<FinancePaymentMethod, number> = { cash: 0, credit: 0, debit: 0, pix: 0, bank_transfer: 0, prepaid: 0 };
   const sales = { geladeira: 0, breakfast: 0, extras: 0 };
   let counterFees = 0;

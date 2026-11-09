@@ -59,10 +59,14 @@ function backend(t, { state = fixture(), role = 'admin', conflicts = 0, failure 
       assert.deepEqual(JSON.parse(init.body), { identity: env.POCKETBASE_SUPERUSER_EMAIL, password: env.POCKETBASE_SUPERUSER_PASSWORD });
       return Response.json({ token: 'super-token', record: { id: 'technical' } });
     }
-    assert.equal(new Headers(init.headers).get('Authorization'), 'super-token');
     if (failure) return Response.json({ message: 'Unavailable' }, { status: 503 });
-    if (url.pathname === '/api/hotel/state') return Response.json({ value: structuredClone(state), versions: { erp_geral: revision } });
+    if (url.pathname === '/api/hotel/state') {
+      const authorization = new Headers(init.headers).get('Authorization');
+      assert.ok(authorization === 'super-token' || (role === 'admin' && authorization === 'user-token'));
+      return Response.json({ value: structuredClone(state), versions: { erp_geral: revision } });
+    }
     if (url.pathname === '/api/hotel/state/commit') {
+      assert.equal(new Headers(init.headers).get('Authorization'), 'super-token');
       commits++;
       if (conflicts-- > 0) { revision++; return Response.json({ message: 'Conflict' }, { status: 409 }); }
       const body = JSON.parse(init.body);
@@ -101,6 +105,33 @@ test('history works directly against PocketBase and is never cached', async (t) 
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('Cache-Control'), 'no-store');
   assert.equal((await response.json()).reservations.r1.guestName, 'Teste');
+});
+test('a manager can read checkout status without local superuser credentials', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: noon });
+  const api = backend(t, { state: fixture(150) });
+  const response = await worker.fetch(new Request(url, { headers }), {
+    ...env, POCKETBASE_SUPERUSER_EMAIL: '', POCKETBASE_SUPERUSER_PASSWORD: '',
+  });
+  assert.equal(response.status, 200);
+  assert.deepEqual(await response.json(), [{ ...target, roomNumber: '101', guestName: 'Teste', pending: 50 }]);
+  assert.deepEqual(api.calls.map((call) => call.path), ['/api/hotel/me', '/api/hotel/state']);
+});
+test('the dashboard API shows current balances before noon and drops them after settlement or departure', async (t) => {
+  t.mock.timers.enable({ apis: ['Date'], now: new Date('2026-11-02T14:59:59Z') });
+  const api = backend(t, { state: fixture(150), role: 'viewer' });
+  const alert = { ...target, roomNumber: '101', guestName: 'Teste', pending: 50 };
+  const response = await worker.fetch(new Request(url, { headers }), env);
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('Cache-Control'), 'no-store');
+  assert.deepEqual(await response.json(), [alert]);
+  api.state.financeiro.incomes['reservation-r1-initial'].amount = 200;
+  const settled = await worker.fetch(new Request(url, { headers }), env);
+  assert.deepEqual(await settled.json(), []);
+  api.state.financeiro.incomes['reservation-r1-initial'].amount = 150;
+  t.mock.timers.setTime(new Date('2026-11-03T08:00:00Z').getTime());
+  const historical = await worker.fetch(new Request(url, { headers }), env);
+  assert.deepEqual(await historical.json(), []);
+  assert.equal(api.commits, 0);
 });
 test('manual checkout preserves receipts, marks dirty and retries conflicts safely', async (t) => {
   const api = backend(t, { conflicts: 1 });

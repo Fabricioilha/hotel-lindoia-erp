@@ -1,5 +1,6 @@
 import { incomeItems, isOyoFeeItem, type FinanceIncome } from '../types/finance';
 import { stayBreakfastDays, stayDailyAmount, type GuestStay } from '../types/reception';
+import { financeCents as toCents, financeDateBuckets } from './financePayments';
 
 export interface DailyRevenueRow {
   incomeId: string;
@@ -13,8 +14,6 @@ export interface DailyRevenueRow {
   paidOn: string;
   methods: { method: string; amount: number }[];
 }
-
-const toCents = (value: number) => Math.round(value * 100);
 
 function addDays(date: string, days: number): string {
   const base = new Date(`${date}T12:00:00Z`);
@@ -76,4 +75,19 @@ export function dailyRevenueRows(incomes: Record<string, FinanceIncome>, stays: 
     dates.forEach((date, index) => rows.push({ incomeId: income.id, date, category: income.category, description: `${description} · dia ${index + 1}/${dates.length}`, amount: shares[index] / 100, prepaid: prepaidShares[index] / 100, spread: true, note, paidOn: income.date, methods: methodShares(total > 0 ? shares[index] / total : 0) }));
   }
   return rows.sort((a, b) => a.date.localeCompare(b.date) || a.category.localeCompare(b.category));
+}
+
+export function revenueTimeline(rows: DailyRevenueRow[], range: { from: string; to: string }) {
+  const { periods, indexOf } = financeDateBuckets(range.from, range.to);
+  const points = periods.map((period) => ({ ...period, revenue: 0 }));
+  let total = 0;
+  for (const { date, amount } of rows) {
+    if (date < range.from || date > range.to) continue;
+    const point = points[indexOf(date)];
+    if (!point) continue;
+    const cents = toCents(amount);
+    point.revenue += cents;
+    total += cents;
+  }
+  return { points: points.map((point) => ({ ...point, revenue: point.revenue / 100 })), total: total / 100 };
 }

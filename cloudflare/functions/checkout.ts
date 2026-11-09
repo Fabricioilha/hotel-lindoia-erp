@@ -1,5 +1,5 @@
 import { checkoutStatus } from '../lib/checkoutStatus';
-import { commitState, readState, requestToken, superuserClient, verifyUser, type BackendEnv } from '../lib/pocketbase';
+import { commitState, pocketbaseClient, readState, requestToken, superuserClient, verifyUser, type BackendEnv } from '../lib/pocketbase';
 import { applyCheckout, hotelDate, type CheckoutState, type CheckoutTarget } from '../../src/services/checkoutPolicy';
 import { stayCheckOutDate } from '../../src/services/reservationAnalytics';
 import type { Reservation, ReservationDirectoryEntry } from '../../src/types/housekeeping';
@@ -28,7 +28,7 @@ export default async (request: Request, env: BackendEnv) => {
     const user = await verifyUser(env, token);
 
     if (request.method === 'GET') {
-      const client = await superuserClient(env);
+      const client = user.role === 'admin' ? pocketbaseClient(env, token) : await superuserClient(env);
       const current = await readState(client, 'erp_geral');
       const state = getHotelState(current.value);
       const url = new URL(request.url);

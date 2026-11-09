@@ -44,12 +44,6 @@ function rotativoStart(stay: GuestStay): number {
   return Number.isFinite(createdAt) ? createdAt : Date.parse(`${stay.checkInDate}T12:00:00`);
 }
 
-/** Scheduled departures use hotel time, regardless of the device timezone. */
-export function departureDue(checkOutDate: string, now: number): boolean {
-  const deadline = Date.parse(`${checkOutDate}T12:00:00-03:00`);
-  return Number.isFinite(deadline) && now >= deadline;
-}
-
 export function guestStayOccupiesToday(stay: GuestStay, today: string, now: number): boolean {
   if (stay.status !== 'hospedado' || stay.awaitingArrival) return false;
   if (stay.kind === 'periodo') {

@@ -26,9 +26,16 @@ function domainModule(path) {
 
 const { applyCheckout, checkoutPending, dueCheckouts, hotelDate } = domainModule('src/services/checkoutPolicy.ts');
 const { currentOccupants, reservationOccupiesDate, stayOccupiesDate } = domainModule('src/services/occupantDirectory.ts');
-const { breakfastsOnDate } = domainModule('src/services/breakfastForecast.ts');
-const { departureDue } = domainModule('src/services/reservationAnalytics.ts');
+const { breakfastForecastDay, breakfastsOnDate } = domainModule('src/services/breakfastForecast.ts');
+const { departureDue } = domainModule('src/services/hotelSchedule.ts');
 const { checkoutStatus } = domainModule('cloudflare/lib/checkoutStatus.ts');
+
+test('breakfast forecast switches at 11 in hotel time, including at the end of the month', () => {
+  assert.deepEqual(breakfastForecastDay(new Date('2026-11-30T13:59:59Z')), { date: '2026-11-30', isTomorrow: false });
+  assert.deepEqual(breakfastForecastDay(new Date('2026-11-30T14:00:00Z')), { date: '2026-12-01', isTomorrow: true });
+  assert.deepEqual(breakfastForecastDay(new Date('2026-12-01T02:59:59Z')), { date: '2026-12-01', isTomorrow: true });
+  assert.deepEqual(breakfastForecastDay(new Date('2026-12-01T03:00:00Z')), { date: '2026-12-01', isTomorrow: false });
+});
 
 test('tomorrow breakfast counts the preceding night, checkout morning and scheduled extras', () => {
   const date = '2026-11-09';
@@ -63,19 +70,28 @@ function statusState(reservations, stays = {}) {
   };
 }
 
-test('checkout alerts exclude historical unpaid records without changing their data', () => {
-  const old = { ...fixture().quartos.reservations.r1, checkOutDate: '2026-10-23' };
-  const stays = { old: { id: 'old', roomNumber: '101', guestName: 'Antigo', status: 'hospedado', kind: 'hospede', checkInDate: '2026-10-01', nights: 2 } };
+test('checkout alerts exclude historical records with a balance without changing their data', () => {
+  const old = { ...fixture().quartos.reservations.r1, status: 'encerrada', checkOutDate: '2026-10-23' };
+  const stays = { old: { id: 'old', roomNumber: '101', guestName: 'Antigo', status: 'hospedado', kind: 'hospede',
+    checkInDate: '2026-10-01', nights: 2, dailyRate: 100, dailyMethod: 'pix', receiptsInitialized: true } };
   const reservations = { r1: old };
   const before = structuredClone({ reservations, stays });
-  assert.deepEqual(checkoutStatus(statusState(reservations, stays), noon), []);
+  const state = statusState(reservations, stays);
+  assert.equal(checkoutPending(state, { sourceType: 'stay', sourceId: 'old' }), 200);
+  assert.deepEqual(checkoutStatus(state, noon), []);
   assert.deepEqual({ reservations, stays }, before);
 });
 
-test('checkout alerts select the current occupant before checking the departure date', () => {
+test('a balance remains visible for the current guest until the next guest checks in', () => {
   const older = fixture().quartos.reservations.r1;
-  const current = { id: 'new', roomNumber: '101', guestName: 'Atual', status: 'hospedado', kind: 'hospede', checkInDate: '2026-10-23', checkOutDate: '2026-10-26', nights: 3 };
-  assert.deepEqual(checkoutStatus(statusState({ r1: older }, { new: current }), noon), []);
+  const current = { id: 'new', roomNumber: '101', guestName: 'Atual', status: 'hospedado', kind: 'hospede', checkInDate: '2026-10-24', checkOutDate: '2026-10-26', nights: 2 };
+  const state = statusState({ r1: older }, { new: { ...current, awaitingArrival: true } });
+  const checkout = { ...target, roomNumber: '101', guestName: 'Ana', pending: 200 };
+  assert.deepEqual(checkoutStatus(state, new Date('2026-10-24T14:59:59Z')), [checkout]);
+  assert.deepEqual(checkoutStatus(state, noon), [checkout]);
+  state.recepcao.stays.new.awaitingArrival = false;
+  assert.deepEqual(checkoutStatus(state, new Date('2026-10-24T17:00:00Z')), []);
+  assert.equal(checkoutPending(state, target), 200);
 });
 
 test('checkout alerts retain only the current unpaid departure, once per room', () => {
@@ -85,6 +101,22 @@ test('checkout alerts retain only the current unpaid departure, once per room', 
   const closed = { ...current, id: 'closed', roomNumber: '103', status: 'encerrada' };
   const result = checkoutStatus(statusState({ old: older, r1: current, future, closed }), noon);
   assert.deepEqual(result, [{ ...target, roomNumber: '101', guestName: 'Ana', pending: 200 }]);
+});
+
+test('checkout alerts include current minibar sales before the departure date and exclude sales linked to previous guests', () => {
+  const current = { ...fixture().quartos.reservations.r1, checkOutDate: '2026-10-26' };
+  const earlier = { id: 'earlier', kind: 'hospede', status: 'hospedado', guestName: 'Anterior', roomNumber: '101',
+    checkInDate: '2026-10-20', checkOutDate: '2026-10-21', nights: 1, dailyRate: 100, dailyMethod: 'pix', receiptsInitialized: true };
+  const state = statusState({ r1: current }, { earlier });
+  state.financeiro.incomes['reservation-r1-initial'] = { id: 'reservation-r1-initial', amount: 200 };
+  state.frigobar.operations.sales = {
+    byRoom: { roomNumber: '101', amount: 5, settlement: 'cobrar_no_checkout' },
+    linked: { roomNumber: '101', amount: 10, settlement: 'cobrar_no_checkout', sourceType: 'stay', sourceId: earlier.id },
+    current: { roomNumber: '101', amount: 14, settlement: 'cobrar_no_checkout', sourceType: 'reservation', sourceId: current.id },
+  };
+  assert.deepEqual(checkoutStatus(state, new Date('2026-10-24T10:00:00Z')), [
+    { ...target, roomNumber: '101', guestName: 'Ana', pending: 19 },
+  ]);
 });
 
 test('departure is pending from noon in hotel time, regardless of browser timezone', () => {
@@ -288,17 +320,25 @@ test('future occupancy shows continuing guests and leaves departed or unreserved
   assert.equal(stayOccupiesDate({ kind: 'hospede', status: 'hospedado', checkInDate: '2026-10-24', nights: 1 }, '2026-10-26', '2026-10-24', noon.getTime()), false);
 });
 
-test('faturamento diário divide diárias e café prépagos em cada dia', () => {
-  const { dailyRevenueRows } = domainModule('src/services/dailyRevenue.ts');
+test('faturamento diário divide diárias e café e o gráfico soma apenas a faixa escolhida', () => {
+  const { dailyRevenueRows, revenueTimeline } = domainModule('src/services/dailyRevenue.ts');
   const stay = { id: 's1', kind: 'hospede', checkInDate: '2026-10-01', nights: 3, dailyRate: 100, hasBreakfast: true, breakfastRate: 10, breakfastCount: 1, breakfastDays: 3 };
   const item = (id, amount, paymentMethod) => ({ id, description: id, amount, paymentMethod });
   const rows = dailyRevenueRows({
-    'recepcao-s1-diaria': { id: 'recepcao-s1-diaria', date: '2026-10-01', category: 'Diária', amount: 300, wallet: 'oyo', items: [item('a', 300, 'prepaid')], note: '', createdAt: '', updatedAt: '' },
+    'recepcao-s1-diaria': { id: 'recepcao-s1-diaria', date: '2026-10-01', category: 'Diária', amount: 330, wallet: 'oyo', items: [item('a', 300, 'prepaid'), item('Taxa', 30, 'prepaid')], note: '', createdAt: '', updatedAt: '' },
     'recepcao-s1-cafe': { id: 'recepcao-s1-cafe', date: '2026-10-01', category: 'Café', amount: 30, wallet: 'cash', items: [item('b', 30, 'cash')], note: '', createdAt: '', updatedAt: '' },
   }, { s1: stay });
   const diarias = rows.filter((row) => row.category === 'Diária');
   assert.deepEqual(diarias.map((row) => [row.date, row.amount, row.prepaid]), [['2026-10-01', 100, 100], ['2026-10-02', 100, 100], ['2026-10-03', 100, 100]]);
   assert.deepEqual(rows.filter((row) => row.category === 'Café').map((row) => [row.date, row.amount]), [['2026-10-02', 10], ['2026-10-03', 10], ['2026-10-04', 10]]);
+  assert.deepEqual(revenueTimeline(rows, { from: '2026-10-02', to: '2026-10-03' }), {
+    total: 220,
+    points: [
+      { from: '2026-10-02', to: '2026-10-02', revenue: 110 },
+      { from: '2026-10-03', to: '2026-10-03', revenue: 110 },
+    ],
+  });
+  assert.equal(revenueTimeline(rows, { from: '2026-09-01', to: '2026-11-30' }).total, 330);
 });
 
 test('resultado de caixa fecha com a variação de caixa físico e banco', () => {

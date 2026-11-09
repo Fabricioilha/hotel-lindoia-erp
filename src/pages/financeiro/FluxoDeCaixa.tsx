@@ -175,6 +175,7 @@ export function FluxoDeCaixa() {
 	});
 	const transfers = Object.values(data.transfers).filter((item) => (tab === 'transferencias' || tab === 'resumo' ? dateWithinRange(item.date, activeRange) : item.date.startsWith(month)) && (tab !== 'transferencias' || !term || [item.note, WALLET_LABELS[item.from], WALLET_LABELS[item.to]].some((value) => value?.toLocaleLowerCase('pt-BR').includes(term)))).sort((a, b) => b.date.localeCompare(a.date));
 	const revenueRows = useMemo(() => dailyRevenueRows(data.incomes, data.stays ?? {}, data.suppressed), [data.incomes, data.stays, data.suppressed]);
+	const summaryRevenue = paymentItemTotal(revenueRows.filter((row) => dateWithinRange(row.date, summaryRange)));
 	const periodRevenue = revenueRows.filter((row) => dateWithinRange(row.date, transactionRange) && matchesText(row.category, row.description));
 	const revenueByDay = [...periodRevenue.reduce((map, row) => { const day = map.get(row.date) ?? { date: row.date, diaria: 0, cafe: 0, outros: 0, prepaid: 0, total: 0 }; const value = Math.round(row.amount * 100); if (row.category === 'Diária' || row.category === 'Rotativo') day.diaria += value; else if (row.category === 'Café') day.cafe += value; else day.outros += value; day.prepaid += Math.round(row.prepaid * 100); day.total += value; return map.set(row.date, day); }, new Map<string, { date: string; diaria: number; cafe: number; outros: number; prepaid: number; total: number }>()).values()].sort((a, b) => a.date.localeCompare(b.date));
 	const financeIssues = useMemo(() => financeDataIssues(data), [data]);
@@ -203,6 +204,18 @@ export function FluxoDeCaixa() {
 		if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) return;
 		const range = financeMonthRange(value);
 		setMonth(value); setSummaryRange(range); setTransactionRange(range); setRangeFromDraft(range.from); setRangeToDraft(range.to); setSearch(''); setWalletFilter('all');
+	}
+	function changeSummaryPeriod(range: TransactionRange) {
+		setSummaryRange(range);
+		setMonth(range.to.slice(0, 7));
+	}
+	function openSummaryRevenue() {
+		setTransactionRange(summaryRange);
+		setRangeFromDraft(summaryRange.from);
+		setRangeToDraft(summaryRange.to);
+		setSearch('');
+		selectTab('faturamento');
+		document.getElementById('finance-tab-faturamento')?.focus();
 	}
 	function changeMonth(offset: number) {
 		const date = new Date(`${month}-01T12:00:00`); date.setMonth(date.getMonth() + offset);
@@ -520,6 +533,11 @@ export function FluxoDeCaixa() {
 		...expenses.map((item) => { const payments = paymentsInRange(expensePaymentEvents(item), activeRange.from, activeRange.to).filter((payment) => !isMovementTab || walletFilter === 'all' || payment.wallet === walletFilter); const movementDate = payments.map((payment) => payment.date).sort().at(-1) || item.dueDate; return { id: item.id, date: movementDate, title: item.category, detail: [`${item.purchaseMethod === 'card' && !item.cardStatementId ? 'Data da compra' : 'Vencimento'} ${dateLabel(item.dueDate)}`, item.purchaseMethod ? `Compra: ${PURCHASE_METHOD_LABELS[item.purchaseMethod]}${item.purchaseMethod === 'card' && item.cardCategory ? ` (${item.cardCategory})` : ''}${isPendingCardPurchase(item) ? ' · aguardando pagamento do cartão' : ''}` : '', item.employee ? `Para: ${item.employee}` : '', compensatedAdvances.has(item.id) ? `Compensado na folha ${compensatedAdvances.get(item.id)!.month.slice(5)}/${compensatedAdvances.get(item.id)!.month.slice(0, 4)} · não sai do caixa de novo` : '', item.note].filter(Boolean).join(' · '), amount: item.plannedAmount, paid: item.paidCash + item.paidBank + (item.paidOyo ?? 0), periodPaid: paymentItemTotal(payments), type: 'saida' as const, wallet: `${money(item.paidCash)} em caixa · ${money(item.paidBank)} em banco · ${money(item.paidOyo ?? 0)} retidos OYO` }; }),
 		...payroll.map((item) => { const payments = paymentsInRange(payrollPaymentEvents(item), activeRange.from, activeRange.to).filter((payment) => !isMovementTab || walletFilter === 'all' || payment.wallet === walletFilter); return { id: item.id, date: payments.map((payment) => payment.date).sort().at(-1) || item.dueDate, title: item.employee, detail: [`Vencimento ${dateLabel(item.dueDate)}`, item.position || 'Folha de pagamento', Object.keys(item.advances ?? {}).length ? `Vales compensados: ${money(Object.values(item.advances ?? {}).reduce((sum, amount) => sum + amount, 0))} (já saíram do caixa)` : ''].filter(Boolean).join(' · '), amount: payrollNet(item), paid: item.paidCash + item.paidBank, periodPaid: paymentItemTotal(payments), type: 'folha' as const, wallet: `${money(item.paidCash)} em caixa · ${money(item.paidBank)} em banco` }; }),
 	].sort((a, b) => b.date.localeCompare(a.date));
+	const financeActions = <>
+		<button type="button" className="finance-button finance-button-soft finance-export-button" title="Baixar a planilha contábil do mês de referência completo" disabled={Boolean(exportingMonth) || saving} onClick={() => void exportMonthlyReport()}>{exportingMonth ? `Gerando ${monthLabel(exportingMonth)}...` : `↓ Planilha mensal · ${monthLabel(month)}`}</button>
+		<button type="button" className="finance-button finance-button-soft" disabled={loading || saving} onClick={() => openModal('ajuste')}>Ajuste de caixa (+ / −)</button>
+		<button type="button" className="finance-text-button" disabled={loading || saving} onClick={() => openModal('saldo')}>Saldos iniciais</button>
+	</>;
 
 	return (
 		<div className="finance-page cash-flow-page">
@@ -533,11 +551,10 @@ export function FluxoDeCaixa() {
 					<div><p className="finance-eyebrow">FINANCEIRO <span>/</span> CONTROLE</p><h1>Fluxo de caixa</h1><p>Consulte recebimentos, pagamentos e contas em aberto.</p></div>
 					<div className="finance-heading-actions"><button className="finance-button finance-button-dark" disabled={loading || saving} onClick={() => openModal('entrada')}>+ Entrada</button><button className="finance-button finance-button-primary" disabled={loading || saving} onClick={() => openModal('saida')}>+ Despesa</button></div>
 				</div>
-				<section className="finance-report-toolbar" aria-label="Mês para consultar ou lançar">
+				{tab !== 'resumo' && <section className="finance-report-toolbar" aria-label="Mês para consultar ou lançar">
 					<div className="finance-month-navigation"><button type="button" className="finance-month-arrow" onClick={() => changeMonth(-1)} aria-label="Mês anterior">‹</button><label className="finance-month"><span>Mês de referência e da planilha</span><input type="month" value={month} onChange={(event) => selectMonth(event.target.value)} /></label><button type="button" className="finance-month-arrow" onClick={() => changeMonth(1)} aria-label="Mês seguinte">›</button></div>
-					<div className="finance-report-action"><button className="finance-button finance-button-soft finance-export-button" title="Baixar planilha mensal completa para o contador (.xlsx)" disabled={Boolean(exportingMonth) || saving} onClick={() => void exportMonthlyReport()}>{exportingMonth ? `Gerando ${exportingMonth.slice(5, 7)}/${exportingMonth.slice(0, 4)}...` : '↓ Planilha mensal'}</button></div>
-					<button className="finance-button finance-button-soft" disabled={loading || saving} onClick={() => openModal('ajuste')}>Ajuste de caixa (+ / −)</button><button className="finance-text-button" disabled={loading || saving} onClick={() => openModal('saldo')}>Saldos iniciais</button>
-				</section>
+					<div className="finance-heading-actions finance-reference-actions">{financeActions}</div>
+				</section>}
 
 				{error && <div className="finance-alert" role="alert">{error}<button onClick={() => setError('')} aria-label="Fechar aviso">×</button></div>}
 				{notice && <div className="finance-notice" role="status">{notice}</div>}
@@ -557,10 +574,18 @@ export function FluxoDeCaixa() {
 
 					<div className="finance-tab-content" role="tabpanel" tabIndex={0} id={`finance-view-${tab}`} aria-labelledby={`finance-tab-${tab}`}>
 					{tab === 'resumo' && <>
-					<FinancePeriodFilter key={`${summaryRange.from}:${summaryRange.to}`} range={summaryRange} today={positionDate} onChange={setSummaryRange} />
+					<FinancePeriodFilter key={`${summaryRange.from}:${summaryRange.to}`} range={summaryRange} today={positionDate} onChange={changeSummaryPeriod} />
+					<div className="finance-revenue-highlight">
+						<Metric label="Faturamento do período" value={loading ? '—' : money(summaryRevenue)} tone="blue" detail="Clique no valor para consultar o faturamento por dia"
+							help="Soma o faturamento do hotel na faixa selecionada. Diárias e cafés de estadias longas são distribuídos pelos dias do serviço. Inclui a parte do hotel nos pré-pagos e exclui as taxas da OYO."
+							onOpen={openSummaryRevenue} actionLabel="Ver faturamento diário" />
+					</div>
 					<div className="finance-summary-toggle">
-						<button type="button" className="finance-button finance-button-soft" aria-expanded={summaryOpen} onClick={() => setSummaryOpen((value) => { localStorage.setItem('cash-summary-open', String(!value)); return !value; })}>{summaryOpen ? 'Recolher indicadores' : 'Mostrar indicadores'}</button>
-						<Link className="finance-button finance-button-soft" to={`/financeiro/relatorios?de=${summaryRange.from}&ate=${summaryRange.to}`}>Abrir relatórios e gráficos</Link>
+						<div className="finance-heading-actions">
+							<button type="button" className="finance-button finance-button-soft" aria-expanded={summaryOpen} onClick={() => setSummaryOpen((value) => { localStorage.setItem('cash-summary-open', String(!value)); return !value; })}>{summaryOpen ? 'Recolher indicadores' : 'Mostrar indicadores'}</button>
+							<Link className="finance-button finance-button-soft" to={`/financeiro/relatorios?de=${summaryRange.from}&ate=${summaryRange.to}`}>Abrir relatórios e gráficos</Link>
+						</div>
+						<div className="finance-heading-actions">{financeActions}</div>
 					</div>
 					{summaryOpen && <FinanceOverviewCards data={data} overview={financeOverview(data, summaryRange, positionDate)} closings={oyoClosings} oyoReadError={oyoReadError} />}
 

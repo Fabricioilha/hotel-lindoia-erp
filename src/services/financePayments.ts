@@ -28,6 +28,22 @@ export function financeMonthRange(month: string): { from: string; to: string } {
   return { from: `${month}-01`, to: end.toISOString().slice(0, 10) };
 }
 
+export function financeDateBuckets(from: string, to: string) {
+  const day = 86_400_000;
+  const dayTime = (date: string) => Date.parse(`${date}T00:00:00Z`);
+  const dateKey = (time: number) => new Date(time).toISOString().slice(0, 10);
+  const start = dayTime(from);
+  const end = dayTime(to);
+  const days = Math.max(0, (end - start) / day + 1);
+  const bucketDays = days <= 31 ? 1 : days <= 217 ? 7 : Math.ceil(days / 31);
+  const width = bucketDays * day;
+  const periods = Array.from({ length: Math.ceil(days / bucketDays) }, (_, index) => {
+    const first = start + index * width;
+    return { from: dateKey(first), to: dateKey(Math.min(end, first + width - day)) };
+  });
+  return { periods, indexOf: (date: string) => Math.floor((dayTime(date) - start) / width) };
+}
+
 type PaymentSource = Pick<FinanceExpense, 'id' | 'dueDate' | 'paidDate' | 'paidCash' | 'paidBank' | 'paidOyo' | 'payments'>;
 
 function paymentEvents(entry: PaymentSource, includeOyo: boolean): FinancePaymentEvent[] {

@@ -1,7 +1,7 @@
 import { useId, useState } from 'react';
 
-export function FinanceMetric({ label, value, detail, help, tone, negative, onOpen }: {
-  label: string; value: string; detail: string; help: string; tone: string; negative?: boolean; onOpen?: () => void;
+export function FinanceMetric({ label, value, detail, help, tone, negative, onOpen, actionLabel = 'Ver contas' }: {
+  label: string; value: string; detail: string; help: string; tone: string; negative?: boolean; onOpen?: () => void; actionLabel?: string;
 }) {
   const tooltipId = useId();
   const [helpOpen, setHelpOpen] = useState(false);
@@ -16,7 +16,7 @@ export function FinanceMetric({ label, value, detail, help, tone, negative, onOp
         <div id={tooltipId} role="tooltip" className="finance-metric-tooltip" hidden={!helpOpen}>{help}</div>
       </div>
     </div>
-    {onOpen ? <button type="button" className="finance-metric-value-button" aria-label={`${label}, ${value}. Ver contas`} onClick={onOpen}><strong>{value}</strong></button>
+    {onOpen ? <button type="button" className="finance-metric-value-button" aria-label={`${label}, ${value}. ${actionLabel}`} onClick={onOpen}><strong>{value}</strong></button>
       : <strong className={negative ? 'finance-amount-negative' : undefined}>{value}</strong>}
     <small>{detail}</small>
   </article>;

@@ -5,6 +5,7 @@ import { assignRooms, cancelTask, completeTask, deleteCleaningTask, emptyCleanin
 import { subscribeReservationDirectory, subscribeRoomDirectory } from '../../services/housekeepingStore';
 import { localDateKey, subscribeReceptionStayDirectory, type ReceptionStayDirectoryData } from '../../services/receptionStore';
 import { guestStayOccupiesToday, reservationOccupiesToday } from '../../services/reservationAnalytics';
+import { hotelClock, HOTEL_CHECKOUT_TIME } from '../../services/hotelSchedule';
 import type { HousekeepingRoom, ReservationDirectoryEntry, RoomDayPlan } from '../../types/housekeeping';
 import { BackToPanel } from '../../components/ui/BackToPanel';
 import { useAttendant } from '../../services/useAttendant';
@@ -80,7 +81,7 @@ export function ControleLimpeza({ userRole, modalOnly = false }: { userRole: Use
 
   const doneToday = tasks.filter((task) => task.status === 'concluido' && localDateKey(new Date(task.completedAt ?? task.assignedAt)) === today);
   const pendingRooms = Object.values(roomDirectory).filter((room) => room.cleaningStatus !== 'limpo' && room.maintenanceStatus !== 'em_manutencao' && !busyRooms.has(room.number) && !guestOf(room.number));
-  const pastNoon = new Date(clock).getHours() >= 12;
+  const pastNoon = hotelClock(new Date(clock)).time >= HOTEL_CHECKOUT_TIME;
 
   function guestOf(number: string): string {
     return Object.values(reservations).find((reservation) => reservation.roomNumber === number && reservationOccupiesToday(reservation, today, clock))?.guestName
@@ -129,7 +130,7 @@ export function ControleLimpeza({ userRole, modalOnly = false }: { userRole: Use
 
   const summaryPanel = <section className="clean-panel clean-summary" aria-label="Resumo do dia">
     <h2>Resumo de hoje</h2>
-    {pastNoon && pendingRooms.length > 0 && <p role="alert" className="clean-alert">Atenção: após as 12:00 ainda há {pendingRooms.length} quarto(s) a limpar e liberar: {pendingRooms.map((room) => room.number).join(', ')}.</p>}
+    {pastNoon && pendingRooms.length > 0 && <p role="alert" className="clean-alert">Ainda há {pendingRooms.length} quarto(s) para limpar e liberar após o checkout das {HOTEL_CHECKOUT_TIME} · {pendingRooms.map((room) => room.number).join(', ')}.</p>}
     <div className="clean-people">
       {camareiras.map((item) => <div key={item.id} className="clean-person"><strong>{item.name}</strong><small>{doneToday.filter((task) => task.camareira === item.name).length} limpo(s) hoje · {inProgress.filter((task) => task.camareira === item.name).length} em limpeza</small></div>)}
       <div className="clean-person"><strong>Faltam</strong><small>{pendingRooms.length} quarto(s) aguardando limpeza · {inProgress.length} em andamento</small></div>
