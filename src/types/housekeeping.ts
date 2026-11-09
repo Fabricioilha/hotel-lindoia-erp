@@ -70,6 +70,7 @@ export interface ReservationCollection {
   reservationId: string;
   date: string;
   amount: number;
+  oyoFeeAmount?: number;
   paymentMethod: FinancePaymentMethod;
   actor: string;
   createdAt: string;

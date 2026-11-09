@@ -229,6 +229,22 @@ test('occupied reservation edits commit source, directory, receipts and linked c
   assert.ok(writes[0][`erp_geral/financeiro/incomes/${deposit.id}`]);
 });
 
+test('creating a reservation commits every payment and the remaining balance in one update', async () => {
+  const state = databaseFixture();
+  const { service, writes } = offlineStore(state);
+  const next = { ...reservation, id: 'r2', roomId: 'room2', roomNumber: '202', status: 'confirmada', extras: [] };
+  const cash = payment('reservation-r2-cash', 60);
+  const pix = payment('reservation-r2-pix', 100, 'pix');
+  await service.createReservation(next, state.erp_geral.quartos, [cash, pix]);
+  assert.equal(state.erp_geral.quartos.reservations.r2.balanceDue, 60);
+  assert.equal(writes.length, 1);
+  assert.ok(writes[0]['erp_geral/quartos/reservations/r2']);
+  assert.deepEqual(writes[0][`erp_geral/financeiro/incomes/${cash.id}`], cash);
+  assert.deepEqual(writes[0][`erp_geral/financeiro/incomes/${pix.id}`], pix);
+  await service.createReservation(next, state.erp_geral.quartos, [cash, pix]);
+  assert.equal(writes.length, 1);
+});
+
 test('stale or voided financial edits are rejected without changing the reservation', async () => {
   for (const reason of ['changed', 'voided']) {
     const state = databaseFixture();
@@ -256,6 +272,41 @@ test('checkout reconciliation preserves existing receipts and is idempotent with
   await service.syncReservationCollections(['r1']);
   assert.equal(writes.length, 1);
   assert.equal(state.erp_geral.quartos.reservations.r1.balanceDue, 0);
+});
+
+test('concurrent reservation checkout collections use the current open balance', async () => {
+  const state = databaseFixture();
+  const { service } = offlineStore(state);
+  const current = collection('first', 300);
+  const outcomes = await Promise.allSettled([
+    service.recordReservationCollection(current),
+    service.recordReservationCollection(collection('second', 300)),
+  ]);
+  assert.equal(outcomes.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.match(outcomes.find((result) => result.status === 'rejected').reason.message, /saldo atual da reserva/);
+  const [saved] = Object.values(state.erp_geral.reservationCollections.r1);
+  await service.recordReservationCollection(saved);
+  assert.equal(Object.keys(state.erp_geral.reservationCollections.r1).length, 1);
+  await service.syncReservationCollections(['r1']);
+  await service.recordReservationCollection(saved);
+  assert.equal(Object.keys(state.erp_geral.financeiro.incomes).length, 1);
+});
+
+test('a checkout receipt separates the identified OYO fee before and after reconciliation', async () => {
+  const state = databaseFixture();
+  const oyo = { ...reservation, channel: 'oyo' };
+  state.erp_geral.quartos.reservations.r1 = oyo;
+  const { service } = offlineStore(state);
+  const entry = { ...collection('c1', 100), oyoFeeAmount: 20 };
+  await service.recordReservationCollection(entry);
+  await assert.rejects(service.recordReservationCollection({ ...collection('c2', 30), oyoFeeAmount: 20 }), /taxa ainda pendente|parte ainda pendente/);
+  const id = 'reservation-r1-checkout-c1';
+  const pending = withOperationalFinance(finance({}), { ...sources(stay), reservations: { r1: oyo }, reservationCollections: state.erp_geral.reservationCollections });
+  assert.deepEqual(pending.incomes[id].items.map(({ amount, description }) => [amount, description]), [[80, 'Hospedagem · quarto 101'], [20, 'Taxa']]);
+  assert.equal(pending.expenses[`oyo-fee-${id}`].paidOyo, 20);
+  await service.syncReservationCollections(['r1']);
+  await service.recordReservationCollection(entry);
+  assert.deepEqual(state.erp_geral.financeiro.incomes[id].items, pending.incomes[id].items);
 });
 
 test('legacy stay release creates a dirty room record and preserves its payments', async () => {

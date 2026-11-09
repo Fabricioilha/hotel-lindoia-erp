@@ -1,42 +1,28 @@
 import { useState, type FormEvent } from 'react';
-import { saveOyoClosing, type OyoClosingRecord } from '../../services/oyoReconciliation';
+import { registerOyoClosing, type OyoClosingRecord } from '../../services/oyoReconciliation';
 import { formatBRL } from '../../services/money';
 
-export function OyoReconciliation({ month, record, balance, ready, readError, onSaved }: {
+export function OyoReconciliation({ month, balance, pendingCash, readError, onSaved }: {
   month: string;
-  record: OyoClosingRecord | null;
   balance: number | null;
-  ready: boolean;
+  pendingCash: number | null;
   readError: string;
   onSaved: (month: string, record: OyoClosingRecord) => void;
 }) {
   const [draft, setDraft] = useState('');
-  const [editing, setEditing] = useState(false);
-  const [baseline, setBaseline] = useState<OyoClosingRecord | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [notice, setNotice] = useState('');
-
-  function startEditing() {
-    setDraft(balance === null ? '' : String(balance));
-    setBaseline(record);
-    setEditing(true);
-    setNotice('');
-    setError('');
-  }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!draft.trim() || saving) return;
+    if (!draft.trim() || saving || pendingCash === null || balance !== null || readError) return;
     setSaving(true);
     setError('');
     try {
-      const saved = await saveOyoClosing(month, Number(draft), baseline);
+      const saved = await registerOyoClosing(month, Number(draft));
       onSaved(month, saved);
-      setEditing(false);
-      setNotice('Saldo final da RECOM salvo.');
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : 'Não foi possível salvar a RECOM.');
+      setError(cause instanceof Error ? cause.message : 'Não foi possível lançar a RECOM.');
     } finally {
       setSaving(false);
     }
@@ -47,27 +33,22 @@ export function OyoReconciliation({ month, record, balance, ready, readError, on
     <div className="finance-panel-heading">
       <div>
         <h2>RECOM de {monthLabel}</h2>
-        <p>Informe o saldo final do relatório da OYO (campo C). Esse valor já inclui o saldo anterior.</p>
+        {balance !== null ? <p>Competência conciliada</p> : <>
+          <p>Movimentos do mês a conciliar <strong>{pendingCash === null ? '—' : formatBRL(pendingCash)}</strong></p>
+          <p>Pré-pagos do hotel, mais pagamentos à OYO, menos despesas compensadas e repasses recebidos.</p>
+        </>}
       </div>
-      {!editing && <button type="button" className="finance-button finance-button-dark" disabled={!ready} onClick={startEditing}>
-        {balance === null ? 'Informar saldo final' : 'Editar saldo final'}
-      </button>}
+      {balance !== null && <p>Saldo final lançado <strong className={balance < 0 ? 'finance-amount-negative' : undefined}>{formatBRL(balance)}</strong></p>}
     </div>
     {readError && <p className="finance-alert" role="alert">{readError}</p>}
-    {error && <p className="finance-alert" role="alert">{error}</p>}
-    {notice && <p className="finance-notice" role="status">{notice}</p>}
-    {editing ? <form className="finance-settings-form" onSubmit={(event) => void submit(event)}>
+    {error && balance === null && <p className="finance-alert" role="alert">{error}</p>}
+    {pendingCash === null ? !readError && <p>Carregando RECOM...</p> : balance === null && <form className="finance-settings-form" onSubmit={(event) => void submit(event)}>
       <label className="finance-field">
-        <span>Saldo final da RECOM (R$)</span>
+        <span>Total da RECOM de {monthLabel} (R$)</span>
         <input type="number" step="0.01" value={draft} onChange={(event) => setDraft(event.target.value)} aria-describedby="oyo-balance-sign" required />
       </label>
-      <button type="submit" className="finance-button finance-button-primary" disabled={saving}>{saving ? 'Salvando...' : 'Salvar saldo'}</button>
-      <button type="button" className="finance-button finance-button-soft" disabled={saving} onClick={() => { setEditing(false); setError(''); }}>Cancelar</button>
-      <p className="finance-form-hint" id="oyo-balance-sign">Informe um valor negativo se o hotel deve à OYO, positivo se tem a receber ou zero se o campo C estiver zerado.</p>
-    </form> : ready ? <p className="finance-empty-inline">
-      {balance === null ? 'Nenhum saldo final informado neste mês.' : <>
-        <strong>{formatBRL(Math.abs(balance))}</strong> {balance < 0 ? 'a pagar à OYO' : balance > 0 ? 'a receber da OYO' : '· sem saldo'}
-      </>}
-    </p> : !readError && <p>Carregando RECOM...</p>}
+      <button type="submit" className="finance-button finance-button-primary" disabled={saving || Boolean(readError)}>{saving ? 'Lançando...' : 'Lançar RECOM'}</button>
+      <p className="finance-form-hint" id="oyo-balance-sign">Use o saldo final do relatório (campo C), com sinal negativo quando houver valor a pagar. O lançamento encerra o Caixa OYO desta competência.</p>
+    </form>}
   </section>;
 }

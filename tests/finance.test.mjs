@@ -363,7 +363,7 @@ test('cleaning reports stay pending until reviewed and changes require a new rev
   assert.equal(concerns.pendingCleaningConcerns({ log1: { ...log, usageConcern: false } }, acks).length, 0);
 });
 
-test('OYO closing replaces the balance by month, preserves legacy data and leaves cash unchanged', async () => {
+test('OYO closing is registered once per month and clears only that month’s pending OYO cash', async () => {
   const state = db();
   const { load } = isolatedDomain(state);
   const oyo = load('src/services/oyoReconciliation.ts');
@@ -376,16 +376,22 @@ test('OYO closing replaces the balance by month, preserves legacy data and leave
   assert.equal(oyo.latestOyoClosing({}, '2026-09'), null);
   const finance = state.erp_geral.financeiro;
   const originalFinance = structuredClone(finance);
+  await assert.rejects(oyo.registerOyoClosing('2026-10', -19000), /Já existe uma RECOM/);
   finance.oyoReconciliations = { '2026-10': report };
   const closings = finance.oyoReconciliations;
+  const transfers = { remit: { id: 'remit', date: '2026-11-30', oyoRecomMonth: '2026-12', from: 'oyo', to: 'bank', amount: 100 } };
+  const pending = (month, prepaid, compensated) => oyo.oyoMonthPendingCash(oyo.oyoClosingBalance(closings, month), month, transfers, prepaid, compensated);
   assert.equal(oyo.oyoClosingBalance(closings, '2026-10'), -19676.01);
-  await oyo.saveOyoClosing('2026-11', -17000, null);
-  await assert.rejects(oyo.saveOyoClosing('2026-11', 100, null), /outra sessão/);
-  await assert.rejects(oyo.saveOyoClosing('2026-10', 12.345, report), /duas casas/);
-  await oyo.saveOyoClosing('2026-10', -19000, report);
-  await oyo.saveOyoClosing('2026-12', 0, null);
-  assert.equal(closings['2026-10'].revenue, report.revenue);
-  assert.equal(oyo.oyoClosingBalance(closings, '2026-10'), -19000);
+  assert.equal(pending('2026-10', 28948.23, 1268.61), 0);
+  assert.equal(pending('2026-11', 3500.21, 248.12), 3252.09);
+  await oyo.registerOyoClosing('2026-11', -17000);
+  assert.equal(pending('2026-11', 3500.21, 248.12), 0);
+  assert.equal(pending('2026-12', 420.50, 20), 300.50);
+  await assert.rejects(oyo.registerOyoClosing('2026-11', 100), /Já existe uma RECOM/);
+  await assert.rejects(oyo.registerOyoClosing('2026-12', 12.345), /duas casas/);
+  await oyo.registerOyoClosing('2026-12', 0);
+  assert.equal(pending('2026-12', 420.50, 20), 0);
+  assert.deepEqual(closings['2026-10'], report);
   assert.deepEqual(oyo.latestOyoClosing(closings, '2026-11'), { month: '2026-11', balance: -17000 });
   assert.deepEqual(oyo.latestOyoClosing(closings, '2026-12'), { month: '2026-12', balance: 0 });
   const { oyoReconciliations, ...after } = finance;
@@ -403,9 +409,58 @@ test('OYO counter fees follow the date and method of the receipts, separate from
   const finance = data({ stays: { s: stay }, incomes, expenses: {
     fee: expense({ paidOyo: 29.60, paidDate: '2026-11-01' }),
   } });
-  assert.equal(analytics.oyoCounterFees(finance, '2026-10'), 29.60);
-  assert.equal(analytics.oyoCounterFees(finance, '2026-11'), 20);
-  assert.equal(analytics.oyoCounterFees({ ...finance, suppressed: { counter: true } }, '2026-10'), 0);
+  assert.equal(analytics.monthlyReceipts(finance, '2026-10').counterFees, 29.60);
+  assert.equal(analytics.monthlyReceipts(finance, '2026-11').counterFees, 20);
+  assert.equal(analytics.monthlyReceipts({ ...finance, suppressed: { counter: true } }, '2026-10').counterFees, 0);
+});
+
+test('hotel revenue, cash movement and the OYO estimate reconcile mixed and historical fees once', async () => {
+  const date = '2026-11-05';
+  const item = (id, description, amount, paymentMethod) => ({ id, description, amount, paymentMethod });
+  const mixed = { ...receipt('mixed', date, 332, 'prepaid'), items: [
+    item('lodging', 'Diária', 300, 'prepaid'), item('prepaid-fee', 'Taxa', 20, 'prepaid'), item('counter-fee', 'Taxa', 12, 'cash'),
+  ] };
+  const reservation = { ...receipt('reservation-s-paid', date, 8), items: [item('fee', 'Taxa · quarto 101', 8, 'cash')] };
+  const state = db({ incomes: { mixed, [reservation.id]: reservation, old: receipt('old', '2026-10-30', 1000, 'prepaid') },
+    expenses: { other: expense({ id: 'other', dueDate: date, paidDate: date, plannedAmount: 70, paidOyo: 70 }) },
+    payroll: { p1: payroll({ paidBank: 100, paidDate: date }) }, cashAdjustments: { a1: adjustment(-5, date) },
+    transfers: {
+      remit: { id: 'remit', date, from: 'oyo', to: 'bank', amount: 200, oyoRecomMonth: '2026-11', createdAt: stamp, note: '' },
+      pay: { id: 'pay', date, from: 'bank', to: 'oyo', amount: 10, createdAt: stamp, note: '' },
+      internal: { id: 'internal', date, from: 'cash', to: 'bank', amount: 20, createdAt: stamp, note: '' },
+    },
+  });
+  state.erp_geral.recepcao.stays.s = { id: 's', roomNumber: '101', guestName: 'Teste', createdAt: stamp, checkInDate: date,
+    receipts: Object.fromEntries([
+      item('lodging', 'Diária', 500, 'prepaid'), item('prepaid', 'Taxas', 18, 'prepaid'), item('counter', 'Taxas', 30, 'pix'),
+    ].map((line) => [line.id, { ...line, date, method: line.paymentMethod, category: line.description, label: line.description, createdAt: stamp }])) };
+  const { load } = isolatedDomain(state);
+  const store = load('src/services/financeStore.ts');
+  const { dailyRevenueRows } = load('src/services/dailyRevenue.ts');
+  const { oyoEstimatedPosition } = load('src/services/oyoReconciliation.ts');
+  const { buildMonthlyAccountingReport } = load('src/services/accounting/monthlyAccounting.ts');
+  const view = await store.loadFinanceForMonth('2026-11');
+  const summary = analytics.monthlyFinanceSummary(view, '2026-11');
+  assert.equal(summary.receipts.prepaid, 800);
+  assert.equal(summary.receipts.counterFees, 50);
+  assert.equal(summary.receipts.received, 250);
+  assert.equal(summary.cashOutflow, 110);
+  assert.equal(summary.cashResult, 135);
+  assert.equal(summary.oyoPaidExpenses, 120);
+  assert.equal(view.expenses['recepcao-s-oyo-fee'].paidOyo, 30);
+  assert.equal(view.expenses['oyo-fee-mixed'].paidOyo, 12);
+  assert.equal(view.expenses['oyo-fee-reservation-s-paid'].paidOyo, 8);
+  assert.equal(dailyRevenueRows(view.incomes, view.stays).filter((row) => row.date === date).reduce((sum, row) => sum + row.amount, 0), 800);
+  assert.equal(buildMonthlyAccountingReport(view, '2026-11', stamp).totals.prepaid, 800);
+  const estimate = oyoEstimatedPosition(view, { month: '2026-10', balance: -19676.01 }, date);
+  assert.equal(estimate.balance, -19186.01);
+  assert.deepEqual(estimate.transfers.map((entry) => entry.id), ['remit', 'pay']);
+  assert.equal(oyoEstimatedPosition(view, { month: '2026-11', balance: -17000 }, date).balance, -17000);
+
+  await store.updateFinance((current) => ({ ...current, incomes: { ...current.incomes, mixed: {
+    ...current.incomes.mixed, amount: 320, items: current.incomes.mixed.items.slice(0, 2),
+  } } }));
+  assert.equal((await store.loadFinanceForMonth('2026-11')).expenses['oyo-fee-mixed'], undefined);
 });
 
 test('OYO position applies later transfers once and absorbs them at the linked closing', () => {
@@ -426,6 +481,51 @@ test('OYO position applies later transfers once and absorbs them at the linked c
   assert.deepEqual(oyoPosition({ month: '2026-12', balance: -17000 }, transfers, '2026-12-31'), { balance: -17000, transfers: [] });
 });
 
+test('summary and reports use the same cross-month totals, preserving receipt and sale dates', async () => {
+  const mixed = { ...receipt('mixed', '2026-10-31', 140), items: [
+    { id: 'lodging', amount: 100, description: 'Diária', paymentMethod: 'cash' },
+    { id: 'extra', amount: 30, description: 'Colchão extra', paymentMethod: 'debit' },
+    { id: 'tax', amount: 10, description: 'Taxa', paymentMethod: 'cash' },
+  ] };
+  const state = db({
+    incomes: { history: receipt('history', '2026-10-20', 40), mixed,
+      breakfast: { ...receipt('breakfast', '2026-11-01', 50, 'prepaid'), category: 'Café' },
+      tax: { ...receipt('tax', '2026-11-01', 12, 'prepaid'), category: 'Taxas' },
+      future: receipt('future', '2026-11-03', 500) },
+    expenses: { e1: expense({ dueDate: '2026-11-01', plannedAmount: 80, paidBank: 60, paidDate: '2026-11-01' }) },
+    transfers: {
+      remit: { id: 'remit', date: '2026-11-01', from: 'oyo', to: 'cash', amount: 20 },
+      internal: { id: 'internal', date: '2026-11-01', from: 'cash', to: 'bank', amount: 5 },
+    },
+    cardFeeSchedule: { v1: { effectiveAt: '2026-01-01T00:00:00Z', credit: 0, debit: 1 } },
+  });
+  state.erp_geral.frigobar.operations.sales = {
+    later: { id: 'later', createdAt: '2026-10-31T15:00:00Z', amount: 25, settlement: 'pago_no_checkout', paymentMethod: 'cartao_credito', settledAt: '2026-11-02T15:00:00Z', items: [] },
+    pending: { id: 'pending', createdAt: '2026-11-01T15:00:00Z', amount: 15, settlement: 'cobrar_no_checkout', items: [] },
+  };
+  const { load } = isolatedDomain(state);
+  const view = await load('src/services/financeStore.ts').loadFinanceForMonth('2026-11');
+  const { financeOverview } = load('src/services/financeOverview.ts');
+  const period = financeOverview(view, { from: '2026-10-31', to: '2026-11-03' }, '2026-11-01');
+  assert.deepEqual(period.sales, { geladeira: 40, breakfast: 50, extras: 30 });
+  assert.deepEqual([period.incomingCash, period.cardGross, period.cardNet], [130, 30, 29.70]);
+  assert.deepEqual([period.counterFees, period.prepaid, period.expenses, period.expensesPaid], [10, 50, 90.30, 70.30]);
+  assert.deepEqual([period.balances.cash, period.balances.bank], [265, 174.70]);
+  assert.deepEqual(period.timeline.map(({ incoming, outgoing }) => [incoming, outgoing]), [[140, .30], [20, 60]]);
+  assert.equal(period.received, 160);
+  assert.equal(period.outflow, 60.30);
+  const second = financeOverview(view, { from: '2026-11-01', to: '2026-11-02' }, '2026-11-02');
+  assert.equal(second.sales.geladeira, 15);
+  assert.equal(second.cardGross, 25);
+
+  const { oyoClosingAt, oyoEstimatedPosition } = load('src/services/oyoReconciliation.ts');
+  const records = { '2026-11': { closingBalance: -1000, updatedAt: stamp } };
+  const closing = oyoClosingAt(records, period.asOf);
+  assert.equal(closing.month, '2026-10');
+  assert.equal(oyoEstimatedPosition(view, closing, period.asOf).balance, -19646.01);
+  assert.equal(oyoClosingAt(records, '2026-11-30').balance, -1000);
+});
+
 test('a card statement uses its due date and records one withdrawal for the remaining purchases', async () => {
   const cardCategory = 'Cartão Mercado Pago · Fabricio';
   const state = db({ expenses: {
@@ -441,13 +541,19 @@ test('a card statement uses its due date and records one withdrawal for the rema
   const now = '2026-11-10T14:00:00Z';
   const input = { id: 'invoice', cardCategory, dueDate: '2026-11-12', expenseIds: ['a', 'b'], expectedAmount: 65.30 };
   const before = await loadFinanceForMonth('2026-11');
-  assert.equal(accountsInScope(outstandingAccounts(before, '2026-11-10'), 'overdue', '2026-11-10', '2026-11-30').length, 0);
-  assert.equal(accountsInScope(outstandingAccounts(before, '2026-11-10'), 'unassignedCards', '2026-11-10', '2026-11-30').length, 2);
+  const ungroupedAccounts = outstandingAccounts(before, '2026-11-10');
+  assert.equal(accountsInScope(ungroupedAccounts, 'overdue', '2026-11-10', '2026-11-30').length, 0);
+  assert.equal(accountsInScope(ungroupedAccounts, 'unassignedCards', '2026-11-10', '2026-11-30').length, 2);
+  assert.deepEqual(accountsInScope(ungroupedAccounts, 'all', '2026-11-10', '2026-10-31').map(({ detail, pending }) => [detail, pending]), [
+    [cardCategory, 45.10], [cardCategory, 20.20],
+  ]);
   await updateFinance((current) => groupCardPurchases(current, input, now));
   const open = await loadFinanceForMonth('2026-11');
   assert.equal(open.expenses.a.dueDate, '2026-11-12');
   assert.equal(payments.expensePaymentEvents(open.expenses.a)[0].date, '2026-10-20');
-  assert.deepEqual(outstandingAccounts(open, '2026-11-10').map(({ statementId, dueDate, pending }) => ({ statementId, dueDate, pending })), [
+  const openAccounts = outstandingAccounts(open, '2026-11-10');
+  assert.deepEqual(accountsInScope(openAccounts, 'throughMonth', '2026-11-10', '2026-10-31'), []);
+  assert.deepEqual(accountsInScope(openAccounts, 'all', '2026-11-10', '2026-10-31').map(({ statementId, dueDate, pending }) => ({ statementId, dueDate, pending })), [
     { statementId: 'invoice', dueDate: '2026-11-12', pending: 65.30 },
   ]);
   assert.deepEqual(analytics.balancesAt(open, '2026-11'), analytics.balancesAt(before, '2026-11'));

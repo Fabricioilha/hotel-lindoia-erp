@@ -1,6 +1,5 @@
-import { incomeItems, incomePaymentWallet, payrollNet, type FinanceBalances, type FinanceData, type FinanceIncome, type FinanceIncomeItem } from '../types/finance';
-import { expensePaymentEvents, financeCents, financeMonthRange, paymentEventTotals, paymentsInRange, payrollPaymentEvents } from './financePayments';
-import { stayFinanceEntries } from './operationalLedger';
+import { financeReceiptItems, incomeItems, incomePaymentWallet, isOyoFeeItem, payrollNet, type FinanceBalances, type FinanceData, type FinanceIncome, type FinanceIncomeItem } from '../types/finance';
+import { expensePaymentEvents, financeCents, financeMoney, financeMonthRange, paymentEventTotals, paymentsInRange, payrollPaymentEvents } from './financePayments';
 
 export interface PrepaidIncomeEntry {
   income: FinanceIncome;
@@ -19,7 +18,7 @@ export function balancesAtDate(data: FinanceData, endDate: string): FinanceBalan
     if (Number.isFinite(item.amount)) balances.cash += financeCents(item.amount);
   });
   Object.values(data.incomes).filter((item) => item.date <= endDate && !data.suppressed[item.id]).forEach((item) => {
-    incomeItems(item).forEach((line) => {
+    financeReceiptItems(item).forEach((line) => {
       const wallet = incomePaymentWallet(line.paymentMethod);
       if (wallet && Number.isFinite(line.amount)) balances[wallet] += financeCents(line.amount);
     });
@@ -44,22 +43,29 @@ export function balancesAtDate(data: FinanceData, endDate: string): FinanceBalan
 }
 
 export function monthlyReceipts(data: FinanceData, month: string) {
-  const { from, to } = financeMonthRange(month);
+  return financeReceiptsInRange(data, financeMonthRange(month));
+}
+
+export function financeReceiptsInRange(data: FinanceData, { from, to }: { from: string; to: string }) {
   let directCents = 0;
   let prepaidCents = 0;
+  let counterFeeCents = 0;
   let repasseCents = 0;
   let sentToOyoCents = 0;
   Object.values(data.incomes).filter((entry) => entry.date >= from && entry.date <= to && !data.suppressed[entry.id]).forEach((entry) => {
-    incomeItems(entry).forEach((item) => {
+    financeReceiptItems(entry).forEach((item) => {
       if (item.paymentMethod === 'prepaid') prepaidCents += financeCents(item.amount);
-      else if (incomePaymentWallet(item.paymentMethod)) directCents += financeCents(item.amount);
+      else if (incomePaymentWallet(item.paymentMethod)) {
+        directCents += financeCents(item.amount);
+        if (isOyoFeeItem(entry, item)) counterFeeCents += financeCents(item.amount);
+      }
     });
   });
   Object.values(data.transfers).filter((entry) => entry.date >= from && entry.date <= to).forEach((entry) => {
     if (entry.from === 'oyo' && entry.to !== 'oyo') repasseCents += Math.round(entry.amount * 100);
     if (entry.to === 'oyo' && entry.from !== 'oyo') sentToOyoCents += Math.round(entry.amount * 100);
   });
-  return { direct: directCents / 100, prepaid: prepaidCents / 100, repasses: repasseCents / 100,
+  return { direct: directCents / 100, prepaid: prepaidCents / 100, counterFees: counterFeeCents / 100, repasses: repasseCents / 100,
     sentToOyo: sentToOyoCents / 100, received: (directCents + repasseCents) / 100,
     registered: (directCents + prepaidCents) / 100 };
 }
@@ -75,13 +81,13 @@ export function oyoPaymentsAt(data: FinanceData, month: string): number {
     .reduce((sum, item) => sum + Math.round(item.amount * 100), 0) / 100;
 }
 
-// Histórico bruto dos pagamentos dos hóspedes à OYO; não é receita recebida no hotel.
-export function prepaidEntriesAt(incomes: Record<string, FinanceIncome>, month: string): PrepaidIncomeEntry[] {
+// Parte do hotel nos pagamentos feitos pelos hóspedes diretamente à OYO.
+export function prepaidEntriesAt(incomes: Record<string, FinanceIncome>, month: string, suppressed: Record<string, boolean> = {}): PrepaidIncomeEntry[] {
   const endDate = financeMonthRange(month).to;
   return Object.values(incomes)
-    .filter((income) => income.date <= endDate)
+    .filter((income) => income.date <= endDate && !suppressed[income.id])
     .flatMap((income) => {
-      const items = incomeItems(income).filter((item) => item.paymentMethod === 'prepaid');
+      const items = financeReceiptItems(income).filter((item) => item.paymentMethod === 'prepaid');
       if (items.length === 0) return [];
       const amount = Math.round(items.reduce((total, item) => total + Math.round(item.amount * 100), 0)) / 100;
       return [{ income, items, amount }];
@@ -91,22 +97,6 @@ export function prepaidEntriesAt(incomes: Record<string, FinanceIncome>, month: 
 
 export function prepaidEntriesTotal(entries: PrepaidIncomeEntry[]): number {
   return entries.reduce((total, entry) => total + Math.round(entry.amount * 100), 0) / 100;
-}
-
-export function oyoCounterFees(data: FinanceData, month: string): number {
-  const { from, to } = financeMonthRange(month);
-  const ids = new Set(Object.values(data.stays ?? {}).flatMap((stay) => Object.values(stayFinanceEntries(stay))
-    .filter((entry) => entry.category === 'Taxas').map((entry) => entry.id)));
-  let cents = 0;
-  for (const id of ids) {
-    const entry = data.incomes[id];
-    if (!entry || data.suppressed[id] || entry.date < from || entry.date > to) continue;
-    for (const item of incomeItems(entry)) {
-      const wallet = incomePaymentWallet(item.paymentMethod);
-      if (wallet === 'cash' || wallet === 'bank') cents += financeCents(item.amount);
-    }
-  }
-  return cents / 100;
 }
 
 export function monthlyFinanceSummary(data: FinanceData, month: string) {
@@ -129,6 +119,7 @@ export function monthlyFinanceSummary(data: FinanceData, month: string) {
   const adjustments = Object.values(data.cashAdjustments ?? {}).filter((item) => item.date >= from && item.date <= to && Number.isFinite(item.amount))
     .reduce((sum, item) => sum + financeCents(item.amount), 0) / 100;
   const cashPaidExpenses = (financeCents(payments.cash) + financeCents(payments.bank)) / 100;
+  const cashOutflow = financeMoney(cashPaidExpenses + receipts.sentToOyo);
   return {
     month,
     openingBalances: balancesAtDate(data, previousDay.toISOString().slice(0, 10)),
@@ -138,6 +129,7 @@ export function monthlyFinanceSummary(data: FinanceData, month: string) {
     expensePayments: paymentEventTotals(paymentsInRange(expenseEvents, from, to)),
     payrollPayments: paymentEventTotals(paymentsInRange(payrollEvents, from, to)),
     cashPaidExpenses,
+    cashOutflow,
     oyoPaidExpenses: payments.oyo,
     paidExpenses: (financeCents(cashPaidExpenses) + financeCents(payments.oyo)) / 100,
     plannedExpenses: dueExpenses.reduce((sum, entry) => sum + financeCents(entry.plannedAmount), 0) / 100,
@@ -147,7 +139,7 @@ export function monthlyFinanceSummary(data: FinanceData, month: string) {
     overdueExpenses: (expenses.filter((entry) => entry.dueDate < from).reduce((sum, entry) => sum + outstanding(entry.plannedAmount, expensePaymentEvents(entry)), 0)
       + payroll.filter((entry) => entry.dueDate < from && entry.month !== month).reduce((sum, entry) => sum + outstanding(payrollNet(entry), payrollPaymentEvents(entry)), 0)) / 100,
     cashAdjustments: adjustments,
-    cashResult: (financeCents(receipts.received) - financeCents(cashPaidExpenses) - financeCents(receipts.sentToOyo) + financeCents(adjustments)) / 100,
+    cashResult: financeMoney(receipts.received - cashOutflow + adjustments),
     internalTransfers: Object.values(data.transfers).filter((entry) => entry.date >= from && entry.date <= to && entry.from !== 'oyo' && entry.to !== 'oyo')
       .reduce((sum, entry) => sum + financeCents(entry.amount), 0) / 100,
     legacyPaymentCount: periodEvents.filter((event) => event.dateSource === 'legacy_due_date').length,

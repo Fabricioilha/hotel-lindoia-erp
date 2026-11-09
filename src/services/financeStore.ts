@@ -5,7 +5,7 @@ import { db, endAt, get, limitToLast, onValue, orderByChild, orderByKey, query, 
 import { buildAuditEvents } from '../types/audit';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, type FinanceData } from '../types/finance';
 import { BREAKFAST_EXPENSE_CATEGORY, LEGACY_BREAKFAST_CATEGORIES } from '../types/reception';
-import { withOperationalFinance, type OperationalFinanceSources } from './operationalLedger';
+import { withOperationalFinance, withOyoFeeExpenses, type OperationalFinanceSources } from './operationalLedger';
 import { financeDateKeyFromTimestamp, financeMonthRange, withExpensePaymentTotals, withPayrollPaymentTotals } from './financePayments';
 import { validateFinanceRecords } from './financeValidation';
 import { validateCardStatements } from './cardStatements';
@@ -221,7 +221,7 @@ async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData
     ...Object.fromEntries(sourcePaths.map(([key], index) => [key, sourceSnapshots[index].val() ?? {}])) };
   // The editor sees the same source-only entries as the cash-flow screen; unchanged derived entries are never copied.
   const current = financeView(raw, true);
-  const proposed = withCardFees(update(current));
+  const proposed = withOyoFeeExpenses(withCardFees(update(current)), current.stays);
   const next = { ...proposed, incomes: { ...proposed.incomes }, expenses: { ...proposed.expenses }, payroll: { ...proposed.payroll } };
   const paymentDate = financeDateKeyFromTimestamp(occurredAt);
   Object.entries(next.incomes).forEach(([id, entry]) => {

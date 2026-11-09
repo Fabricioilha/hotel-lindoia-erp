@@ -18,6 +18,7 @@ const PainelEstoque = lazy(() => import('./pages/estoque/PainelEstoque').then((m
 const VendaGeladeira = lazy(() => import('./pages/VendaGeladeira').then((module) => ({ default: module.VendaGeladeira })));
 const Escala = lazy(() => import('./pages/escala/Escala').then((module) => ({ default: module.Escala })));
 const FluxoDeCaixa = lazy(() => import('./pages/financeiro/FluxoDeCaixa').then((module) => ({ default: module.FluxoDeCaixa })));
+const RelatoriosFinanceiros = lazy(() => import('./pages/financeiro/RelatoriosFinanceiros').then((module) => ({ default: module.RelatoriosFinanceiros })));
 const FolhaDePagamento = lazy(() => import('./pages/financeiro/FolhaDePagamento').then((module) => ({ default: module.FolhaDePagamento })));
 const ListaQuartos = lazy(() => import('./pages/camareiras/ListaQuartos').then((module) => ({ default: module.ListaQuartos })));
 const MapaReservas = lazy(() => import('./pages/reservas/MapaReservas').then((module) => ({ default: module.MapaReservas })));
@@ -218,6 +219,7 @@ function App() {
         <Route path="/funcionarios" element={<ManagementRoute userRole={userRole}><Suspense fallback={<div role="status">Carregando funcionários...</div>}><Funcionarios /></Suspense></ManagementRoute>} />
         <Route path="/tarifas" element={<ManagementRoute userRole={userRole}><Suspense fallback={<div role="status">Carregando tarifas...</div>}><Tarifas /></Suspense></ManagementRoute>} />
         <Route path="/financeiro/caixa" element={<ManagementRoute userRole={userRole}><Suspense fallback={<div role="status">Carregando fluxo financeiro...</div>}><FluxoDeCaixa /></Suspense></ManagementRoute>} />
+        <Route path="/financeiro/relatorios" element={<ManagementRoute userRole={userRole}><Suspense fallback={<div role="status">Carregando relatórios...</div>}><RelatoriosFinanceiros /></Suspense></ManagementRoute>} />
         <Route path="/financeiro/folha" element={<ManagementRoute userRole={userRole}><Suspense fallback={<div role="status">Carregando folha...</div>}><FolhaDePagamento /></Suspense></ManagementRoute>} />
         </Route>
       </Routes>}

@@ -125,6 +125,8 @@ export interface PayrollEntry {
 }
 
 export interface FinanceData {
+  /** Vendas operacionais pela data da venda, inclusive quando o recebimento ainda está pendente. */
+  geladeiraSales?: Record<string, { date: string; amount: number }>;
   cardStatements?: Record<string, CardStatement>;
   /** Hospedagens da recepção, usadas apenas para ratear a receita por dia. */
   stays?: Record<string, import('./reception').GuestStay>;
@@ -191,6 +193,15 @@ export function incomeItems(entry: FinanceIncome): FinanceIncomeItem[] {
     ? 'cash'
     : entry.wallet === 'oyo' ? 'prepaid' : 'bank_transfer';
   return [{ id: entry.id, description: entry.category, amount: entry.amount, paymentMethod }];
+}
+
+export function isOyoFeeItem(entry: FinanceIncome, item: FinanceIncomeItem): boolean {
+  return entry.category === 'Taxas' || (entry.category === 'Diária' && item.description === 'Taxa')
+    || (entry.id.startsWith('reservation-') && item.description.startsWith('Taxa · quarto '));
+}
+
+export function financeReceiptItems(entry: FinanceIncome): FinanceIncomeItem[] {
+  return incomeItems(entry).filter((item) => item.paymentMethod !== 'prepaid' || !isOyoFeeItem(entry, item));
 }
 
 export const EXPENSE_CATEGORIES = [

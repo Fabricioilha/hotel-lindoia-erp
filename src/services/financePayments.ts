@@ -3,6 +3,7 @@ import type { FinanceExpense, FinancePaymentEvent, FinanceWallet, PayrollEntry }
 export const FINANCE_TIME_ZONE = 'America/Sao_Paulo';
 export const financeCents = (value: number) => Math.round(value * 100);
 export const financeMoney = (value: number) => financeCents(value) / 100;
+export const financeDateLabel = (date: string) => date.split('-').reverse().join('/');
 const financeDateFormatter = new Intl.DateTimeFormat('en-CA', { timeZone: FINANCE_TIME_ZONE, year: 'numeric', month: '2-digit', day: '2-digit' });
 
 export function isFinanceDateKey(value: string): boolean {

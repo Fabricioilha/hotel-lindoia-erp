@@ -2,7 +2,7 @@ import { expenseCashMovements } from '../cardStatements';
 import { balancesAt } from '../financeAnalytics';
 import { expensePaymentEvents, payrollPaymentEvents } from '../financePayments';
 import { financeDataIssues } from '../financeValidation';
-import { incomeItems, incomePaymentWallet, payrollNet, type FinanceBalances, type FinanceData, type FinanceWallet } from '../../types/finance';
+import { financeReceiptItems, incomePaymentWallet, payrollNet, type FinanceBalances, type FinanceData, type FinanceWallet } from '../../types/finance';
 
 export interface AccountingReceipt {
   date: string;
@@ -116,7 +116,7 @@ export function buildMonthlyAccountingReport(data: FinanceData, month: string, g
 
   for (const income of Object.values(data.incomes)) {
     if (!inMonth(income.date) || data.suppressed[income.id]) continue;
-    for (const item of incomeItems(income)) {
+    for (const item of financeReceiptItems(income)) {
       const wallet = incomePaymentWallet(item.paymentMethod);
       if (!wallet || !Number.isFinite(item.amount)) throw new Error(`Pagamento inválido no lançamento ${income.id}. Corrija o registro antes de exportar.`);
       const row: AccountingReceipt = { date: income.date, category: income.category, description: item.description, method: item.paymentMethod, wallet, amount: rounded(item.amount), reference: `${income.id}/${item.id}`, note: income.note };

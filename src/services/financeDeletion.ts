@@ -11,6 +11,7 @@ import { deleteStockMovement } from './inventoryDeletion';
 export async function deleteFinancialIncome(entry: FinanceIncome): Promise<void> {
   const updates: Record<string, unknown> = {};
   removeFinanceEntries(updates, [entry.id]);
+  updates[`erp_geral/financeiro/expenses/oyo-fee-${entry.id}`] = null;
   if (entry.id.startsWith('recepcao-')) {
     const snapshot = await get(ref(db, 'erp_geral/recepcao/stays'));
     const stay = (Object.values(snapshot.val() ?? {}) as GuestStay[]).find((item) => entry.id.startsWith(`recepcao-${item.id}-`));

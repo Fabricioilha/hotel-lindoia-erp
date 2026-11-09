@@ -5,7 +5,7 @@ export const CARD_FEE_CATEGORY = 'Taxas da máquina de cartão';
 // Versions are append-only: a new rate never changes a receipt recorded before it.
 export function withCardFees(data: FinanceData): FinanceData {
   const incomes = { ...data.incomes };
-  const expenses = Object.fromEntries(Object.entries(data.expenses).filter(([, entry]) => !entry.generatedFromIncome));
+  const expenses = Object.fromEntries(Object.entries(data.expenses).filter(([id, entry]) => !entry.generatedFromIncome || !id.startsWith('card-fee-')));
   const schedule = Object.values(data.cardFeeSchedule ?? {}).sort((a, b) => b.effectiveAt.localeCompare(a.effectiveAt));
   for (const entry of Object.values(incomes)) {
     if (data.suppressed[entry.id]) continue;

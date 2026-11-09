@@ -65,6 +65,9 @@ test('receipts use their own date and survive changes to check-in and number of 
   const extended = { ...paid, checkInDate: '2026-10-19', nights: 3 };
   assert.equal(stayAmountDue(extended), 100);
   assert.equal(Object.values(stayFinanceEntries(extended))[0].amount, 200);
+  const overnight = initializeStayReceipts({ ...stay(), createdAt: '2026-10-26T06:15:00Z' }, '2026-10-25', true);
+  assert.equal(Object.values(overnight.receipts)[0].receivedAt, '2026-10-26T06:15:00Z');
+  assert.equal(Object.values(stayFinanceEntries(overnight))[0].date, '2026-10-25');
 });
 test('unpaid stay supports partial payments, retries and a later settlement', () => {
   let value = initializeStayReceipts(stay(), '2026-10-25', false);

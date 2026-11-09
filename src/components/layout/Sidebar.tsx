@@ -29,6 +29,7 @@ const ICONS: Record<string, string> = {
   clock: 'M12 7v5l3 2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18',
   dollar: 'M12 3v18M16 7.5H10a2.5 2.5 0 0 0 0 5h4a2.5 2.5 0 0 1 0 5H8',
   receipt: 'M6 3h12v18l-3-2-3 2-3-2-3 2zM9 8h6M9 12h6',
+  chart: 'M4 4v16h16M8 16v-3M12 16V9M16 16V6M20 16v-5',
   sun: 'M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4',
   moon: 'M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z',
 };
@@ -67,6 +68,7 @@ function groupsFor(isAdmin: boolean): NavGroup[] {
         { to: '/tarifas', label: 'Tarifas dos quartos', icon: 'dollar' },
         { to: '/estoque', label: 'Estoque', icon: 'box' },
         { to: '/financeiro/caixa', label: 'Fluxo de caixa', icon: 'wallet' },
+        { to: '/financeiro/relatorios', label: 'Relatórios e gráficos', icon: 'chart' },
         { to: '/financeiro/folha', label: 'Folha de pagamento', icon: 'users' },
       ] },
     );

@@ -418,15 +418,20 @@ export async function deleteRoomCharge(charge: RoomCharge): Promise<void> {
 
 
 export async function saveStayReceipt(stayId: string, input: { id: string; amount: number; method: FinancePaymentMethod; date: string; attendant: string }): Promise<void> {
-  const snapshot = await get(ref(db, PATH + '/stays/' + stayId));
-  if (!snapshot.exists()) throw new Error('Hospedagem não encontrada.');
-  const stay = snapshot.val() as GuestStay;
-  const next = await snapshotStayCardFees(addStayReceipt(stay, input));
-  const updates: Record<string, unknown> = { receiptsInitialized: true, lastReceiptAt: next.lastReceiptAt };
-  for (const [id, receipt] of Object.entries(next.receipts ?? {})) {
-    if (!stay.receipts?.[id]) updates[`receipts/${id}`] = receipt;
-  }
-  await update(ref(db, PATH + '/stays/' + stayId), updates);
+  const now = new Date().toISOString();
+  await withTransactionData(`${PATH}/stays/${stayId}`, async (stayRef) => {
+    for (let attempt = 0; attempt < 4; attempt += 1) {
+      const stay = (await get(stayRef)).val() as GuestStay | null;
+      if (!stay) throw new Error('Hospedagem não encontrada.');
+      const next = addStayReceipt(stay, input, now);
+      if (next === stay) return;
+      const prepared = await snapshotStayCardFees(next);
+      const result = await runTransaction<GuestStay>(stayRef, (current) =>
+        JSON.stringify(current) === JSON.stringify(stay) ? prepared : undefined, { applyLocally: false });
+      if (result.committed) return;
+    }
+    throw new Error('A conta da hospedagem mudou. Confira o saldo e tente registrar o recebimento novamente.');
+  });
 }
 
 export async function transferOperationalCashRecords(date: string, fromAttendant: string, toAttendant: string): Promise<{ stays: number; receipts: number; roomCharges: number; cashOuts: number; floatChecks: number; sales: number; reservationCollections: number }> {

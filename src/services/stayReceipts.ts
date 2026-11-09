@@ -1,6 +1,7 @@
 import { incomeItems, incomePaymentWallet, type FinancePaymentMethod } from '../types/finance';
 import { stayAmountDue, type GuestStay, type StayReceipt } from '../types/reception';
 import { financeDateKeyFromTimestamp, isFinanceDateKey } from './financePayments';
+import { cashShiftDate } from './cashShiftDate';
 import { stayFinanceEntries } from './operationalLedger';
 
 export function existingStayReceipts(stay: GuestStay): Record<string, StayReceipt> {
@@ -13,9 +14,14 @@ export function existingStayReceipts(stay: GuestStay): Record<string, StayReceip
 
 export function initializeStayReceipts(stay: GuestStay, date: string, paid: boolean): GuestStay {
   if (!isFinanceDateKey(date)) throw new Error('Informe uma data válida para o recebimento.');
-  const receivedAt = date === financeDateKeyFromTimestamp(stay.createdAt) ? stay.createdAt : `${date}T12:00:00-03:00`;
+  const receivedAt = receiptTimestamp(date, stay.createdAt);
   const receipts = paid ? Object.fromEntries(Object.entries(existingStayReceipts(stay)).map(([id, receipt]) => [id, { ...receipt, date, receivedAt }])) : {};
   return { ...stay, receiptsInitialized: true, receipts, ...(paid ? { lastReceiptAt: new Date(receivedAt).toISOString() } : {}) };
+}
+
+function receiptTimestamp(date: string, now: string): string {
+  return date === financeDateKeyFromTimestamp(now) || date === cashShiftDate(now)
+    ? now : new Date(`${date}T12:00:00-03:00`).toISOString();
 }
 
 export function withReceiptPaymentMethod(stay: GuestStay, id: string, method: FinancePaymentMethod): GuestStay {
@@ -36,7 +42,7 @@ export function addStayReceipt(stay: GuestStay, input: { id: string; amount: num
   if (stay.receipts?.[input.id]) return stay;
   const amount = Math.round(input.amount * 100) / 100;
   if (!Number.isFinite(amount) || amount <= 0 || amount > stayAmountDue(stay) || !incomePaymentWallet(input.method) || !isFinanceDateKey(input.date) || input.date > financeDateKeyFromTimestamp(now)) throw new Error('Confira o valor, a forma e a data do recebimento. O valor não pode superar o saldo pendente.');
-  const receivedAt = input.date === financeDateKeyFromTimestamp(now) ? now : new Date(`${input.date}T12:00:00-03:00`).toISOString();
+  const receivedAt = receiptTimestamp(input.date, now);
   const receipts = existingStayReceipts(stay);
   const paidByCategory: Record<string, number> = {};
   for (const receipt of Object.values(receipts)) if (!stay.voidedPayments?.[receipt.id]) paidByCategory[receipt.category] = (paidByCategory[receipt.category] ?? 0) + Math.round(receipt.amount * 100);

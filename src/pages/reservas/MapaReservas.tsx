@@ -8,12 +8,12 @@ import { roomCategoryDescription } from '../../types/housekeeping';
 import { DateInput } from '../../components/ui/DateInput';
 import { CaixaRecepcao, type ReceptionEntryContext } from '../caixa/CaixaRecepcao';
 import type { HousekeepingData, HousekeepingRoom, Reservation, ReservationChannel, ReservationCollection, ReservationDirectoryEntry, ReservationExtra, ReservationExtraType, ReservationGuest, ReservationStatus } from '../../types/housekeeping';
-import { cancelConfirmedReservation, createReservation, emptyHousekeeping, housekeepingStorageMode, recordReservationCollection, recordReservationExtra, releaseObsoleteReservationSlots, releaseReservationSlots, reserveReservationSlots, rollbackReservationSlots, saveReservationBalanceDue, saveReservationRecord, subscribeCurrentReservationDirectory, subscribeReservationCollections, subscribeReservationExtras, subscribeReservationRecord, subscribeReservationWorkspace, syncReservationCollections, syncReservationDirectory, transitionReservation } from '../../services/housekeepingStore';
+import { cancelConfirmedReservation, createReservation, emptyHousekeeping, housekeepingStorageMode, recordReservationCollection, recordReservationExtra, releaseObsoleteReservationSlots, releaseReservationSlots, reserveReservationSlots, rollbackReservationSlots, saveReservationRecord, subscribeCurrentReservationDirectory, subscribeReservationCollections, subscribeReservationExtras, subscribeReservationRecord, subscribeReservationWorkspace, syncReservationCollections, syncReservationDirectory, transitionReservation } from '../../services/housekeepingStore';
 import { emptyFinance, subscribeReservationPaymentIncomes } from '../../services/financeStore';
+import { reservationOyoFeeDue } from '../../services/reservationFinance';
 import { deleteStay, subscribeReceptionStayDirectory } from '../../services/receptionStore';
 import { dateKeyAfterDays, guestStayOccupiesToday, hotelOccupancySummary, occupiedRoomNumbers, reservationOccupiesToday, reservationOverlaps, stayCheckOutDate } from '../../services/reservationAnalytics';
 import type { GuestStay, ReceptionRoom } from '../../types/reception';
-import { recordOperationalIncome } from '../../services/operationalIncome';
 import '../camareiras/quartos.css';
 import './reservas.css';
 
@@ -461,11 +461,11 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 			setError('O valor recebido não pode ultrapassar o total da hospedagem com taxas e extras.');
 			return;
 		}
-		const recordPayments = async () => {
-			for (const line of paymentLines.filter((item) => item.amount > 0)) {
-				await recordOperationalIncome({ id: `reservation-${reservationId}-${line.id}`, date: paymentDate, category: line.target === 'Consumo' ? 'Consumo' : channel === 'rotativo' && line.target === 'Hospedagem' ? 'Rotativo' : 'Diária', description: `${line.target} · quarto ${room.number}`, amount: line.amount, paymentMethod: line.method, note: `Recebimento da reserva de ${guestName}` });
-			}
-		};
+		const timestamp = new Date().toISOString();
+		const newPayments: FinanceIncome[] = paymentLines.filter((line) => line.amount > 0).map((line) => {
+			const id = `reservation-${reservationId}-${line.id}`;
+			return { id, date: paymentDate, category: line.target === 'Consumo' ? 'Consumo' : channel === 'rotativo' && line.target === 'Hospedagem' ? 'Rotativo' : 'Diária', amount: line.amount, wallet: incomePaymentWallet(line.method)!, items: [{ id, description: `${line.target} · quarto ${room.number}`, amount: line.amount, paymentMethod: line.method }], note: `Recebimento da reserva de ${guestName}`, createdAt: timestamp, updatedAt: timestamp };
+		});
 		const reservation: Reservation = {
 			id: reservationId,
 			guestName,
@@ -498,17 +498,9 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 			setSaving(true);
 			setError('');
 			try {
-				await createReservation(reservation, data);
+				await createReservation(reservation, data, newPayments);
 				setModalOpen(false);
-				setNotice('Reserva criada.');
-				if (paymentAmount > 0) {
-					try {
-						await recordPayments();
-						await saveReservationBalanceDue(reservation.id, Math.max(0, total - paymentAmount));
-					} catch (cause) {
-						setError(cause instanceof Error ? `Reserva criada, mas o recebimento não foi lançado no Financeiro: ${cause.message}` : 'Reserva criada, mas o recebimento não foi lançado no Financeiro.');
-					}
-				}
+				setNotice(newPayments.length ? 'Reserva e recebimentos registrados.' : 'Reserva criada.');
 			} catch (cause) {
 				setError(cause instanceof Error ? cause.message : 'Não foi possível criar a reserva.');
 			} finally {
@@ -520,11 +512,6 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 		if (!currentRoom) { setError('O quarto selecionado não existe mais.'); return; }
 		if (currentRoom.maintenanceStatus === 'em_manutencao' && currentRoom.id !== selected.roomId) { setError('Este quarto está indisponível para manutenção.'); return; }
 		if (['confirmada', 'hospedado'].includes(reservation.status) && reservationOverlaps(data, reservation)) { setError(`O quarto ${currentRoom.number} já tem uma reserva ativa nesse período.`); return; }
-		const timestamp = new Date().toISOString();
-		const newPayments: FinanceIncome[] = paymentLines.filter((line) => line.amount > 0).map((line) => {
-			const id = `reservation-${reservationId}-${line.id}`;
-			return { id, date: paymentDate, category: line.target === 'Consumo' ? 'Consumo' : channel === 'rotativo' && line.target === 'Hospedagem' ? 'Rotativo' : 'Diária', amount: line.amount, wallet: incomePaymentWallet(line.method)!, items: [{ id, description: `${line.target} · quarto ${room.number}`, amount: line.amount, paymentMethod: line.method }], note: `Recebimento da reserva de ${guestName}`, createdAt: timestamp, updatedAt: timestamp };
-		});
 		const success = await persistReservation(reservation, selected, 'Reserva e recebimentos vinculados atualizados.', [...editedPayments, ...newPayments]);
 		if (success) {
 			showSavedReservation(reservation);
@@ -564,6 +551,7 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 		if (financialLoading) { setError('Aguarde o carregamento do saldo antes de finalizar o checkout.'); return; }
 		const form = new FormData(event.currentTarget);
 		const collectionAmount = Number(form.get('collectionAmount') || 0);
+		const oyoFeeAmount = Number(form.get('oyoFeeAmount') || 0);
 		const paymentMethod = String(form.get('paymentMethod') ?? '') as FinancePaymentMethod;
 		const due = amountDue(reservation);
 		if (!Number.isFinite(collectionAmount) || collectionAmount < 0 || collectionAmount > due + 0.001 || (due > 0 && collectionAmount <= 0)) {
@@ -571,6 +559,10 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 			return;
 		}
 		if (collectionAmount > 0 && !paymentLabels[paymentMethod]) { setError('Selecione a forma de pagamento.'); return; }
+		if (!Number.isFinite(oyoFeeAmount) || oyoFeeAmount < 0 || oyoFeeAmount > collectionAmount) {
+			setError('Confira quanto da taxa da OYO foi recebido neste pagamento.');
+			return;
+		}
 		setSaving(true);
 		setError('');
 		try {
@@ -580,6 +572,7 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 					reservationId: reservation.id,
 					date: today,
 					amount: collectionAmount,
+					...(oyoFeeAmount > 0 ? { oyoFeeAmount } : {}),
 					paymentMethod,
 					actor: isAdmin ? 'Gerência' : 'Equipe',
 					createdAt: new Date().toISOString(),
@@ -732,7 +725,7 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 			</main>
 			{reservationEditorOpen && <ReservationEditor key={selected?.id || 'new-reservation'} rooms={rooms} reservation={selected} data={data} payments={selected ? reservationPayments(selected.id, financeData) : []} externalExtras={selected ? Object.values(extras).filter((extra) => extra.reservationId === selected.id) : []} pendingReceived={selected ? pendingCollectionsTotal(selected.id, collections, financeData) : 0} isAdmin={isAdmin} saving={saving || financialLoading} error={error || contextError} onClose={closeReservationEditor} onSubmit={saveReservation} />}
 			{isAdmin && activeReceptionStay && <CaixaRecepcao userRole={userRole} modalOnly editingStay={activeReceptionStay} entryContext={receptionEntryContext} onModalClose={(message) => { if (message) { showSavedReceptionStay(activeReceptionStay.id); setError(''); setNotice(message); } else { setEditingReceptionStay(null); clearContextSelection(); } }} />}
-			{activeCheckoutReservation && <CheckoutEditor key={`${activeCheckoutReservation.id}-${amountDue(activeCheckoutReservation)}`} reservation={activeCheckoutReservation} due={amountDue(activeCheckoutReservation)} saving={saving || financialLoading} error={error} onClose={closeCheckoutEditor} onSubmit={(event) => void submitCheckOut(event, activeCheckoutReservation)} />}
+			{activeCheckoutReservation && <CheckoutEditor key={`${activeCheckoutReservation.id}-${amountDue(activeCheckoutReservation)}`} reservation={activeCheckoutReservation} due={amountDue(activeCheckoutReservation)} oyoFeeDue={reservationOyoFeeDue(activeCheckoutReservation, financeData.incomes, collections, financeData.suppressed)} saving={saving || financialLoading} error={error} onClose={closeCheckoutEditor} onSubmit={(event) => void submitCheckOut(event, activeCheckoutReservation)} />}
 			{extraReservation && <ExtraEditor key={extraReservation.id} reservation={extraReservation} saving={saving} error={error} onClose={() => setExtraReservation(null)} onSubmit={(event) => void submitExtra(event, extraReservation)} />}
 		</div>
 	);
@@ -756,13 +749,15 @@ function ExtraEditor({ reservation, saving, error, onClose, onSubmit }: { reserv
 	</form></section></div>;
 }
 
-function CheckoutEditor({ reservation, due, saving, error, onClose, onSubmit }: { reservation: Reservation; due: number; saving: boolean; error: string; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function CheckoutEditor({ reservation, due, oyoFeeDue, saving, error, onClose, onSubmit }: { reservation: Reservation; due: number; oyoFeeDue: number; saving: boolean; error: string; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
 	const [amount, setAmount] = useState(due > 0 ? due.toFixed(2) : '0.00');
 	const [paymentMethod, setPaymentMethod] = useState<FinancePaymentMethod>('cash');
 	const [collectionId] = useState(createId);
 	return <div className="modal-backdrop reservation-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="stock-modal housekeeping-modal reservation-modal checkout-modal" role="dialog" aria-modal="true" aria-labelledby="checkout-modal-title"><form className="reservation-form" onSubmit={onSubmit}>
 		<header className="reservation-modal-heading"><div><p className="eyebrow">RECEPÇÃO <span>/</span> ENCERRAMENTO</p><h2 id="checkout-modal-title">Checkout · quarto {reservation.roomNumber}</h2><p>{reservation.guestName}</p></div><button type="button" className="schedule-modal-close" onClick={onClose} aria-label="Fechar">×</button></header>
-		<div className="reservation-modal-content"><section className="reservation-form-section"><div className="reservation-total-row"><span>Saldo devido</span><strong>{money(due)}</strong></div>{due > 0 ? <><p className="reservation-hint">Registre o valor recebido neste checkout. Se houver saldo restante, ele continuará visível para a gerência.</p><input type="hidden" name="collectionId" value={collectionId} /><div className="reservation-form-grid"><label className="schedule-field reservation-field-wide"><span>Valor recebido (R$)</span><input name="collectionAmount" type="number" min="0.01" max={due} step="0.01" required value={amount} onChange={(event) => setAmount(event.target.value)} /></label><label className="schedule-field reservation-field-wide"><span>Forma de pagamento</span><select name="paymentMethod" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as FinancePaymentMethod)}><option value="cash">Dinheiro</option><option value="pix">Pix</option><option value="debit">Cartão de débito</option><option value="credit">Cartão de crédito</option><option value="bank_transfer">Transferência bancária</option></select></label></div><div className="reservation-total-row checkout-remaining-row"><span>Restará após este recebimento</span><strong>{money(Math.max(0, due - Number(amount || 0)))}</strong></div></> : <p className="reservation-hint">Não há saldo pendente para esta hospedagem.</p>}</section></div>
+		<div className="reservation-modal-content"><section className="reservation-form-section"><div className="reservation-total-row"><span>Saldo devido</span><strong>{money(due)}</strong></div>{due > 0 ? <><p className="reservation-hint">Registre o valor recebido neste checkout. Se houver saldo restante, ele continuará visível para a gerência.</p><input type="hidden" name="collectionId" value={collectionId} /><div className="reservation-form-grid"><label className="schedule-field reservation-field-wide"><span>Valor recebido (R$)</span><input name="collectionAmount" type="number" min="0.01" max={due} step="0.01" required value={amount} onChange={(event) => setAmount(event.target.value)} /></label><label className="schedule-field reservation-field-wide"><span>Forma de pagamento</span><select name="paymentMethod" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value as FinancePaymentMethod)}><option value="cash">Dinheiro</option><option value="pix">Pix</option><option value="debit">Cartão de débito</option><option value="credit">Cartão de crédito</option><option value="bank_transfer">Transferência bancária</option></select></label>
+				{oyoFeeDue > 0 && <label className="schedule-field reservation-field-wide"><span>Parte deste pagamento referente à taxa da OYO (R$)</span><input name="oyoFeeAmount" type="number" min="0" max={Math.min(oyoFeeDue, Number(amount || 0))} step="0.01" required /><small>Informe quanto da taxa foi recebido neste pagamento. Informe zero se o valor foi recebido apenas pelos serviços do hotel.</small></label>}
+			</div><div className="reservation-total-row checkout-remaining-row"><span>Restará após este recebimento</span><strong>{money(Math.max(0, due - Number(amount || 0)))}</strong></div></> : <p className="reservation-hint">Não há saldo pendente para esta hospedagem.</p>}</section></div>
 		{error && <p className="reservation-modal-error" role="alert">{error}</p>}
 		<footer className="reservation-modal-footer"><button className="button button-plain" type="button" onClick={onClose}>Cancelar</button><button className="button button-primary" type="submit" disabled={saving}>{saving ? 'Finalizando...' : due > 0 ? 'Receber e finalizar checkout' : 'Finalizar checkout'}</button></footer>
 	</form></section></div>;

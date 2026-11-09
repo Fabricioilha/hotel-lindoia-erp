@@ -1,4 +1,4 @@
-import { incomeItems, incomePaymentWallet, type FinanceIncome } from '../types/finance';
+import { incomeItems, incomePaymentWallet, isOyoFeeItem, type FinanceIncome } from '../types/finance';
 import type { Reservation, ReservationCollection, ReservationExtra } from '../types/housekeeping';
 
 const cents = (amount: number) => Math.round(amount * 100) / 100;
@@ -25,6 +25,32 @@ export function reservationBalanceDue(
     && !incomes[`${prefix}checkout-${collection.id}`] && !suppressed[`${prefix}checkout-${collection.id}`])
     .reduce((total, collection) => total + collection.amount, 0);
   return cents(Math.max(0, reservationFinancialTotal(reservation, extraRecords) - paid - pending));
+}
+
+export function reservationOyoFeeDue(reservation: Reservation, incomes: Record<string, FinanceIncome>, collections: Record<string, ReservationCollection>, suppressed: Record<string, boolean>): number {
+  if (reservation.channel !== 'oyo' || reservation.oyoFeePaidToOyo || !reservation.tax) return 0;
+  const prefix = `reservation-${reservation.id}-`;
+  const paid = Object.values(incomes).filter((entry) => entry.id.startsWith(prefix) && !suppressed[entry.id])
+    .reduce((total, entry) => total + incomeItems(entry).filter((item) => item.paymentMethod !== 'prepaid' && isOyoFeeItem(entry, item))
+      .reduce((sum, item) => sum + item.amount, 0), 0);
+  const pending = Object.values(collections).filter((collection) => collection.reservationId === reservation.id
+    && !incomes[`${prefix}checkout-${collection.id}`] && !suppressed[`${prefix}checkout-${collection.id}`])
+    .reduce((total, collection) => total + (collection.oyoFeeAmount ?? 0), 0);
+  return cents(Math.max(0, reservation.tax - paid - pending));
+}
+
+export function reservationCollectionIncome(collection: ReservationCollection, reservation?: Reservation): FinanceIncome {
+  const id = `reservation-${collection.reservationId}-checkout-${collection.id}`;
+  const tax = collection.oyoFeeAmount ?? 0;
+  const remaining = cents(collection.amount - tax);
+  const description = reservation ? `Hospedagem · quarto ${reservation.roomNumber}` : 'Recebimento de hospedagem no checkout';
+  const items = [];
+  if (remaining > 0) items.push({ id, description, amount: remaining, paymentMethod: collection.paymentMethod });
+  if (tax > 0) items.push({ id: `${id}-taxa`, description: 'Taxa', amount: tax, paymentMethod: collection.paymentMethod });
+  return { id, date: collection.date, category: remaining === 0 ? 'Taxas' : reservation?.channel === 'rotativo' ? 'Rotativo' : 'Diária',
+    amount: collection.amount, wallet: incomePaymentWallet(collection.paymentMethod)!, items,
+    note: ['Recebimento no checkout', collection.actor, reservation?.guestName].filter(Boolean).join(' · '),
+    createdAt: collection.createdAt, updatedAt: collection.createdAt };
 }
 
 export function reservationIncomeContext(

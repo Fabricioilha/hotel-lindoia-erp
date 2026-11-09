@@ -93,17 +93,21 @@ test('weighted purchase cost uses stock remaining after reception sales', async 
   assert.equal(db.state.erp_geral.estoque.movements['cost-loss'].unitCost, 3);
 });
 
-test('reception clerk can append a card receipt with a stored net value', async () => {
+test('concurrent reception receipts cannot overpay a stay and preserve the stored card net', async () => {
   const db = offlineStore();
   db.state.roles.user.role = 'viewer';
   db.state.erp_geral.financeiro.cardFeeSchedule = { v1: { effectiveAt: '2026-01-01T00:00:00Z', credit: 3, debit: 1 } };
   db.state.erp_geral.recepcao = { stays: { s: { id: 's', kind: 'hospede', checkInDate: '2026-10-20', nights: 1, dailyRate: 100, dailyMethod: 'cash', roomNumber: '101', guestName: 'Teste', attendant: 'Equipe', status: 'hospedado', hasBreakfast: false, breakfastRate: 0, taxAmount: 0, taxMethod: 'cash', extras: [], note: '', createdAt: '2026-10-20T15:00:00Z', receiptsInitialized: true } } };
   const reception = db.load('src/services/receptionStore.ts');
-  await reception.saveStayReceipt('s', { id: 'recepcao-s-new', amount: 100, method: 'credit', date: '2026-10-20', attendant: 'Equipe' });
-  const paid = db.state.erp_geral.recepcao.stays.s.receipts['recepcao-s-new'];
+  const receipt = { id: 'recepcao-s-new', amount: 100, method: 'credit', date: '2026-10-20', attendant: 'Equipe' };
+  const concurrent = { ...receipt, id: 'recepcao-s-concurrent' };
+  const outcomes = await Promise.allSettled([receipt, concurrent].map((entry) => reception.saveStayReceipt('s', entry)));
+  assert.equal(outcomes.filter((result) => result.status === 'fulfilled').length, 1);
+  assert.match(outcomes.find((result) => result.status === 'rejected').reason.message, /saldo pendente/);
+  const [paid] = Object.values(db.state.erp_geral.recepcao.stays.s.receipts);
   assert.equal(paid.cardFeeAmount, 3);
   assert.equal(paid.netAmount, 97);
-  await reception.saveStayReceipt('s', { id: 'recepcao-s-new', amount: 100, method: 'credit', date: '2026-10-20', attendant: 'Equipe' });
+  await reception.saveStayReceipt('s', { ...receipt, id: paid.id });
   assert.equal(Object.keys(db.state.erp_geral.recepcao.stays.s.receipts).length, 1);
 });
 const movementInput = (id, type, quantity, fromLocation, toLocation = '') => ({ id, productId: 'water', type, quantity, fromLocation, toLocation, unitPrice: 2, reference: '', note: '', actor: 'Gerência', createdAt: new Date().toISOString(), entryPayment: 'pendente' });

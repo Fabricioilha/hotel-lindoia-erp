@@ -10,7 +10,11 @@ export function outstandingAccounts(data: FinanceData, asOf: string) {
   const accounts = rows.flatMap((row) => {
     const statementId = row.expense?.cardStatementId ?? '';
     const statement = data.cardStatements?.[statementId];
-    if (!statement) return [{ ...row, statementId: '', unassignedCard: row.expense?.purchaseMethod === 'card' }];
+    if (!statement) {
+      const unassignedCard = row.expense?.purchaseMethod === 'card';
+      const detail = unassignedCard ? [row.expense?.cardCategory, row.detail].filter(Boolean).join(' · ') : row.detail;
+      return [{ ...row, detail, statementId: '', unassignedCard }];
+    }
     const grouped = statements.get(statementId);
     if (grouped) {
       grouped.pending = (financeCents(grouped.pending) + financeCents(row.pending)) / 100;

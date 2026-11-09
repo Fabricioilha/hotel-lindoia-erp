@@ -1,4 +1,4 @@
-import { incomeItems, type FinanceIncome } from '../types/finance';
+import { incomeItems, isOyoFeeItem, type FinanceIncome } from '../types/finance';
 import { stayBreakfastDays, stayDailyAmount, type GuestStay } from '../types/reception';
 
 export interface DailyRevenueRow {
@@ -39,11 +39,12 @@ function stayOfIncome(income: FinanceIncome, stays: GuestStay[]): GuestStay | un
  * rateados em cada dia de estadia, mesmo quando foram pagos de uma só vez
  * (inclui pré-pagos). Os demais lançamentos ficam na data do próprio lançamento.
  */
-export function dailyRevenueRows(incomes: Record<string, FinanceIncome>, stays: Record<string, GuestStay>): DailyRevenueRow[] {
+export function dailyRevenueRows(incomes: Record<string, FinanceIncome>, stays: Record<string, GuestStay>, suppressed: Record<string, boolean> = {}): DailyRevenueRow[] {
   const list = Object.values(stays);
   const rows: DailyRevenueRow[] = [];
   for (const income of Object.values(incomes)) {
-    const items = incomeItems(income);
+    if (suppressed[income.id]) continue;
+    const items = incomeItems(income).filter((item) => !isOyoFeeItem(income, item));
     const total = items.reduce((sum, item) => sum + toCents(item.amount), 0);
     if (total <= 0) continue;
     const prepaidTotal = items.filter((item) => item.paymentMethod === 'prepaid').reduce((sum, item) => sum + toCents(item.amount), 0);

@@ -1,13 +1,14 @@
 import { requestCheckout } from './checkoutClient';
 import { db, endAt, equalTo, get, limitToLast, onValue, orderByChild, orderByKey, query, ref, runTransaction, set, startAt, update } from './pocketbaseRealtime';
 import { buildAuditEvents } from '../types/audit';
-import { incomePaymentWallet, type FinanceIncome } from '../types/finance';
+import { incomeItems, incomePaymentWallet, isOyoFeeItem, type FinanceIncome } from '../types/finance';
 import type { GuestStay, RoomCharge } from '../types/reception';
 import { roomChargeFinanceEntries } from './operationalLedger';
-import { reservationBalanceDue, reservationFinancialTotal, reservationIncomeContext, validateReservationPayments } from './reservationFinance';
+import { reservationBalanceDue, reservationCollectionIncome, reservationFinancialTotal, reservationIncomeContext, reservationOyoFeeDue, validateReservationPayments } from './reservationFinance';
 import { deleteCleaningLogTaskUpdates, renameRoomCleaningTasks, roomCleaningTaskUpdates } from './cleaningStore';
 import { withTransactionData } from './pocketbaseTransactions';
 import { withFinanceWriteLock } from './financeTransactions';
+import { financeCents, financeDateKeyFromTimestamp, isFinanceDateKey } from './financePayments';
 import { DEFAULT_ROOM_CATEGORIES, roomCategoriesOf, type HousekeepingData, type HousekeepingRoom, type Reservation, type ReservationCollection, type ReservationDirectoryEntry, type ReservationExtra, type ReservationStatus, type RoomCategoryRecord, type RoomCleaningLog, type RoomDayPlan } from '../types/housekeeping';
 import { guestStayOccupiesToday, reservationOverlaps, reservationOverlapsStay } from './reservationAnalytics';
 
@@ -512,12 +513,20 @@ export async function syncReservationDirectory(reservations: Record<string, Rese
   }
 }
 
-export async function createReservation(reservation: Reservation, current: HousekeepingData): Promise<void> {
+export async function createReservation(reservation: Reservation, current: HousekeepingData, payments: FinanceIncome[] = []): Promise<void> {
   const room = current.rooms[reservation.roomId];
   if (!room) throw new Error('O quarto selecionado não existe.');
   if (room.maintenanceStatus === 'em_manutencao') throw new Error('Este quarto está indisponível para manutenção.');
   validateReservationPeriod(reservation);
-  const staysSnapshot = await get(ref(db, 'erp_geral/recepcao/stays'));
+  validateReservationPayments(reservation.id, payments);
+  const incomeAfter = Object.fromEntries(payments.map((entry) => [entry.id, entry]));
+  if (payments.reduce((total, entry) => total + financeCents(entry.amount), 0) > financeCents(reservationFinancialTotal(reservation))) {
+    throw new Error('O valor recebido não pode ultrapassar o total da reserva e dos adicionais.');
+  }
+  const saved = payments.length ? { ...reservation, balanceDue: reservationBalanceDue(reservation, incomeAfter) } : reservation;
+  const reservationRef = ref(db, `erp_geral/quartos/reservations/${saved.id}`);
+  const [existing, staysSnapshot] = await Promise.all([get(reservationRef), get(ref(db, 'erp_geral/recepcao/stays'))]);
+  if (existing.exists()) return;
   if ((Object.values(staysSnapshot.val() ?? {}) as GuestStay[]).some((stay) => reservationOverlapsStay(reservation, stay))) {
     throw new Error(`O quarto ${room.number} já tem uma hospedagem neste período.`);
   }
@@ -556,17 +565,23 @@ export async function createReservation(reservation: Reservation, current: House
   const operationId = crypto.randomUUID();
   const occurredAt = new Date().toISOString();
   const auditEvents = buildAuditEvents(operationId, occurredAt, [
-    { entity: 'reservation', before: {}, after: { [reservation.id]: reservationsForAudit({ [reservation.id]: reservation })[reservation.id] } },
+    { entity: 'reservation', before: {}, after: { [saved.id]: reservationsForAudit({ [saved.id]: saved })[saved.id] } },
+    { entity: 'finance-income', before: {}, after: incomeAfter },
   ]);
   const updates: Record<string, unknown> = {
-    [`erp_geral/quartos/reservations/${reservation.id}`]: reservation,
-    [`erp_geral/quartos/reservationIndex/${reservation.id}`]: reservationDirectoryEntry(reservation),
-    ...Object.fromEntries(Object.entries(auditEvents).map(([id, event]) => [`erp_geral/quartos/auditLog/${id}`, event])),
+    [`erp_geral/quartos/reservations/${saved.id}`]: saved,
+    [`erp_geral/quartos/reservationIndex/${saved.id}`]: reservationDirectoryEntry(saved),
   };
+  for (const entry of payments) updates[`erp_geral/financeiro/incomes/${entry.id}`] = entry;
+  for (const [id, event] of Object.entries(auditEvents)) {
+    updates[`erp_geral/${event.entity === 'finance-income' ? 'financeiro' : 'quartos'}/auditLog/${id}`] = event;
+  }
   try {
     await update(ref(db), updates);
   } catch {
-    await releaseReservationSlots(reservation).catch(() => undefined);
+    const confirmed = await get(reservationRef).catch(() => null);
+    if (confirmed?.exists()) return;
+    if (confirmed) await releaseReservationSlots(reservation).catch(() => undefined);
     throw new Error('O período acabou de ser reservado ou não foi salvo. Atualize a lista e tente novamente.');
   }
 }
@@ -699,21 +714,6 @@ export async function saveReservationRecord(
   }));
 }
 
-export async function saveReservationBalanceDue(reservationId: string, balanceDue: number): Promise<void> {
-  if (!Number.isFinite(balanceDue) || balanceDue < 0) throw new Error('O saldo da reserva precisa ser um valor válido.');
-  await withReservationWriteLock(reservationId, async () => {
-    const [snapshot, finance] = await Promise.all([
-      get(ref(db, `erp_geral/quartos/reservations/${reservationId}`)), readReservationFinance(reservationId),
-    ]);
-    const previous = snapshot.val() as Reservation | null;
-    if (!previous) throw new Error('A reserva não foi encontrada para atualizar o saldo.');
-    const saved = { ...previous, balanceDue: reservationBalanceDue(previous, finance.incomes, finance.extras, {}, finance.suppressed) };
-    await writeHousekeepingUpdates({ [`erp_geral/quartos/reservations/${reservationId}/balanceDue`]: saved.balanceDue }, [
-      { entity: 'reservation', before: reservationsForAudit({ [reservationId]: previous }), after: reservationsForAudit({ [reservationId]: saved }) },
-    ]);
-  });
-}
-
 export async function cancelConfirmedReservation(reservationId: string): Promise<void> {
   await withReservationWriteLock(reservationId, async () => {
     const snapshot = await get(ref(db, `erp_geral/quartos/reservations/${reservationId}`));
@@ -783,25 +783,42 @@ export function subscribeReservationCollections(
 }
 
 export async function recordReservationCollection(collection: ReservationCollection): Promise<void> {
-  const collectionRef = ref(db, `erp_geral/reservationCollections/${collection.reservationId}/${collection.id}`);
-  const incomeId = `reservation-${collection.reservationId}-checkout-${collection.id}`;
-  const [existing, incomeSnapshot, suppressedSnapshot] = await Promise.all([
-    get(collectionRef), get(ref(db, `erp_geral/financeiro/incomes/${incomeId}`)),
-    get(ref(db, `erp_geral/financeiro/suppressed/${incomeId}`)),
-  ]);
-  if (suppressedSnapshot.val()) throw new Error('Este recebimento foi anulado no Financeiro e não pode ser registrado novamente.');
-  if (incomeSnapshot.exists()) {
-    const income = incomeSnapshot.val() as FinanceIncome;
-    if (income.amount === collection.amount) return;
-    throw new Error('Este recebimento já foi conciliado com outro valor.');
+  const { reservationId, id, amount, date, paymentMethod } = collection;
+  const tax = collection.oyoFeeAmount ?? 0;
+  if (!id || !reservationId || !Number.isFinite(amount) || financeCents(amount) <= 0 || !incomePaymentWallet(paymentMethod)
+    || !Number.isFinite(tax) || tax < 0 || financeCents(tax) > financeCents(amount) || (tax > 0 && paymentMethod === 'prepaid')
+    || !isFinanceDateKey(date) || date > financeDateKeyFromTimestamp(new Date().toISOString())) {
+    throw new Error('Confira o valor, a forma e a data do recebimento.');
   }
-  if (existing.exists()) {
-    const previous = existing.val() as ReservationCollection;
-    if (previous.amount === collection.amount && previous.reservationId === collection.reservationId
-      && previous.date === collection.date && previous.paymentMethod === collection.paymentMethod) return;
-    throw new Error('Este recebimento já foi registrado com outros dados.');
-  }
-  await set(collectionRef, collection);
+  await withReservationWriteLock(reservationId, () => withFinanceWriteLock(async () => {
+    const [snapshot, finance] = await Promise.all([
+      get(ref(db, `erp_geral/quartos/reservations/${reservationId}`)), readReservationFinance(reservationId),
+    ]);
+    const incomeId = `reservation-${reservationId}-checkout-${id}`;
+    if (finance.suppressed[incomeId]) throw new Error('Este recebimento foi anulado no Financeiro e não pode ser registrado novamente.');
+    const income = finance.incomes[incomeId];
+    if (income) {
+      const items = incomeItems(income);
+      const recordedTax = items.filter((item) => isOyoFeeItem(income, item)).reduce((sum, item) => sum + financeCents(item.amount), 0);
+      if (financeCents(income.amount) === financeCents(amount) && recordedTax === financeCents(tax)
+        && income.date === date && items.every((item) => item.paymentMethod === paymentMethod)) return;
+      throw new Error('Este recebimento já foi conciliado com outros dados.');
+    }
+    const previous = finance.collections[id];
+    if (previous) {
+      if (financeCents(previous.amount) === financeCents(amount) && financeCents(previous.oyoFeeAmount ?? 0) === financeCents(tax)
+        && previous.date === date && previous.paymentMethod === paymentMethod) return;
+      throw new Error('Este recebimento já foi registrado com outros dados.');
+    }
+    const reservation = snapshot.val() as Reservation | null;
+    if (!reservation || reservation.status !== 'hospedado') throw new Error('A reserva mudou. Atualize a hospedagem antes de receber.');
+    const due = reservationBalanceDue(reservation, finance.incomes, finance.extras, finance.collections, finance.suppressed);
+    if (financeCents(amount) > financeCents(due)) throw new Error('O recebimento não pode superar o saldo atual da reserva.');
+    const taxDue = reservationOyoFeeDue(reservation, finance.incomes, finance.collections, finance.suppressed);
+    if (financeCents(tax) > financeCents(taxDue)) throw new Error('A taxa da OYO informada supera a parte ainda pendente da taxa.');
+    await set(ref(db, `erp_geral/reservationCollections/${reservationId}/${id}`), { ...collection, amount: financeCents(amount) / 100,
+      ...(tax > 0 ? { oyoFeeAmount: financeCents(tax) / 100 } : {}) });
+  }));
 }
 
 export function subscribeReservationExtras(
@@ -901,15 +918,8 @@ export async function syncReservationCollections(reservationIds?: string[]): Pro
         const incomeId = `reservation-${reservationId}-checkout-${collection.id}`;
         updates[`erp_geral/reservationCollections/${reservationId}/${collection.id}`] = null;
         if (finance.suppressed[incomeId] || nextIncomes[incomeId]) return;
-        const wallet = incomePaymentWallet(collection.paymentMethod);
-        if (!wallet) throw new Error('O recebimento do checkout tem uma forma de pagamento inválida.');
-        const income: FinanceIncome = {
-          id: incomeId, date: collection.date, category: reservation.channel === 'rotativo' ? 'Rotativo' : 'Diária',
-          amount: collection.amount, wallet,
-          items: [{ id: incomeId, description: `Hospedagem · quarto ${reservation.roomNumber}`, amount: collection.amount, paymentMethod: collection.paymentMethod }],
-          note: `Recebimento no checkout · ${collection.actor} · ${reservation.guestName}`,
-          createdAt: collection.createdAt, updatedAt: new Date().toISOString(),
-        };
+        if (!incomePaymentWallet(collection.paymentMethod)) throw new Error('O recebimento do checkout tem uma forma de pagamento inválida.');
+        const income = { ...reservationCollectionIncome(collection, reservation), updatedAt: new Date().toISOString() };
         updates[`erp_geral/financeiro/incomes/${incomeId}`] = income;
         nextIncomes[incomeId] = income;
         incomeAfter[incomeId] = income;
