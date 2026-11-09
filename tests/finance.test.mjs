@@ -86,6 +86,45 @@ const data = (extra = {}) => ({ incomes: {}, expenses: {}, payroll: {}, transfer
 const db = (extra = {}) => ({ erp_geral: { financeiro: data(extra), recepcao: { stays: {}, roomCharges: {}, cashOuts: {} },
   quartos: { reservations: {} }, estoque: { movements: {} }, frigobar: { operations: { sales: {} } }, reservationCollections: {} } });
 
+test('management reports compare equal elapsed dates and distinguish expense registration from payment', () => {
+  const { financeReport, reportChange } = domain.load('src/services/financeReports.ts');
+  const source = data({
+    incomes: {
+      older: receipt('older', '2026-10-05', 200),
+      present: receipt('present', '2026-11-05', 240),
+      outsideComparison: receipt('outsideComparison', '2026-10-20', 400),
+      future: receipt('future', '2026-11-10', 300),
+    },
+    expenses: { card: expense({ id: 'card', purchaseMethod: 'card', purchaseDate: '2026-10-04', dueDate: '2026-11-06',
+      plannedAmount: 80, paidBank: 80, paidDate: '2026-11-06' }) },
+  });
+  const month = { from: '2026-11-01', to: '2026-11-30' };
+  const report = financeReport(source, month, '2026-11-09', 'day');
+  assert.deepEqual(report.comparison.range, { from: '2026-10-01', to: '2026-10-09' });
+  assert.equal(report.current.points.length, 9);
+  assert.equal(report.current.revenue, 240);
+  assert.equal(reportChange(report.current.revenue, report.previous.revenue), 20);
+  assert.equal(report.previous.profit, 120);
+  assert.equal(report.current.profit, 240);
+  assert.equal(report.current.cashResult, 160);
+  assert.equal(report.current.points[5].outgoing, 80);
+  const monthly = financeReport(source, { from: '2026-10-04', to: '2026-11-30' }, '2026-11-09', 'month');
+  assert.deepEqual(monthly.current.points.map(({ from, to, revenue, expenses, outgoing }) => [from, to, revenue, expenses, outgoing]), [
+    ['2026-10-04', '2026-10-31', 600, 80, 0], ['2026-11-01', '2026-11-09', 240, 0, 80],
+  ]);
+});
+
+test('report occupancy counts booked nights once and excludes pending arrivals and day-use rooms', () => {
+  const { reportOccupancy } = domain.load('src/services/financeReports.ts');
+  const stay = { roomNumber: '101', kind: 'hospede', status: 'encerrado', checkInDate: '2026-10-31', checkOutDate: '2026-11-05', checkedOutAt: '2026-11-03T14:00:00Z' };
+  const reservation = { roomNumber: '101', status: 'encerrada', checkInDate: '2026-11-01', checkOutDate: '2026-11-03' };
+  const source = data({ stays: { stay, future: { ...stay, roomNumber: '102', awaitingArrival: true }, period: { ...stay, roomNumber: '102', kind: 'periodo' } },
+    reservations: { duplicate: reservation, confirmed: { ...reservation, roomNumber: '102', status: 'confirmada' }, other: { ...reservation, roomNumber: '102', checkInDate: '2026-11-02' } } });
+  const range = { from: '2026-11-01', to: '2026-11-03' };
+  assert.deepEqual(reportOccupancy(source, new Set(['101', '102']), range), { available: 6, occupied: 3, rate: 50 });
+  assert.equal(reportOccupancy(source, new Set(), range).rate, null);
+});
+
 const adjustment = (amount, date = '2025-01-15') => ({ id: 'a1', date, amount, note: 'Acerto histórico', createdAt: stamp, updatedAt: stamp });
 
 test('finance persists the card net and expense without charging twice on later saves', async () => {
@@ -743,6 +782,34 @@ test('manager stay edit moves a stored receipt to the new payment method even af
   assert.equal(state.erp_geral.financeiro.incomes['recepcao-s-diaria'].items[0].paymentMethod, 'pix');
   assert.equal(state.erp_geral.financeiro.incomes['recepcao-s-diaria'].wallet, 'bank');
   assert.equal(viewOf(domain, state).incomes['recepcao-s-diaria'].items[0].paymentMethod, 'pix');
+});
+
+test('manager can edit the room and rate when PocketBase returns the same stay with a different key order', async () => {
+  const state = db();
+  const original = editableStay({ receiptsInitialized: true, receipts: { 'recepcao-s-diaria': storedReceipt() } });
+  state.erp_geral.recepcao.stays.s = JSON.parse(JSON.stringify(original, (_key, value) =>
+    value && typeof value === 'object' && !Array.isArray(value) ? Object.fromEntries(Object.entries(value).reverse()) : value));
+  state.erp_geral.quartos.rooms = { old: { id: 'old', number: '101', cleaningStatus: 'limpo' } };
+  const { load } = isolatedDomain(state);
+  const { updateStayAndFinance } = load('src/services/receptionStore.ts');
+
+  await updateStayAndFinance({ ...original, roomNumber: '102', dailyRate: 125 }, original);
+  assert.equal(state.erp_geral.recepcao.stays.s.roomNumber, '102');
+  assert.equal(state.erp_geral.recepcao.stays.s.dailyRate, 125);
+  assert.deepEqual(state.erp_geral.recepcao.stays.s.receipts, original.receipts);
+  assert.equal(state.erp_geral.quartos.rooms.old.cleaningStatus, 'sujo');
+});
+
+test('manager stay edit rejects a real change to a receipt since the form opened', async () => {
+  const state = db();
+  const original = editableStay({ receiptsInitialized: true, receipts: { 'recepcao-s-diaria': storedReceipt() } });
+  state.erp_geral.recepcao.stays.s = { ...original, receipts: { 'recepcao-s-diaria': storedReceipt({ amount: 90 }) } };
+  const { load, writes } = isolatedDomain(state);
+  const { updateStayAndFinance } = load('src/services/receptionStore.ts');
+
+  await assert.rejects(updateStayAndFinance({ ...original, roomNumber: '102', dailyRate: 125 }, original), /hospedagem mudou enquanto você editava/);
+  assert.equal(state.erp_geral.recepcao.stays.s.receipts['recepcao-s-diaria'].amount, 90);
+  assert.equal(writes.length, 0);
 });
 
 test('individual stay courtesies waive the selected charges and remove their receipts and fees', async () => {

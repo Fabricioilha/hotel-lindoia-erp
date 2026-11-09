@@ -1,6 +1,6 @@
 import { incomeItems, isOyoFeeItem, type FinanceIncome } from '../types/finance';
 import { stayBreakfastDays, stayDailyAmount, type GuestStay } from '../types/reception';
-import { financeCents as toCents, financeDateBuckets } from './financePayments';
+import { financeCents as toCents, financeDateBuckets, type FinanceGranularity } from './financePayments';
 
 export interface DailyRevenueRow {
   incomeId: string;
@@ -77,8 +77,8 @@ export function dailyRevenueRows(incomes: Record<string, FinanceIncome>, stays: 
   return rows.sort((a, b) => a.date.localeCompare(b.date) || a.category.localeCompare(b.category));
 }
 
-export function revenueTimeline(rows: DailyRevenueRow[], range: { from: string; to: string }) {
-  const { periods, indexOf } = financeDateBuckets(range.from, range.to);
+export function revenueTimeline(rows: DailyRevenueRow[], range: { from: string; to: string }, granularity?: FinanceGranularity) {
+  const { periods, indexOf } = financeDateBuckets(range.from, range.to, granularity);
   const points = periods.map((period) => ({ ...period, revenue: 0 }));
   let total = 0;
   for (const { date, amount } of rows) {

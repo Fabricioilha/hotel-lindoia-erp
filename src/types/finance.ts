@@ -129,8 +129,9 @@ export interface FinanceData {
   /** Vendas operacionais pela data da venda, inclusive quando o recebimento ainda está pendente. */
   geladeiraSales?: Record<string, { date: string; amount: number }>;
   cardStatements?: Record<string, CardStatement>;
-  /** Hospedagens da recepção, usadas apenas para ratear a receita por dia. */
+  /** Fontes operacionais para o rateio da receita e a ocupação histórica. */
   stays?: Record<string, import('./reception').GuestStay>;
+  reservations?: Record<string, import('./housekeeping').Reservation>;
   cardFeeSchedule?: Record<string, { effectiveAt: string; credit: number; debit: number }>;
   cashAdjustments?: Record<string, CashAdjustment>;
   incomes: Record<string, FinanceIncome>;

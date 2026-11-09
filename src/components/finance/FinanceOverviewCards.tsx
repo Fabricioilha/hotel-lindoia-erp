@@ -13,7 +13,7 @@ export function FinanceOverviewCards({ data, overview, closings, oyoReadError }:
   const reference = closing ? `RECOM ${closing.month.split('-').reverse().join('/')}`
     : oyoReadError ? 'Consulta indisponível' : closings ? 'Sem RECOM de referência' : 'Carregando RECOM';
   const cutoff = financeDateLabel(overview.asOf);
-  return <div className="finance-overview-cards">
+  return <div className="finance-overview-cards" role="group" aria-label="Indicadores de recebimentos, vendas e saldos">
     <section className="finance-summary-section" aria-labelledby="overview-cash-heading">
       <h2 id="overview-cash-heading">Recebimentos e despesas</h2>
       <div className="finance-metrics">

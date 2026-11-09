@@ -62,6 +62,10 @@ export interface ReceptionStayDirectoryData {
   rooms: Record<string, ReceptionRoom>;
 }
 
+export function subscribeReceptionRooms(onChange: (rooms: Record<string, ReceptionRoom>) => void, onError: (error: Error) => void): () => void {
+  return onValue(ref(db, `${PATH}/rooms`), (snapshot) => onChange(snapshot.val() ?? {}), onError);
+}
+
 export function subscribeReceptionStayDirectory(
   onChange: (data: ReceptionStayDirectoryData) => void,
   onError: (error: Error) => void,
@@ -80,8 +84,8 @@ export function subscribeReceptionStayDirectory(
     stays = snapshot.val() ?? {};
     publish();
   }, onError);
-  const stopRooms = onValue(ref(db, PATH + '/rooms'), (snapshot) => {
-    rooms = snapshot.val() ?? {};
+  const stopRooms = subscribeReceptionRooms((next) => {
+    rooms = next;
     publish();
   }, onError);
   return () => {
@@ -237,13 +241,22 @@ export function updateStayAndFinance(stay: GuestStay, expected?: GuestStay): Pro
   return withFinanceWriteLock(() => commitStayAndFinance(stay, expected));
 }
 
+function staySnapshotSignature(stay: GuestStay): string {
+  // A leitura da lista e a leitura individual podem devolver as chaves em ordens diferentes.
+  return JSON.stringify(stay, (_key, value: unknown) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return value;
+    const fields = value as Record<string, unknown>;
+    return Object.fromEntries(Object.keys(fields).sort().map((key) => [key, fields[key]]));
+  });
+}
+
 async function commitStayAndFinance(stay: GuestStay, expected?: GuestStay): Promise<void> {
   const stayRef = ref(db, `${PATH}/stays/${stay.id}`);
   const snapshot = await get(stayRef);
   if (!snapshot.exists()) throw new Error('Esta hospedagem já foi excluída. Atualize a lista antes de editar.');
 
   const previous = snapshot.val() as GuestStay;
-  if (expected && JSON.stringify(previous) !== JSON.stringify(expected)) {
+  if (expected && staySnapshotSignature(previous) !== staySnapshotSignature(expected)) {
     throw new Error('Esta hospedagem mudou enquanto você editava. Reabra o lançamento e tente novamente.');
   }
   const previousReceipts = existingStayReceipts(previous);

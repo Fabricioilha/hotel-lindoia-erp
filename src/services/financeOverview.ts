@@ -1,7 +1,6 @@
-import { financeReceiptItems, isOyoFeeItem, payrollNet, type FinanceData, type FinanceIncome, type FinanceIncomeItem, type FinancePaymentMethod, type FinancePaymentEvent } from '../types/finance';
-import { balancesAtDate } from './financeAnalytics';
-import { expenseRegistrationDate } from './cardStatements';
-import { expensePaymentEvents, financeCents, financeDateBuckets, payrollPaymentEvents } from './financePayments';
+import { financeReceiptItems, isOyoFeeItem, type FinanceData, type FinanceIncome, type FinanceIncomeItem, type FinancePaymentMethod, type FinancePaymentEvent } from '../types/finance';
+import { balancesAtDate, registeredExpenses } from './financeAnalytics';
+import { expensePaymentEvents, financeCents, financeDateBuckets, payrollPaymentEvents, type FinanceGranularity } from './financePayments';
 
 export type FinanceRange = { from: string; to: string };
 
@@ -16,9 +15,9 @@ function saleGroup(entry: FinanceIncome, item: FinanceIncomeItem) {
   if (extraLabels.has(entry.category) || extraLabels.has(description)) return 'extras';
 }
 
-export function financeOverview(data: FinanceData, range: FinanceRange, today: string) {
+export function financeOverview(data: FinanceData, range: FinanceRange, today: string, granularity?: FinanceGranularity) {
   const asOf = range.to < today ? range.to : today;
-  const { periods, indexOf } = financeDateBuckets(range.from, asOf);
+  const { periods, indexOf } = financeDateBuckets(range.from, asOf, granularity);
   const timeline = periods.map((period) => ({ ...period, incoming: 0, outgoing: 0 }));
   const inPeriod = (date: string) => date >= range.from && date <= asOf;
   const dueInPeriod = (date: string) => date >= range.from && date <= range.to;
@@ -30,7 +29,6 @@ export function financeOverview(data: FinanceData, range: FinanceRange, today: s
   let repasses = 0;
   let cashRepasses = 0;
   let sentToOyo = 0;
-  let plannedExpenses = 0;
   const paid = { cash: 0, bank: 0, oyo: 0 };
   const categories = new Map<string, number>();
 
@@ -83,13 +81,12 @@ export function financeOverview(data: FinanceData, range: FinanceRange, today: s
   }
   for (const entry of Object.values(data.expenses)) {
     if (data.suppressed[entry.id]) continue;
-    if (dueInPeriod(expenseRegistrationDate(data, entry))) plannedExpenses += financeCents(entry.plannedAmount);
     collectPayments(entry.category, expensePaymentEvents(entry));
   }
   for (const entry of Object.values(data.payroll)) {
-    if (dueInPeriod(entry.dueDate)) plannedExpenses += financeCents(payrollNet(entry));
     collectPayments('Folha de pagamento', payrollPaymentEvents(entry));
   }
+  const plannedExpenses = registeredExpenses(data).reduce((sum, entry) => dueInPeriod(entry.date) && Number.isFinite(entry.amount) ? sum + financeCents(entry.amount) : sum, 0);
 
   return {
     asOf,

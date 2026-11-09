@@ -28,14 +28,28 @@ export function financeMonthRange(month: string): { from: string; to: string } {
   return { from: `${month}-01`, to: end.toISOString().slice(0, 10) };
 }
 
-export function financeDateBuckets(from: string, to: string) {
+export type FinanceGranularity = 'day' | 'month';
+
+export function financeDateBuckets(from: string, to: string, granularity?: FinanceGranularity) {
   const day = 86_400_000;
   const dayTime = (date: string) => Date.parse(`${date}T00:00:00Z`);
   const dateKey = (time: number) => new Date(time).toISOString().slice(0, 10);
   const start = dayTime(from);
   const end = dayTime(to);
   const days = Math.max(0, (end - start) / day + 1);
-  const bucketDays = days <= 31 ? 1 : days <= 217 ? 7 : Math.ceil(days / 31);
+  if (granularity === 'month') {
+    const monthIndex = (date: string) => Number(date.slice(0, 4)) * 12 + Number(date.slice(5, 7)) - 1;
+    const monthStart = (index: number) => `${String(Math.floor(index / 12)).padStart(4, '0')}-${String(index % 12 + 1).padStart(2, '0')}-01`;
+    const first = monthIndex(from);
+    const count = days ? monthIndex(to) - first + 1 : 0;
+    const step = Math.max(1, Math.ceil(count / 36));
+    const periods = Array.from({ length: Math.ceil(count / step) }, (_, index) => ({
+      from: index ? monthStart(first + index * step) : from,
+      to: (index + 1) * step >= count ? to : dateKey(dayTime(monthStart(first + (index + 1) * step)) - day),
+    }));
+    return { periods, indexOf: (date: string) => Math.floor((monthIndex(date) - first) / step) };
+  }
+  const bucketDays = granularity === 'day' || days <= 31 ? 1 : days <= 217 ? 7 : Math.ceil(days / 31);
   const width = bucketDays * day;
   const periods = Array.from({ length: Math.ceil(days / bucketDays) }, (_, index) => {
     const first = start + index * width;

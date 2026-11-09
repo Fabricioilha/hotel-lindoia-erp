@@ -1,5 +1,15 @@
 import { financeReceiptItems, incomeItems, incomePaymentWallet, isOyoFeeItem, payrollNet, type FinanceBalances, type FinanceData, type FinanceIncome, type FinanceIncomeItem } from '../types/finance';
 import { expensePaymentEvents, financeCents, financeMoney, financeMonthRange, paymentEventTotals, paymentsInRange, payrollPaymentEvents } from './financePayments';
+import { expenseRegistrationDate } from './cardStatements';
+
+export function registeredExpenses(data: FinanceData): { date: string; category: string; amount: number }[] {
+  return [
+    ...Object.values(data.expenses).filter((expense) => !data.suppressed[expense.id]).map((expense) => ({
+      date: expenseRegistrationDate(data, expense), category: expense.category, amount: expense.plannedAmount,
+    })),
+    ...Object.values(data.payroll).map((entry) => ({ date: entry.dueDate, category: 'Folha de pagamento', amount: payrollNet(entry) })),
+  ];
+}
 
 export interface PrepaidIncomeEntry {
   income: FinanceIncome;

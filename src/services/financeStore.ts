@@ -94,7 +94,7 @@ function financeView(values: Record<string, unknown>, includeOperations: boolean
     stays: values.stays ?? {}, roomCharges: values.roomCharges ?? {}, cashOuts: values.cashOuts ?? {}, sales: values.sales ?? {},
     reservationCollections: values.reservationCollections ?? {}, movements: values.movements ?? {}, reservations: values.reservations ?? {},
   } as OperationalFinanceSources) : data);
-  return includeOperations ? { ...view, stays: (values.stays ?? {}) as FinanceData['stays'] } : view;
+  return includeOperations ? { ...view, stays: (values.stays ?? {}) as FinanceData['stays'], reservations: (values.reservations ?? {}) as FinanceData['reservations'] } : view;
 }
 
 export function subscribeExpenseCategories(onChange: (categories: string[]) => void, onError: (error: Error) => void): () => void {
@@ -126,9 +126,10 @@ export async function loadFinanceForMonth(month: string): Promise<FinanceData> {
 export function subscribeFinance(
   onChange: (data: FinanceData) => void,
   onError: (error: Error) => void,
-  options: { includeOperations?: boolean; transactionRange?: { from: string; to: string } } = {},
+  options: { includeOperations?: boolean; includeAudit?: boolean; transactionRange?: { from: string; to: string } } = {},
 ): () => void {
-  const paths = [...FINANCE_KEYS.map((key) => [key, `erp_geral/financeiro/${key}`]), ...(options.includeOperations === false ? [] : Object.entries(OPERATIONAL_PATHS))];
+  const keys = options.includeAudit === false ? FINANCE_KEYS.filter((key) => key !== 'auditLog') : FINANCE_KEYS;
+  const paths = [...keys.map((key) => [key, `erp_geral/financeiro/${key}`]), ...(options.includeOperations === false ? [] : Object.entries(OPERATIONAL_PATHS))];
   const scopedOperationalFields: Record<string, string> = {
     roomCharges: 'date',
     cashOuts: 'date',

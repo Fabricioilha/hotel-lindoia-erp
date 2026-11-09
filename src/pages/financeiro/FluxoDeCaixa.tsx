@@ -1,3 +1,4 @@
+import { exportCsv } from '../../services/financeCsv';
 import { outstandingAccounts, accountsInScope, type AccountScope } from '../../services/outstandingAccounts';
 import { CardFeeSettings, OutstandingAccounts } from '../../components/finance/FinanceControls';
 import { FinanceMetric as Metric } from '../../components/finance/FinanceMetric';
@@ -76,18 +77,6 @@ function incomePaymentSummary(entry: FinanceIncome) {
 	incomeItems(entry).forEach((item) => totals.set(item.paymentMethod, (totals.get(item.paymentMethod) ?? 0) + item.amount));
 	const fees = cardReceiptSummary(entry);
   return [...totals].map(([method, amount]) => `${money(amount)} ${PAYMENT_METHOD_LABELS[method]}`).join(' · ') + (fees.fee ? ` · taxa ${money(fees.fee)} · líquido ${money(fees.net)}` : '');
-}
-
-function exportCsv(filename: string, rows: (string | number)[][]) {
-	const content = rows.map((row) => row.map((value) => `"${(typeof value === 'string' && /^[=+@\t\r-]/.test(value) ? `'${value}` : String(value)).replaceAll('"', '""')}"`).join(';')).join('\r\n');
-	const url = URL.createObjectURL(new Blob([`\uFEFF${content}`], { type: 'text/csv;charset=utf-8' }));
-	const link = document.createElement('a');
-	link.href = url;
-	link.download = filename;
-	document.body.appendChild(link);
-	link.click();
-	link.remove();
-	window.setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 export function FluxoDeCaixa() {

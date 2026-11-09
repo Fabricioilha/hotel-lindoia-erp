@@ -51,6 +51,10 @@
 .dashboard-content-employee .dashboard-welcome .dashboard-eyebrow { display: none; }
 .dashboard-content-employee .dashboard-welcome h1 { font-size: 1rem; line-height: 1.2; }
 .dashboard-welcome > div > p:last-child { margin-top: 7px; color: var(--brand-muted); font-size: 0.75rem; }
+.dashboard-reports-link { width: fit-content; border-color: #d6dfeb; color: #2e4d83; background: #fff; text-decoration: none; }
+.dashboard-reports-link:hover { border-color: #8299bc; }
+.dashboard-reports-link:focus-visible { outline: 2px solid #5887d0; outline-offset: 3px; }
+:where(html[data-manager-theme="dark-glass"]) .dashboard-reports-link { color: var(--dg-text); border-color: var(--dg-border-strong); background: var(--dg-surface); }
 .dashboard-content-employee .dashboard-welcome > div > p:last-child { margin-top: 1px; font-size: 0.625rem; line-height: 1.25; }
 .dashboard-content-employee .notice { width: fit-content; max-width: 100%; gap: 6px; margin: 0 0 7px; padding: 4px 7px; border-radius: 3px; font-size: 0.625rem; line-height: 1.25; }
 .dashboard-toast { display: flex; width: fit-content; max-width: 100%; align-items: center; gap: 6px; margin: 0 0 7px; padding: 4px 8px; border: 1px solid #cde4d1; border-radius: 4px; color: #286849; background: #edf8ef; font-size: 0.625rem; line-height: 1.25; opacity: 1; transform: translateY(0); animation: dashboard-toast-fade 180ms ease 2.4s forwards; }
