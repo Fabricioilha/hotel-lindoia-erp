@@ -6,6 +6,7 @@ import type { FrigobarSale } from '../types/frigobar';
 import type { CleaningTask } from '../types/cleaning';
 import { stayCheckOutDate } from './reservationAnalytics';
 import { hotelClock, hotelDate, HOTEL_CHECKOUT_TIME } from './hotelSchedule';
+import { currentOccupants } from './occupantDirectory';
 
 export { hotelDate } from './hotelSchedule';
 
@@ -42,6 +43,19 @@ export function checkoutPending(state: CheckoutState, target: CheckoutTarget): n
     if (sale.sourceId ? sale.sourceId === source.id && sale.sourceType === target.sourceType : sale.roomNumber.trim() === source.roomNumber.trim()) due += sale.amount;
   }
   return Math.round(due * 100) / 100;
+}
+
+export function checkoutStatus(state: CheckoutState, now: Date): CheckoutAlert[] {
+  const date = hotelDate(now);
+  const reservations = state.quartos?.reservations ?? {};
+  const stays = state.recepcao?.stays ?? {};
+  // Match the accounts opened from today's room grid, including balances before checkout time.
+  return currentOccupants(stays, reservations, date, now.getTime()).flatMap(({ sourceType, sourceId, roomNumber }) => {
+    const source = sourceType === 'stay' ? stays[sourceId] : reservations[sourceId];
+    if (!roomNumber || source.checkedOutAt) return [];
+    const pending = checkoutPending(state, { sourceType, sourceId });
+    return pending > 0 ? [{ sourceType, sourceId, roomNumber, guestName: source.guestName, pending }] : [];
+  });
 }
 
 export function dueCheckouts(state: CheckoutState, now: Date): CheckoutTarget[] {

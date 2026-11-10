@@ -1,5 +1,6 @@
 import { pb } from '../config/pocketbase';
-import type { CheckoutTarget } from './checkoutPolicy';
+import { checkoutStatus, type CheckoutAlert, type CheckoutState, type CheckoutTarget } from './checkoutPolicy';
+import { db, get, ref } from './pocketbaseRealtime';
 
 const unavailable = 'A liberação de quartos está indisponível. A gerência precisa verificar o serviço de checkout. Nenhuma hospedagem foi encerrada.';
 const missingRoute = 'Serviço de checkout não encontrado (HTTP 404). Nenhuma hospedagem foi encerrada. Para remover um cadastro feito por engano, use Excluir hospedagem ou Excluir reserva; para checkout, a gerência deve verificar a publicação do serviço.';
@@ -23,6 +24,28 @@ export async function checkoutQuery<T>(query = '', signal?: AbortSignal): Promis
   const token = pb.authStore.token;
   const response = await fetch(`/api/checkout${query}`, { signal, headers: { Authorization: `Bearer ${token ?? ''}` } });
   return checkoutResponse<T>(response);
+}
+
+export async function managerCheckoutAlerts(now: Date): Promise<CheckoutAlert[]> {
+  const [reservations, stays, roomCharges, incomes, suppressed, extras, collections, sales] = await Promise.all([
+    get(ref(db, 'erp_geral/quartos/reservations')),
+    get(ref(db, 'erp_geral/recepcao/stays')),
+    get(ref(db, 'erp_geral/recepcao/roomCharges')),
+    get(ref(db, 'erp_geral/financeiro/incomes')),
+    get(ref(db, 'erp_geral/financeiro/suppressed')),
+    get(ref(db, 'erp_geral/reservationExtras')),
+    get(ref(db, 'erp_geral/reservationCollections')),
+    get(ref(db, 'erp_geral/frigobar/operations/sales')),
+  ]);
+  const state: CheckoutState = {
+    quartos: { reservations: reservations.val() ?? undefined },
+    recepcao: { stays: stays.val() ?? undefined, roomCharges: roomCharges.val() ?? undefined },
+    financeiro: { incomes: incomes.val() ?? undefined, suppressed: suppressed.val() ?? undefined },
+    reservationExtras: extras.val() ?? undefined,
+    reservationCollections: collections.val() ?? undefined,
+    frigobar: { operations: { sales: sales.val() ?? undefined } },
+  };
+  return checkoutStatus(state, now);
 }
 
 export async function requestCheckout(target: CheckoutTarget): Promise<void> {

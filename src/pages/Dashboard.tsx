@@ -2,7 +2,7 @@ import { StayAccount } from '../components/StayAccount';
 import { cashShiftDate } from '../services/cashShiftDate';
 import { acknowledgeCashCollection, subscribeCashCollections } from '../services/cashCollections';
 import { acknowledgeCleaningConcern, subscribeCleaningConcerns } from '../services/cleaningConcerns';
-import { checkoutQuery, requestCheckout } from '../services/checkoutClient';
+import { checkoutQuery, managerCheckoutAlerts, requestCheckout } from '../services/checkoutClient';
 import type { CheckoutAlert } from '../services/checkoutPolicy';
 import { departureDue, hotelDate, HOTEL_BREAKFAST_END_TIME, HOTEL_CHECK_IN_TIME, HOTEL_CHECKOUT_TIME } from '../services/hotelSchedule';
 import { currentOccupants, stayOccupiesDate, reservationOccupiesDate } from '../services/occupantDirectory';
@@ -118,7 +118,10 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   const boardTodayKey = hotelDate(new Date(clock));
   useEffect(() => {
     const controller = new AbortController();
-    void checkoutQuery<CheckoutAlert[]>('', controller.signal).then((alerts) => {
+    const alertsRequest = userRole === 'admin'
+      ? managerCheckoutAlerts(new Date(clock))
+      : checkoutQuery<CheckoutAlert[]>('', controller.signal);
+    void alertsRequest.then((alerts) => {
       if (!controller.signal.aborted) setCheckoutResult({ date: boardTodayKey, alerts });
     }).catch(() => {
       if (!controller.signal.aborted) setCheckoutResult({ date: boardTodayKey, alerts: null });

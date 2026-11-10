@@ -24,11 +24,10 @@ function domainModule(path) {
   return module.exports;
 }
 
-const { applyCheckout, checkoutPending, dueCheckouts, hotelDate } = domainModule('src/services/checkoutPolicy.ts');
+const { applyCheckout, checkoutPending, checkoutStatus, dueCheckouts, hotelDate } = domainModule('src/services/checkoutPolicy.ts');
 const { currentOccupants, reservationOccupiesDate, stayOccupiesDate } = domainModule('src/services/occupantDirectory.ts');
 const { breakfastForecastDay, breakfastsOnDate } = domainModule('src/services/breakfastForecast.ts');
 const { departureDue } = domainModule('src/services/hotelSchedule.ts');
-const { checkoutStatus } = domainModule('cloudflare/lib/checkoutStatus.ts');
 
 test('breakfast forecast switches at 11 in hotel time, including at the end of the month', () => {
   assert.deepEqual(breakfastForecastDay(new Date('2026-11-30T13:59:59Z')), { date: '2026-11-30', isTomorrow: false });

@@ -1,6 +1,5 @@
-import { checkoutStatus } from '../lib/checkoutStatus';
 import { commitState, pocketbaseClient, readState, requestToken, superuserClient, verifyUser, type BackendEnv } from '../lib/pocketbase';
-import { applyCheckout, hotelDate, type CheckoutState, type CheckoutTarget } from '../../src/services/checkoutPolicy';
+import { applyCheckout, checkoutStatus, hotelDate, type CheckoutState, type CheckoutTarget } from '../../src/services/checkoutPolicy';
 import { stayCheckOutDate } from '../../src/services/reservationAnalytics';
 import type { Reservation, ReservationDirectoryEntry } from '../../src/types/housekeeping';
 import type { GuestStay } from '../../src/types/reception';
