@@ -1,5 +1,4 @@
 import checkout from './functions/checkout';
-import automaticCheckout from './functions/checkout-noon';
 import type { BackendEnv } from './lib/pocketbase';
 
 interface Env extends BackendEnv {
@@ -18,10 +17,5 @@ export default {
       return Response.json({ error: 'Rota não encontrada.' }, { status: 404, headers: { 'Cache-Control': 'no-store' } });
     }
     return env.ASSETS.fetch(request);
-  },
-  // No public HTTP endpoint may invoke the automatic checkout.
-  async scheduled(_controller: { scheduledTime: number }, env: Env): Promise<void> {
-    // Evaluate current hotel date at execution time, even for a delayed event.
-    await automaticCheckout(env);
   },
 };

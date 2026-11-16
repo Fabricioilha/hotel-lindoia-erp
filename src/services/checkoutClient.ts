@@ -26,6 +26,12 @@ export async function checkoutQuery<T>(query = '', signal?: AbortSignal): Promis
   return checkoutResponse<T>(response);
 }
 
+export async function checkStayRenewalAvailability(input: { roomNumber: string; from: string; to: string; sourceId: string }): Promise<boolean> {
+  const query = new URLSearchParams({ action: 'availability', ...input });
+  const result = await checkoutQuery<{ available: boolean }>(`?${query.toString()}`);
+  return result.available;
+}
+
 export async function managerCheckoutAlerts(now: Date): Promise<CheckoutAlert[]> {
   const [reservations, stays, roomCharges, incomes, suppressed, extras, collections, sales] = await Promise.all([
     get(ref(db, 'erp_geral/quartos/reservations')),

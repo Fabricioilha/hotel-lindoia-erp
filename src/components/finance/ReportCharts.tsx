@@ -5,7 +5,7 @@ import { financeCents, financeDateLabel } from '../../services/financePayments';
 import { reportCategorySlices, reportChange, type ReportCategory, type ReportPoint } from '../../services/financeReports';
 import { formatBRL as money } from '../../services/money';
 
-type Series = { key: 'revenue' | 'expenses' | 'incoming' | 'outgoing'; label: string; color: string };
+type Series = { key: 'revenue' | 'expenses' | 'incoming' | 'outgoing' | 'breakfastRevenue' | 'breakfastCost' | 'breakfastProfit'; label: string; color: string };
 const compactMoney = new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 });
 const percent = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
 const margin = { top: 12, right: 10, left: 0, bottom: 0 };

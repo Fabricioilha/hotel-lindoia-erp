@@ -271,9 +271,9 @@
   .sales-page--modal .sales-product-grid { grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; padding: 14px; }
 }
 
-/* ===== DARK-GLASS (gerente) =====
+/* ===== DARK-GLASS (sessões autenticadas) =====
    Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
-   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+   As regras são ativadas pelo tema noite em qualquer sessão autenticada. */
 :where(html[data-manager-theme="dark-glass"]) .sales-page,
 :where(html[data-manager-theme="dark-glass"]) .reception-modal-only {
   --sales-ink: var(--dg-text);

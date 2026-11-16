@@ -1,5 +1,5 @@
 import { incomeItems, incomePaymentWallet, isOyoFeeItem, type FinanceData, type FinanceExpense, type FinanceIncome, type FinancePaymentEvent, type FinancePaymentMethod } from '../types/finance';
-import { MANAGEMENT_COLLECTION_REASON, stayBillingLines, stayTaxPayments, type CashOut, type GuestStay, type RoomCharge } from '../types/reception';
+import { BREAKFAST_EXPENSE_CATEGORY, MANAGEMENT_COLLECTION_REASON, stayBillingLines, stayTaxPayments, type CashOut, type GuestStay, type RoomCharge } from '../types/reception';
 import type { FrigobarSale } from '../types/frigobar';
 import type { ReservationCollection } from '../types/housekeeping';
 import type { Reservation } from '../types/housekeeping';
@@ -155,12 +155,12 @@ export function stockPurchaseExpense(movement: StockMovement): FinanceExpense | 
   if (!dueDate || !Number.isFinite(amount) || amount <= 0) return undefined;
   const id = `stock-entry-${movement.id}`;
   const base: FinanceExpense = {
-    id, dueDate, category: 'Estoque', plannedAmount: amount,
+    id, dueDate, category: movement.category === 'cafe_manha' ? BREAKFAST_EXPENSE_CATEGORY : 'Estoque', plannedAmount: amount,
     paidCash: movement.entryPayment === 'caixa' ? amount : 0,
     paidBank: movement.entryPayment === 'banco' ? amount : 0,
     ...(movement.entryPayment === 'caixa' ? { purchaseMethod: 'cash' as const } : movement.entryPayment === 'banco' ? { purchaseMethod: 'pix' as const }
       : movement.entryPayment === 'cartao' ? { purchaseMethod: 'card' as const, ...(movement.entryCard ? { cardCategory: movement.entryCard } : {}) } : {}),
-    note: [`Entrada de estoque: ${movement.quantity} ${movement.unit} de ${movement.productName}`, movement.reference, movement.note,
+    note: [movement.category === 'cafe_manha' ? 'Compra vinculada ao suprimento do café da manhã' : '', `Entrada de estoque: ${movement.quantity} ${movement.unit} de ${movement.productName}`, movement.reference, movement.note,
       movement.entryPayment ? '' : 'Pagamento não informado no movimento histórico; confira a compra.'].filter(Boolean).join(' · '),
     createdAt: movement.createdAt, updatedAt: movement.createdAt,
   };

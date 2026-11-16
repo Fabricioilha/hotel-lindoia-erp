@@ -962,7 +962,7 @@ html body .modal-backdrop .stock-modal.housekeeping-modal .modal-form-grid > :is
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   Dark Glassmorphism (gerente) — modais. Só com html[data-manager-theme="dark-glass"].
+   Dark Glassmorphism — modais. Ativado pelo tema noite nas sessões autenticadas.
    ═══════════════════════════════════════════════════════════════════════════ */
 html[data-manager-theme="dark-glass"] {
   --modal-ink: var(--dg-text);

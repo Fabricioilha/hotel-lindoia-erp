@@ -373,9 +373,9 @@ html body .dashboard-tool-modal--wide .dashboard-tool-modal-content {
   font-family: var(--modal-font);
 }
 
-/* ===== DARK-GLASS (gerente) =====
+/* ===== DARK-GLASS (sessões autenticadas) =====
    Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
-   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+   As regras são ativadas pelo tema noite em qualquer sessão autenticada. */
 :where(html[data-manager-theme="dark-glass"]) .dashboard-page {
   --brand-ink: var(--dg-text);
   --brand-muted: var(--dg-text-muted);

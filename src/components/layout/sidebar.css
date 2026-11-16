@@ -82,9 +82,9 @@
 .float-form label { display: grid; gap: 4px; color: #556580; font-size: 0.8125rem; font-weight: 700; }
 .float-form input, .float-form textarea { padding: 10px 12px; border: 2px solid #cdd6e3; border-radius: 8px; font: inherit; font-size: 1rem; }
 
-/* ===== DARK-GLASS (gerente) =====
+/* ===== DARK-GLASS (sessões autenticadas) =====
    Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
-   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+   As regras são ativadas pelo tema noite em qualquer sessão autenticada. */
 :where(html[data-manager-theme="dark-glass"]) .app-reception-notice {
   border: 1px solid hsl(152 37% 60% / 0.35);
   color: #86efac;

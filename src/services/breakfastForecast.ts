@@ -1,5 +1,5 @@
 import type { ReservationDirectoryEntry } from '../types/housekeeping';
-import { stayBreakfastDays, type GuestStay, type RoomCharge } from '../types/reception';
+import { stayBreakfastCountOnDate, type GuestStay, type RoomCharge } from '../types/reception';
 import { reservationGuestCount, stayCheckOutDate } from './reservationAnalytics';
 import { hotelClock, HOTEL_BREAKFAST_END_TIME } from './hotelSchedule';
 
@@ -34,9 +34,7 @@ export function breakfastsOnDate(
   }
   for (const stay of Object.values(stays)) {
     if (stay.kind !== 'hospede' || stay.status !== 'hospedado') continue;
-    const daysSinceArrival = (Date.parse(date) - Date.parse(stay.checkInDate)) / 86_400_000;
-    add(stay.roomNumber, stay.checkInDate, stayCheckOutDate(stay), 'stay:' + stay.id,
-      daysSinceArrival > 0 && daysSinceArrival <= stayBreakfastDays(stay) ? Math.max(1, Math.floor(stay.breakfastCount ?? 1)) : 0);
+    add(stay.roomNumber, stay.checkInDate, stayCheckOutDate(stay), 'stay:' + stay.id, stayBreakfastCountOnDate(stay, date));
   }
 
   const eligibleSources = new Set([...rooms.values()].map((room) => room.source));

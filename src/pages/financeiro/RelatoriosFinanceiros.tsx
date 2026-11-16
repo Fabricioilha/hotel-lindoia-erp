@@ -159,6 +159,9 @@ export function RelatoriosFinanceiros() {
       [cash ? 'Resultado de caixa (R$)' : 'Lucro estimado (R$)', resultAmount ?? '', previousResult ?? ''],
       ['Taxa de ocupação (%)', occupancy?.rate ?? '', previousOccupancy?.rate ?? ''],
       [cash ? 'Despesas pagas (R$)' : 'Despesas registradas (R$)', expenseAmount ?? '', previousExpenses ?? ''],
+      ['Receita atribuída ao café da manhã (R$)', current.overview.sales.breakfast, report.previous?.overview.sales.breakfast ?? ''],
+      ['Custo do café da manhã (R$)', current.overview.costs.breakfast, report.previous?.overview.costs.breakfast ?? ''],
+      ['Lucro do café da manhã (R$)', current.overview.profit.breakfast, report.previous?.overview.profit.breakfast ?? ''],
       [],
       ['Início', 'Fim', ...(cash ? ['Entradas (R$)', 'Saídas (R$)'] : ['Faturamento (R$)', 'Despesas registradas (R$)'])],
       ...current.points.map((point) => [point.from, point.to, ...(cash ? [point.incoming, point.outgoing] : [point.revenue, point.expenses])]),
@@ -211,7 +214,7 @@ export function RelatoriosFinanceiros() {
       <div className="report-results" aria-busy={!current && !error}>
         {!current && !error && <p className="sr-only" role="status">Carregando relatórios financeiros</p>}
         <section className="report-hero-grid grid gap-3" aria-label="Indicadores do período">
-          {!current ? Array.from({ length: cash ? 3 : 2 }, (_, index) => <FinanceMetricSkeleton key={index} />) : <>
+          {!current ? Array.from({ length: cash ? 4 : 3 }, (_, index) => <FinanceMetricSkeleton key={index} />) : <>
             <FinanceMetric label={cash ? 'Entradas em caixa e banco' : 'Receita total'} value={money(revenueAmount ?? 0)} tone="green" icon={<ReportIcon name="revenue" />}
               detail={cash ? 'Recebimentos e repasses da OYO' : 'Pela data do serviço ou lançamento'}
               help={cash ? 'Inclui recebimentos diretos e repasses da OYO nas datas registradas no caixa e banco.' : 'Inclui a parte do hotel nos pré-pagos. As taxas da OYO ficam fora do faturamento do hotel.'}
@@ -224,6 +227,10 @@ export function RelatoriosFinanceiros() {
               detail={cash ? 'Inclui compensações da OYO' : 'Compras, contas e folha do período'}
               help={cash ? 'Soma pagamentos de despesas e folha no período, inclusive compensações com retidos da OYO.' : 'Compras no cartão entram na data da compra. As outras contas e a folha entram pelo vencimento.'}
               trend={metricTrend(reportChange(expenseAmount ?? 0, previousExpenses ?? null), comparisonLabel, { lessIsBetter: true })} />
+            <FinanceMetric label="Lucro do café da manhã" value={money(overview?.profit.breakfast ?? 0)} tone={(overview?.profit.breakfast ?? 0) < 0 ? 'coral' : 'green'} icon={<ReportIcon name="result" />}
+              detail={`Receita ${money(overview?.sales.breakfast ?? 0)} · custo ${money(overview?.costs.breakfast ?? 0)}`} negative={(overview?.profit.breakfast ?? 0) < 0}
+              help="Receita atribuída aos recebimentos classificados como café, menos compras registradas para os suprimentos e pagamentos efetuados à I9 no período."
+              trend={metricTrend(reportChange(overview?.profit.breakfast ?? 0, previous?.overview.profit.breakfast ?? null), comparisonLabel)} />
           </>}
         </section>
         <div className="report-chart-grid grid gap-4" data-ready={Boolean(current)}>
@@ -238,6 +245,15 @@ export function RelatoriosFinanceiros() {
               <ReportTimeline key={mode + granularity + range.from + range.to} title={cash ? 'Entradas e saídas' : 'Receitas e despesas'}
                 description={cash ? 'Movimentações do caixa físico e do banco.' : 'Faturamento e despesas registradas no mesmo intervalo.'}
                 points={current.points} series={[...comparisonSeries]} kind="bars" granularity={granularity} />
+            </div>
+            <div className="report-wide">
+              <ReportTimeline key={'breakfast-' + mode + granularity + range.from + range.to} title="Resultado do café da manhã"
+                description="Receita atribuída, compras de suprimentos e pagamentos efetuados à I9."
+                points={current.points} series={[
+                  { key: 'breakfastRevenue', label: 'Receita', color: chartColors.revenue },
+                  { key: 'breakfastCost', label: 'Custo', color: chartColors.expenses },
+                  { key: 'breakfastProfit', label: 'Lucro', color: chartColors.income },
+                ]} kind="bars" granularity={granularity} total={overview.profit.breakfast} />
             </div>
             <div className="report-wide grid grid-cols-1 gap-4 lg:grid-cols-2">
               <ReportBreakdown title="Recebimentos por forma de pagamento" description="Pagamentos diretos e repasses registrados." color={chartColors.income} rows={[

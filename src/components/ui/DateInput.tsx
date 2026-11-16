@@ -24,10 +24,11 @@ interface DateInputProps {
 	min?: string;
 	max?: string;
 	autoFocus?: boolean;
+	disabled?: boolean;
 }
 
 // Campo de data dd/mm/aaaa; o valor enviado no formulário e emitido em onValueChange é ISO (aaaa-mm-dd).
-export function DateInput({ name, value, defaultValue, onValueChange, required, min, max, autoFocus }: DateInputProps) {
+export function DateInput({ name, value, defaultValue, onValueChange, required, min, max, autoFocus, disabled }: DateInputProps) {
 	const [text, setText] = useState(toBr(value ?? defaultValue ?? ''));
 	const [lastValue, setLastValue] = useState(value);
 	const ref = useRef<HTMLInputElement>(null);
@@ -48,17 +49,17 @@ export function DateInput({ name, value, defaultValue, onValueChange, required, 
 	}, [text, iso, min, max]);
 
 	return <span style={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 6 }}>
-		<input ref={ref} style={{ flex: 1, minWidth: 0 }} type="text" inputMode="numeric" placeholder="dd/mm/aaaa" maxLength={10} autoComplete="off" required={required} autoFocus={autoFocus} value={text} onChange={(event) => {
+		<input ref={ref} style={{ flex: 1, minWidth: 0 }} type="text" inputMode="numeric" placeholder="dd/mm/aaaa" maxLength={10} autoComplete="off" required={required} autoFocus={autoFocus} disabled={disabled} value={text} onChange={(event) => {
 			const next = mask(event.target.value);
 			setText(next);
 			onValueChange?.(toIso(next));
 		}} />
-		<button type="button" className="date-input-button" aria-label="Abrir calendário" title="Abrir calendário" onClick={() => pickerRef.current?.showPicker()}>📅</button>
-		<input ref={pickerRef} type="date" tabIndex={-1} aria-hidden="true" min={min} max={max} value={iso} style={{ position: 'absolute', right: 0, bottom: 0, width: 1, height: 1, padding: 0, border: 0, opacity: 0, pointerEvents: 'none' }} onChange={(event) => {
+		<button type="button" className="date-input-button" aria-label="Abrir calendário" title="Abrir calendário" disabled={disabled} onClick={() => pickerRef.current?.showPicker()}>📅</button>
+		<input ref={pickerRef} type="date" tabIndex={-1} aria-hidden="true" disabled={disabled} min={min} max={max} value={iso} style={{ position: 'absolute', right: 0, bottom: 0, width: 1, height: 1, padding: 0, border: 0, opacity: 0, pointerEvents: 'none' }} onChange={(event) => {
 			if (!event.target.value) return;
 			setText(toBr(event.target.value));
 			onValueChange?.(event.target.value);
 		}} />
-		<input type="hidden" name={name} value={iso} />
+		<input type="hidden" name={name} value={iso} disabled={disabled} />
 	</span>;
 }

@@ -623,9 +623,9 @@
   }
 }
 
-/* ===== DARK-GLASS (gerente) =====
+/* ===== DARK-GLASS (sessões autenticadas) =====
    Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
-   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+   As regras são ativadas pelo tema noite em qualquer sessão autenticada. */
 :where(html[data-manager-theme="dark-glass"]) .schedule-app {
   --schedule-line: var(--dg-border);
 }

@@ -235,14 +235,14 @@ function fakeDocument() {
   return { documentElement: element('html'), body: element('body') };
 }
 
-test('dark-glass theme applies to the manager only and is removed for employees, no session and logout', () => {
+test('night theme applies to authenticated manager and employee sessions and is removed on logout', () => {
   const doc = fakeDocument();
   assert.equal(managerTheme.applyManagerTheme('admin', true, doc), true);
   assert.equal(doc.documentElement.get('data-manager-theme'), 'dark-glass');
   assert.equal(doc.body.get('data-manager-theme'), null);
-  // Switching to an employee session (or to no session) must remove it immediately, whatever the stored preference is.
-  assert.equal(managerTheme.applyManagerTheme('viewer', true, doc), false);
-  assert.equal(doc.documentElement.get('data-manager-theme'), null);
+  // Employee sessions share the theme preference; an absent session still removes the attribute immediately.
+  assert.equal(managerTheme.applyManagerTheme('viewer', true, doc), true);
+  assert.equal(doc.documentElement.get('data-manager-theme'), 'dark-glass');
   managerTheme.applyManagerTheme('admin', true, doc);
   assert.equal(managerTheme.applyManagerTheme(null, true, doc), false);
   assert.equal(doc.documentElement.get('data-manager-theme'), null);
@@ -253,7 +253,8 @@ test('dark-glass theme applies to the manager only and is removed for employees,
   doc.documentElement.setAttribute('data-manager-theme', 'dark-glass'); doc.body.setAttribute('data-manager-theme', 'dark-glass');
   managerTheme.clearManagerTheme(doc);
   assert.deepEqual([doc.documentElement.get('data-manager-theme'), doc.body.get('data-manager-theme')], [null, null]);
-  for (const role of ['viewer', null, undefined]) assert.equal(managerTheme.managerThemeApplies(role, true), false);
+  for (const role of ['admin', 'viewer']) assert.equal(managerTheme.managerThemeApplies(role, true), true);
+  for (const role of [null, undefined]) assert.equal(managerTheme.managerThemeApplies(role, true), false);
 });
 
 test('manager theme preference is stored under its own key and tolerates unavailable storage', () => {
@@ -298,8 +299,8 @@ test('every dark-glass rule is scoped to the manager attribute and the login sty
   assert.match(sourceText('src/pages/dashboard.css'), /-webkit-backdrop-filter: var\(--dg-blur\)/);
 });
 
-test('the dark theme toggle is rendered for the manager only and logout clears it before the session ends', () => {
-  assert.match(sourceText('src/services/useManagerTheme.ts'), /available: userRole === 'admin'/);
+test('the night theme toggle is rendered for authenticated users and logout clears it before the session ends', () => {
+  assert.match(sourceText('src/services/useManagerTheme.ts'), /available: userRole === 'admin' \|\| userRole === 'viewer'/);
   const sidebar = sourceText('src/components/layout/Sidebar.tsx');
   assert.match(sidebar, /useManagerTheme\(userRole\)/);
   assert.match(sidebar, /\{managerTheme\.available && <button[^>]*role="switch"/);

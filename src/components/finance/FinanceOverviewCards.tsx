@@ -36,6 +36,17 @@ export function FinanceOverviewCards({ data, overview, closings, oyoReadError }:
           help="Soma os recebimentos identificados como extras, incluindo cama ou colchão adicional, hóspede extra e alterações de entrada ou saída. Geladeira e café têm totais próprios." />
       </div>
     </section>
+    <section className="finance-summary-section" aria-labelledby="overview-breakfast-heading">
+      <h2 id="overview-breakfast-heading">Resultado do café da manhã</h2>
+      <div className="finance-metrics">
+        <Metric label="Receita atribuída ao café" value={money(overview.sales.breakfast)} tone="gold" detail="Recebimentos registrados como café"
+          help="Soma os recebimentos e pré-pagos classificados como café da manhã no período." />
+        <Metric label="Custo do café" value={money(overview.costs.breakfast)} tone="coral" detail="Compras de suprimentos e pagamentos à I9"
+          help="Considera compras de mercado registradas para o estoque de café da manhã pela data da compra, além dos pagamentos efetivamente lançados para a empresa I9 no período." />
+        <Metric label="Lucro do café" value={money(overview.profit.breakfast)} tone={overview.profit.breakfast < 0 ? 'coral' : 'green'} negative={overview.profit.breakfast < 0}
+          detail="Receita atribuída menos custo registrado" help="Diferença entre a receita atribuída ao café da manhã e os custos de suprimentos e pagamentos à I9." />
+      </div>
+    </section>
     <section className="finance-summary-section" aria-labelledby="overview-oyo-heading">
       <h2 id="overview-oyo-heading">Acerto com a OYO</h2>
       <div className="finance-metrics finance-metrics-four">

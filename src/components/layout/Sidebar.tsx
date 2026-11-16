@@ -141,8 +141,8 @@ export function AppShell({ userRole, onLogout }: { userRole: UserRole; onLogout:
 
         <div className="app-sidebar-footer">
           <span className="app-sidebar-profile"><small>{isAdmin ? 'PERFIL' : 'PLANTONISTA'}</small><strong>{isAdmin ? 'Gerência' : duty.attendant || 'Sem plantonista na escala'}</strong></span>
-          {managerTheme.available && <button type="button" className={`app-nav-item app-theme-toggle${managerTheme.enabled ? ' is-on' : ''}`} role="switch" aria-checked={managerTheme.enabled} aria-label="Tema escuro" onClick={managerTheme.toggle} title={managerTheme.enabled ? 'Voltar ao tema claro' : 'Ativar o tema escuro'}>
-            <Icon name={managerTheme.enabled ? 'moon' : 'sun'} /><span className="app-nav-label">Tema escuro</span><span className="app-theme-switch" aria-hidden="true"><span className="app-theme-knob" /></span>
+          {managerTheme.available && <button type="button" className={`app-nav-item app-theme-toggle${managerTheme.enabled ? ' is-on' : ''}`} role="switch" aria-checked={managerTheme.enabled} aria-label="Tema noite" onClick={managerTheme.toggle} title={managerTheme.enabled ? 'Voltar ao tema claro' : 'Ativar o tema noite'}>
+            <Icon name={managerTheme.enabled ? 'moon' : 'sun'} /><span className="app-nav-label">Tema noite</span><span className="app-theme-switch" aria-hidden="true"><span className="app-theme-knob" /></span>
           </button>}
           <button type="button" className="app-nav-item app-logout" onClick={onLogout} title="Encerrar sessão"><Icon name="logout" /><span className="app-nav-label">Encerrar sessão</span></button>
         </div>

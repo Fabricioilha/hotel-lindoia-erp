@@ -1,6 +1,6 @@
 import { dailyRevenueRows, revenueTimeline } from './dailyRevenue';
 import { registeredExpenses } from './financeAnalytics';
-import { financeOverview, type FinanceRange } from './financeOverview';
+import { breakfastCostRows, financeOverview, type FinanceRange } from './financeOverview';
 import { financeCents, financeDateBuckets, financeDateKeyFromTimestamp, financeMonthRange, isFinanceDateKey, type FinanceGranularity } from './financePayments';
 import { stayCheckOutDate } from './reservationAnalytics';
 import type { FinanceData } from '../types/finance';
@@ -84,6 +84,9 @@ export interface ReportPoint extends FinanceRange {
   expenses: number;
   incoming: number;
   outgoing: number;
+  breakfastRevenue: number;
+  breakfastCost: number;
+  breakfastProfit: number;
 }
 
 export interface ReportCategory {
@@ -97,6 +100,16 @@ function reportPeriod(data: FinanceData, rows: ReturnType<typeof dailyRevenueRow
   const revenue = revenueTimeline(rows, range, granularity);
   const { indexOf } = financeDateBuckets(range.from, range.to, granularity);
   const expensesByPoint = Array<number>(revenue.points.length).fill(0);
+  const breakfastRevenueByPoint = Array<number>(revenue.points.length).fill(0);
+  const breakfastCostByPoint = Array<number>(revenue.points.length).fill(0);
+  rows.filter((row) => row.category === 'Café' && row.date >= range.from && row.date <= range.to).forEach((row) => {
+    const index = indexOf(row.date);
+    if (breakfastRevenueByPoint[index] !== undefined) breakfastRevenueByPoint[index] += financeCents(row.amount);
+  });
+  breakfastCostRows(data, range).forEach((row) => {
+    const index = indexOf(row.date);
+    if (breakfastCostByPoint[index] !== undefined) breakfastCostByPoint[index] += financeCents(row.amount);
+  });
   const categories = new Map<string, number>();
   for (const { date, category, amount } of expenses) {
     if (date < range.from || date > range.to || !Number.isFinite(amount)) continue;
@@ -108,6 +121,8 @@ function reportPeriod(data: FinanceData, rows: ReturnType<typeof dailyRevenueRow
     date >= range.from && date <= range.to && Number.isFinite(amount) ? sum + financeCents(amount) : sum, 0);
   const points: ReportPoint[] = revenue.points.map((point, index) => ({
     ...point, expenses: expensesByPoint[index] / 100, incoming: overview.timeline[index]?.incoming ?? 0, outgoing: overview.timeline[index]?.outgoing ?? 0,
+    breakfastRevenue: breakfastRevenueByPoint[index] / 100, breakfastCost: breakfastCostByPoint[index] / 100,
+    breakfastProfit: (breakfastRevenueByPoint[index] - breakfastCostByPoint[index]) / 100,
   }));
   return {
     overview, points, revenue: revenue.total,

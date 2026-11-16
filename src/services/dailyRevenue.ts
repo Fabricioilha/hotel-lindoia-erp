@@ -1,5 +1,5 @@
 import { incomeItems, isOyoFeeItem, type FinanceIncome } from '../types/finance';
-import { stayBreakfastDays, stayDailyAmount, type GuestStay } from '../types/reception';
+import { stayBaseNights, type GuestStay } from '../types/reception';
 import { financeCents as toCents, financeDateBuckets, type FinanceGranularity } from './financePayments';
 
 export interface DailyRevenueRow {
@@ -33,6 +33,29 @@ function stayOfIncome(income: FinanceIncome, stays: GuestStay[]): GuestStay | un
   return stays.find((stay) => income.id.startsWith(`recepcao-${stay.id}-`) || Boolean(stay.receipts?.[income.id]));
 }
 
+function serviceDates(stay: GuestStay, income: FinanceIncome): string[] {
+  if (stay.kind === 'periodo') return [];
+  const receipt = stay.receipts?.[income.id];
+  const lineId = receipt?.billingLineId ?? income.id.replace(/-p\d+$/, '');
+  const renewalMatch = new RegExp(`^recepcao-${stay.id}-renovacao-(.+)-(diaria|cafe)$`).exec(lineId);
+  const renewal = renewalMatch ? stay.renewals?.[renewalMatch[1]] : undefined;
+  if (renewal) {
+    if (income.category === 'Diária') return Array.from({ length: renewal.nights }, (_, index) => addDays(renewal.startDate, index));
+    if (income.category === 'Café' && renewal.hasBreakfast) return Array.from({ length: renewal.breakfastDays }, (_, index) => addDays(renewal.startDate, index + 1));
+    return [];
+  }
+  if (income.category === 'Diária') {
+    const nights = stayBaseNights(stay);
+    return Array.from({ length: nights }, (_, index) => addDays(stay.checkInDate, index));
+  }
+  if (income.category === 'Café' && stay.hasBreakfast) {
+    const renewalBreakfastDays = Object.values(stay.renewals ?? {}).reduce((sum, item) => sum + (item.hasBreakfast ? item.breakfastDays : 0), 0);
+    const days = Math.max(0, Math.floor(stay.baseBreakfastDays ?? ((stay.breakfastDays ?? stay.nights) - renewalBreakfastDays)));
+    return Array.from({ length: days }, (_, index) => addDays(stay.checkInDate, index + 1));
+  }
+  return [];
+}
+
 /**
  * Regime de competência: diárias e café de hospedagens com várias noites são
  * rateados em cada dia de estadia, mesmo quando foram pagos de uma só vez
@@ -53,18 +76,12 @@ export function dailyRevenueRows(incomes: Record<string, FinanceIncome>, stays: 
     const methodShares = (fraction: number) => [...methodTotals].map(([method, cents]) => ({ method, amount: Math.round(cents * fraction) / 100 }));
     const description = items.map((item) => item.description).filter(Boolean).join(' | ');
     const stay = income.category === 'Diária' || income.category === 'Café' ? stayOfIncome(income, list) : undefined;
-    let dates: string[] = [];
-    let weights: number[] = [];
-    if (stay && stay.kind !== 'periodo' && stay.nights > 1) {
-      if (income.category === 'Diária') {
-        dates = Array.from({ length: stay.nights }, (_, index) => addDays(stay.checkInDate, index));
-        const rates = stay.nightlyRates;
-        weights = rates && rates.length === stay.nights && stayDailyAmount(stay) > 0 ? rates.map(toCents) : dates.map(() => 1);
-      } else {
-        const days = stayBreakfastDays(stay);
-        dates = Array.from({ length: days }, (_, index) => addDays(stay.checkInDate, index + 1));
-        weights = dates.map(() => 1);
-      }
+    const dates = stay ? serviceDates(stay, income) : [];
+    let weights = dates.map(() => 1);
+    if (stay && income.category === 'Diária' && dates.length) {
+      const lineId = stay.receipts?.[income.id]?.billingLineId ?? income.id.replace(/-p\d+$/, '');
+      const renewalLine = new RegExp(`^recepcao-${stay.id}-renovacao-(.+)-diaria$`).test(lineId);
+      if (!renewalLine && stay.nightlyRates?.length === dates.length) weights = stay.nightlyRates.map(toCents);
     }
     if (dates.length <= 1) {
       rows.push({ incomeId: income.id, date: income.date, category: income.category, description, amount: total / 100, prepaid: prepaidTotal / 100, spread: false, note, paidOn: income.date, methods: methodShares(1) });

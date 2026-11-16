@@ -12,12 +12,12 @@ function subscribe(listener: () => void) {
   return () => { listeners.delete(listener); window.removeEventListener('storage', onStorage); };
 }
 
-// `available` é verdadeiro só para a gerência; funcionários nunca veem o botão nem recebem o tema.
+// A preferência fica disponível para qualquer perfil autenticado e continua sincronizada entre abas.
 export function useManagerTheme(userRole: UserRole) {
   const preferred = useSyncExternalStore(subscribe, () => readManagerThemePreference(), () => false);
   const toggle = useCallback(() => {
     writeManagerThemePreference(!readManagerThemePreference());
     listeners.forEach((listener) => listener());
   }, []);
-  return { available: userRole === 'admin', enabled: managerThemeApplies(userRole, preferred), preferred, toggle };
+  return { available: userRole === 'admin' || userRole === 'viewer', enabled: managerThemeApplies(userRole, preferred), preferred, toggle };
 }

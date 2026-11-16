@@ -13,11 +13,13 @@ import { withFinanceWriteLock } from './financeTransactions';
 import { buildAuditEvents } from '../types/audit';
 import type { FinanceIncome } from '../types/finance';
 import type { HousekeepingRoom } from '../types/housekeeping';
-import { emptyReceptionRateSettings, stayBillingLines, type CashOut, type FloatCheck, type GuestStay, type ReceptionData, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge } from '../types/reception';
+import { emptyReceptionRateSettings, FOLIO_PAYMENT_METHODS, stayBaseNights, stayBillingLines, type CashOut, type FloatCheck, type GuestStay, type ReceptionData, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge, type StayRenewal } from '../types/reception';
 import { cashShiftDate, operationalDateKey } from './cashShiftDate';
-import { isFinanceDateKey } from './financePayments';
+import { financeDateKeyFromTimestamp, isFinanceDateKey } from './financePayments';
 import { staffReference } from './staffStore';
 import { stayAmountDue } from '../types/reception';
+import { pb } from '../config/pocketbase';
+import { checkStayRenewalAvailability } from './checkoutClient';
 
 const PATH = 'erp_geral/recepcao';
 const RATE_PATH = `${PATH}/rates`;
@@ -241,6 +243,108 @@ export function updateStayAndFinance(stay: GuestStay, expected?: GuestStay): Pro
   return withFinanceWriteLock(() => commitStayAndFinance(stay, expected));
 }
 
+function addDateDays(date: string, days: number): string {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+export interface StayRenewalDraft extends Omit<StayRenewal, 'id' | 'startDate' | 'endDate' | 'createdAt'> {
+  id?: string;
+  startDate?: string;
+  payNow?: { date: string; method: FinancePaymentMethod };
+}
+
+/** Extends an occupied stay and writes its charge and any immediate receipts to the same folio. */
+export async function saveStayRenewal(stayId: string, draft: StayRenewalDraft, expected?: GuestStay): Promise<void> {
+  const { role } = await pb.send<{ role: 'admin' | 'viewer' }>('/api/hotel/me', {});
+  if (role !== 'admin' && role !== 'viewer') throw new Error('Entre novamente para renovar a hospedagem.');
+  if (role === 'viewer' && draft.id) throw new Error('Somente a gerência pode editar uma renovação existente.');
+  const save = async () => {
+    const stayRef = ref(db, `${PATH}/stays/${stayId}`);
+    const snapshot = await get(stayRef);
+    const current = snapshot.val() as GuestStay | null;
+    if (!current || current.status !== 'hospedado' || current.kind !== 'hospede' || current.awaitingArrival) {
+      throw new Error('A renovação só pode ser feita para um hóspede já hospedado. Atualize o quarto e tente novamente.');
+    }
+    if (expected && staySnapshotSignature(current) !== staySnapshotSignature(expected)) {
+      throw new Error('Esta hospedagem mudou enquanto você editava. Reabra a renovação e tente novamente.');
+    }
+    if (!Number.isInteger(draft.nights) || draft.nights < 1 || draft.nights > 60
+      || !Number.isFinite(draft.dailyAmount) || draft.dailyAmount <= 0
+      || !FOLIO_PAYMENT_METHODS.includes(draft.dailyMethod) || !FOLIO_PAYMENT_METHODS.includes(draft.breakfastMethod)
+      || !draft.attendant.trim()
+      || (draft.hasBreakfast && (!Number.isInteger(draft.breakfastDays) || draft.breakfastDays < 1 || draft.breakfastDays > draft.nights
+        || !Number.isInteger(draft.breakfastCount) || draft.breakfastCount < 1 || draft.breakfastCount > (current.guestCount ?? 1)
+        || !Number.isFinite(draft.breakfastAmount) || draft.breakfastAmount < 0))) {
+      throw new Error('Confira a quantidade de diárias e os valores da renovação.');
+    }
+    if (draft.payNow && (!isFinanceDateKey(draft.payNow.date) || draft.payNow.date > financeDateKeyFromTimestamp(new Date().toISOString())
+      || !FOLIO_PAYMENT_METHODS.includes(draft.payNow.method))) {
+      throw new Error('Informe uma data de recebimento válida, que não seja futura.');
+    }
+    const renewals = { ...(current.renewals ?? {}) };
+    const existing = draft.id ? renewals[draft.id] : undefined;
+    if (draft.id && !existing) throw new Error('Esta renovação não existe mais. Atualize a conta da hospedagem.');
+    const baseNights = stayBaseNights(current);
+    const baseCheckOutDate = current.baseCheckOutDate ?? current.checkOutDate ?? addDateDays(current.checkInDate, baseNights);
+    const today = operationalDateKey();
+    const previousEnd = Object.values(renewals).filter((item) => item.id !== draft.id).map((item) => item.endDate).sort().at(-1) ?? baseCheckOutDate;
+    const startDate = draft.startDate ?? (previousEnd < today ? today : previousEnd);
+    if (!isFinanceDateKey(startDate)) throw new Error('Informe uma data válida para iniciar a renovação.');
+    const id = draft.id ?? crypto.randomUUID();
+    const createdAt = existing?.createdAt ?? new Date().toISOString();
+    const renewal: StayRenewal = {
+      id, startDate, endDate: addDateDays(startDate, draft.nights), nights: draft.nights,
+      dailyAmount: Math.round(draft.dailyAmount * 100) / 100, dailyMethod: draft.dailyMethod,
+      hasBreakfast: draft.hasBreakfast, breakfastDays: draft.hasBreakfast ? draft.breakfastDays : 0,
+      breakfastCount: draft.hasBreakfast ? draft.breakfastCount : 0,
+      breakfastAmount: draft.hasBreakfast ? Math.round(draft.breakfastAmount * 100) / 100 : 0,
+      breakfastMethod: draft.breakfastMethod, attendant: draft.attendant, createdAt,
+    };
+    renewals[id] = renewal;
+    const allRenewals = Object.values(renewals);
+    const renewedNights = allRenewals.reduce((sum, item) => sum + item.nights, 0);
+    if (baseNights + renewedNights > 365) throw new Error('A hospedagem não pode ultrapassar 365 diárias.');
+    const renewalEnd = allRenewals.map((item) => item.endDate).sort().at(-1) ?? baseCheckOutDate;
+    const checkOutDate = renewalEnd > baseCheckOutDate ? renewalEnd : baseCheckOutDate;
+    const baseBreakfastDays = current.baseBreakfastDays ?? (current.hasBreakfast ? Math.max(0, (current.breakfastDays ?? baseNights) - Object.values(current.renewals ?? {}).reduce((sum, item) => sum + (item.hasBreakfast ? item.breakfastDays : 0), 0)) : 0);
+    const renewedBreakfastDays = allRenewals.reduce((sum, item) => sum + (item.hasBreakfast ? item.breakfastDays : 0), 0);
+    const next: GuestStay = { ...current, renewals, baseNights, baseCheckOutDate,
+      baseBreakfastDays, nights: baseNights + renewedNights, checkOutDate,
+      breakfastDays: baseBreakfastDays + renewedBreakfastDays };
+
+    const available = await checkStayRenewalAvailability({ roomNumber: current.roomNumber, from: startDate, to: renewal.endDate, sourceId: current.id });
+    if (!available) throw new Error(`O quarto ${current.roomNumber} já tem outra hospedagem ou reserva nesse período.`);
+
+    if (draft.payNow && !existing) {
+      const receipts = { ...(current.receipts ?? {}) };
+      const now = new Date().toISOString();
+      const receivedAt = draft.payNow.date === operationalDateKey() ? now : new Date(`${draft.payNow.date}T12:00:00-03:00`).toISOString();
+      const addReceipt = (suffix: string, amount: number, category: string, label: string) => {
+        if (amount <= 0) return;
+        const receiptId = `recepcao-${current.id}-renovacao-${id}-${suffix}`;
+        receipts[receiptId] = { id: receiptId, billingLineId: receiptId, date: draft.payNow!.date, receivedAt, createdAt: now,
+          attendant: draft.attendant, amount: Math.round(amount * 100) / 100, method: draft.payNow!.method, label, category };
+      };
+      addReceipt('diaria', renewal.dailyAmount, 'Diária', `Renovação de diária × ${renewal.nights}`);
+      if (renewal.hasBreakfast) addReceipt('cafe', renewal.breakfastAmount, 'Café', `Café da renovação · ${renewal.breakfastCount} por dia × ${renewal.breakfastDays} dia(s)`);
+      next.receipts = receipts;
+      next.receiptsInitialized = true;
+      next.lastReceiptAt = receivedAt;
+    }
+    if (role === 'admin') {
+      await commitStayAndFinance(next, current);
+    } else {
+      const prepared = await snapshotStayCardFees({ ...next, ...staffReference(next.attendant) });
+      const result = await runTransaction<GuestStay>(stayRef, (value) =>
+        value && staySnapshotSignature(value) === staySnapshotSignature(current) ? prepared : undefined, { applyLocally: false });
+      if (!result.committed) throw new Error('Esta hospedagem mudou enquanto você renovava. Atualize a conta e tente novamente.');
+    }
+  };
+  return role === 'admin' ? withFinanceWriteLock(save) : save();
+}
+
 function staySnapshotSignature(stay: GuestStay): string {
   // A leitura da lista e a leitura individual podem devolver as chaves em ordens diferentes.
   return JSON.stringify(stay, (_key, value: unknown) => {
@@ -289,15 +393,22 @@ async function commitStayAndFinance(stay: GuestStay, expected?: GuestStay): Prom
   const timestamp = new Date().toISOString();
   const updates: Record<string, unknown> = { [`${PATH}/stays/${stay.id}`]: updatedStay };
   const removedIncomes: Record<string, FinanceIncome> = {};
+  const editedIncomesBefore: Record<string, FinanceIncome> = {};
+  const editedIncomesAfter: Record<string, FinanceIncome> = {};
 
   allIncomeIds.forEach((id) => {
     const entry = nextEntries[id];
     if (entry) {
       if (suppressed[id] || voidedPayments[id]) return;
       const saved = savedIncomes[id];
-      updates[`erp_geral/financeiro/incomes/${id}`] = saved?.operationalOverride && !methodChangedIds.has(id)
+      const nextIncome = saved?.operationalOverride && !methodChangedIds.has(id)
         ? { ...reservationIncomeContext(saved, previous, updatedStay), updatedAt: timestamp }
         : { ...entry, createdAt: saved?.createdAt ?? entry.createdAt, updatedAt: timestamp };
+      updates[`erp_geral/financeiro/incomes/${id}`] = nextIncome;
+      if (JSON.stringify(saved ?? undefined) !== JSON.stringify(nextIncome)) {
+        if (saved) editedIncomesBefore[id] = saved;
+        editedIncomesAfter[id] = nextIncome;
+      }
     } else if (savedIncomes[id]) {
       updates[`erp_geral/financeiro/incomes/${id}`] = null;
       if (courtesyIds.has(id)) {
@@ -314,7 +425,11 @@ async function commitStayAndFinance(stay: GuestStay, expected?: GuestStay): Prom
   if ((!feeHasManagerOverride || taxCourtesyChanged) && !suppressed[feeId]) {
     updates[`erp_geral/financeiro/expenses/${feeId}`] = fee ? { ...fee, updatedAt: timestamp } : null;
   }
-  const audit = buildAuditEvents(crypto.randomUUID(), timestamp, [{ entity: 'finance-income', before: removedIncomes, after: {} }]);
+  const audit = buildAuditEvents(crypto.randomUUID(), timestamp, [
+    { entity: 'finance-income', before: removedIncomes, after: {} },
+    { entity: 'finance-income', before: editedIncomesBefore, after: editedIncomesAfter },
+    { entity: 'stay-renewal', before: previous.renewals ?? {}, after: updatedStay.renewals ?? {} },
+  ]);
   for (const [id, event] of Object.entries(audit)) updates[`erp_geral/financeiro/auditLog/${id}`] = event;
   const linkedCharges = (Object.values(chargesSnapshot.val() ?? {}) as RoomCharge[]).filter((charge) => charge.sourceType === 'stay' && charge.sourceId === stay.id);
   for (const charge of linkedCharges) {

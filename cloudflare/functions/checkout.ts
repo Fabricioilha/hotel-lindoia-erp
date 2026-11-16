@@ -19,6 +19,12 @@ function changedBranches(previous: CheckoutState, next: CheckoutState): Record<s
   return updates;
 }
 
+function isDateKey(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
+
 export default async (request: Request, env: BackendEnv) => {
   if (!['POST', 'GET'].includes(request.method)) return Response.json({ error: 'Método não permitido.' }, { status: 405 });
   try {
@@ -31,6 +37,24 @@ export default async (request: Request, env: BackendEnv) => {
       const current = await readState(client, 'erp_geral');
       const state = getHotelState(current.value);
       const url = new URL(request.url);
+      if (url.searchParams.get('action') === 'availability') {
+        const roomNumber = (url.searchParams.get('roomNumber') ?? '').trim();
+        const from = url.searchParams.get('from') ?? '';
+        const to = url.searchParams.get('to') ?? '';
+        const sourceId = url.searchParams.get('sourceId') ?? '';
+        if (!roomNumber || !isDateKey(from) || !isDateKey(to) || from >= to || !sourceId || /[.#$[\]/]/.test(sourceId)) {
+          return Response.json({ error: 'Informe o quarto e o período da renovação.' }, { status: 400 });
+        }
+        const overlaps = (otherStart: string, otherEnd: string) => from < otherEnd && to > otherStart;
+        const reservations = Object.values(state.quartos?.reservations ?? {}) as Reservation[];
+        const stays = Object.values(state.recepcao?.stays ?? {}) as GuestStay[];
+        const occupied = reservations.some((reservation) => reservation.roomNumber.trim() === roomNumber
+          && ['confirmada', 'hospedado'].includes(reservation.status)
+          && overlaps(reservation.checkInDate, reservation.checkOutDate))
+          || stays.some((stay) => stay.id !== sourceId && stay.status === 'hospedado' && !stay.awaitingArrival
+            && stay.roomNumber.trim() === roomNumber && overlaps(stay.checkInDate, stayCheckOutDate(stay)));
+        return Response.json({ available: !occupied }, { headers: { 'Cache-Control': 'no-store' } });
+      }
       if (url.searchParams.get('action') === 'history') {
         const date = url.searchParams.get('date') ?? '';
         if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return Response.json({ error: 'Data inválida.' }, { status: 400 });

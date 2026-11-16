@@ -26,6 +26,12 @@ function receiptTimestamp(date: string, now: string): string {
 
 export function withReceiptPaymentMethod(stay: GuestStay, id: string, method: FinancePaymentMethod): GuestStay {
   const suffix = id.startsWith(`recepcao-${stay.id}-`) ? id.slice(`recepcao-${stay.id}-`.length) : '';
+  const renewal = /^renovacao-(.+)-(diaria|cafe)$/.exec(suffix);
+  if (renewal) {
+    const current = stay.renewals?.[renewal[1]];
+    if (!current) return stay;
+    return { ...stay, renewals: { ...stay.renewals, [current.id]: { ...current, [renewal[2] === 'diaria' ? 'dailyMethod' : 'breakfastMethod']: method } } };
+  }
   if (suffix === 'diaria') return { ...stay, dailyMethod: method };
   if (suffix === 'diaria-2' && stay.dailySplit) return { ...stay, dailySplit: { ...stay.dailySplit, method } };
   if (suffix === 'cafe') return { ...stay, breakfastMethod: method };
@@ -89,7 +95,7 @@ function receiptBillingLineIds(stay: GuestStay, receipts: Record<string, StayRec
 export function withSyncedReceiptMethods(previous: GuestStay, next: GuestStay): GuestStay {
   const before = new Map(stayBillingLines(previous).map((line) => [line.id, line.method]));
   const after = new Map(stayBillingLines(next).map((line) => [line.id, line.method]));
-  const receipts = existingStayReceipts(previous);
+  const receipts = { ...existingStayReceipts(previous), ...next.receipts };
   const targets = receiptBillingLineIds(previous, receipts);
   for (const [id, receipt] of Object.entries(receipts)) {
     const target = targets[id];

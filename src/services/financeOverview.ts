@@ -1,8 +1,42 @@
-import { financeReceiptItems, isOyoFeeItem, type FinanceData, type FinanceIncome, type FinanceIncomeItem, type FinancePaymentMethod, type FinancePaymentEvent } from '../types/finance';
+import { financeReceiptItems, isOyoFeeItem, type FinanceData, type FinanceExpense, type FinanceIncome, type FinanceIncomeItem, type FinancePaymentMethod, type FinancePaymentEvent } from '../types/finance';
 import { balancesAtDate, registeredExpenses } from './financeAnalytics';
+import { expenseRegistrationDate } from './cardStatements';
 import { expensePaymentEvents, financeCents, financeDateBuckets, payrollPaymentEvents, type FinanceGranularity } from './financePayments';
+import { LEGACY_BREAKFAST_CATEGORIES } from '../types/reception';
 
 export type FinanceRange = { from: string; to: string };
+
+function normalizedLabel(value: string) {
+  return value.toLocaleLowerCase('pt-BR').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
+function isI9Expense(expense: FinanceExpense) {
+  return /\bi\s*9\b/i.test(`${expense.category} ${expense.note ?? ''}`);
+}
+
+function isBreakfastSupplyExpense(expense: FinanceExpense) {
+  const category = normalizedLabel(expense.category);
+  const note = normalizedLabel(expense.note ?? '');
+  return category === 'cafe da manha' || LEGACY_BREAKFAST_CATEGORIES.some((label) => category === normalizedLabel(label))
+    || /cafe da manha|suprimento do cafe|insumo(s)? do cafe/.test(note);
+}
+
+/** Breakfast supplies use the purchase date; I9 costs use the dates of payments actually recorded. */
+export function breakfastCostRows(data: FinanceData, range: FinanceRange): { date: string; amount: number }[] {
+  const rows: { date: string; amount: number }[] = [];
+  for (const expense of Object.values(data.expenses)) {
+    if (data.suppressed[expense.id]) continue;
+    if (isI9Expense(expense)) {
+      expensePaymentEvents(expense).filter((payment) => payment.date >= range.from && payment.date <= range.to)
+        .forEach((payment) => rows.push({ date: payment.date, amount: payment.amount }));
+      continue;
+    }
+    if (!isBreakfastSupplyExpense(expense)) continue;
+    const date = expenseRegistrationDate(data, expense);
+    if (date >= range.from && date <= range.to && Number.isFinite(expense.plannedAmount)) rows.push({ date, amount: expense.plannedAmount });
+  }
+  return rows;
+}
 
 const extraLabels = new Set(['Extras', 'Cama extra', 'Colchão extra', 'Adicional de hóspede', 'Adicional de troca de quarto', 'Check-in antecipado', 'Checkout tardio', 'Modificação de reserva']);
 
@@ -87,6 +121,7 @@ export function financeOverview(data: FinanceData, range: FinanceRange, today: s
     collectPayments('Folha de pagamento', payrollPaymentEvents(entry));
   }
   const plannedExpenses = registeredExpenses(data).reduce((sum, entry) => dueInPeriod(entry.date) && Number.isFinite(entry.amount) ? sum + financeCents(entry.amount) : sum, 0);
+  const breakfastCosts = breakfastCostRows(data, { from: range.from, to: asOf }).reduce((sum, entry) => sum + financeCents(entry.amount), 0);
 
   return {
     asOf,
@@ -96,6 +131,8 @@ export function financeOverview(data: FinanceData, range: FinanceRange, today: s
     cardGross: (methods.credit + methods.debit) / 100,
     cardNet: (methods.credit + methods.debit - cardFees) / 100,
     sales: { geladeira: sales.geladeira / 100, breakfast: sales.breakfast / 100, extras: sales.extras / 100 },
+    costs: { breakfast: breakfastCosts / 100 },
+    profit: { breakfast: (sales.breakfast - breakfastCosts) / 100 },
     expenses: plannedExpenses / 100,
     expensesPaid: (paid.cash + paid.bank + paid.oyo) / 100,
     compensated: paid.oyo / 100,

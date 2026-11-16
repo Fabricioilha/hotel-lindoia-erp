@@ -4,8 +4,7 @@ import type { Reservation, ReservationCollection, ReservationExtra, Housekeeping
 import type { FinanceIncome } from '../types/finance';
 import type { FrigobarSale } from '../types/frigobar';
 import type { CleaningTask } from '../types/cleaning';
-import { stayCheckOutDate } from './reservationAnalytics';
-import { hotelClock, hotelDate, HOTEL_CHECKOUT_TIME } from './hotelSchedule';
+import { hotelDate } from './hotelSchedule';
 import { currentOccupants } from './occupantDirectory';
 
 export { hotelDate } from './hotelSchedule';
@@ -56,16 +55,6 @@ export function checkoutStatus(state: CheckoutState, now: Date): CheckoutAlert[]
     const pending = checkoutPending(state, { sourceType, sourceId });
     return pending > 0 ? [{ sourceType, sourceId, roomNumber, guestName: source.guestName, pending }] : [];
   });
-}
-
-export function dueCheckouts(state: CheckoutState, now: Date): CheckoutTarget[] {
-  const { date, time } = hotelClock(now);
-  if (time < HOTEL_CHECKOUT_TIME) return [];
-  // Do not retroactively close legacy records or dirty their former rooms.
-  return [
-    ...Object.values(state.quartos?.reservations ?? {}).filter((r) => r.status === 'hospedado' && r.channel !== 'rotativo' && !r.checkedOutAt && r.checkOutDate === date).map((r) => ({ sourceType: 'reservation' as const, sourceId: r.id })),
-    ...Object.values(state.recepcao?.stays ?? {}).filter((s) => s.status === 'hospedado' && s.kind !== 'periodo' && !s.awaitingArrival && !s.checkedOutAt && stayCheckOutDate(s) === date).map((s) => ({ sourceType: 'stay' as const, sourceId: s.id })),
-  ];
 }
 
 /** Mutates only a transaction's private snapshot; all checkout effects commit together. */

@@ -98,7 +98,7 @@ function App() {
     else delete document.documentElement.dataset.role;
   }, [userRole]);
 
-  // Tema escuro só para a gerência: perfis de funcionário e a ausência de sessão removem o atributo na hora.
+  // O tema noite vale para todas as telas autenticadas e é removido ao sair da sessão.
   const { preferred: darkGlassPreferred } = useManagerTheme(userRole);
   useLayoutEffect(() => {
     applyManagerTheme(userRole, darkGlassPreferred);

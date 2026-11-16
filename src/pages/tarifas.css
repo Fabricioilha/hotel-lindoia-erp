@@ -34,9 +34,9 @@
 @media (max-width: 560px) { .rates-page .rates-panel { padding: 14px; } .rates-presets { grid-template-columns: 1fr; } .rates-presets button { justify-self: start; } .rates-holiday-form, .rates-holiday-list li { grid-template-columns: 1fr; } }
 .rates-form-fields { min-width: 0; margin: 0; padding: 0; border: 0; }
 
-/* ===== DARK-GLASS (gerente) =====
+/* ===== DARK-GLASS (sessões autenticadas) =====
    Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
-   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+   As regras são ativadas pelo tema noite em qualquer sessão autenticada. */
 :where(html[data-manager-theme="dark-glass"]) .rates-page .finance-content > p {
   color: var(--dg-text-muted);
 }

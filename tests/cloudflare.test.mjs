@@ -22,9 +22,9 @@ function loadWorker() {
     });
     return module.exports;
   }
-  return { worker: load('cloudflare/worker.ts').default, automatic: load('cloudflare/functions/checkout-noon.ts').default };
+  return { worker: load('cloudflare/worker.ts').default };
 }
-const { worker, automatic } = loadWorker();
+const { worker } = loadWorker();
 const env = {
   POCKETBASE_URL: 'https://pb.test', POCKETBASE_SUPERUSER_EMAIL: 'technical@test.invalid',
   POCKETBASE_SUPERUSER_PASSWORD: 'test-only', ASSETS: { fetch: async () => new Response('SPA') },
@@ -154,32 +154,10 @@ test('unpaid checkout never writes, and malformed input returns 400', async (t) 
   assert.equal((await worker.fetch(new Request(url, { method: 'POST', headers, body: '{' }), env)).status, 400);
   assert.equal(api.commits, 0);
 });
-test('automatic job closes paid departures only, is idempotent and propagates failure', async (t) => {
-  const api = backend(t, { conflicts: 1 });
-  await automatic(env, noon);
-  assert.equal(api.state.quartos.reservations.r1.status, 'encerrada');
-  assert.equal(api.commits, 2);
-  await automatic(env, noon);
-  assert.equal(api.commits, 2);
-});
-test('automatic job waits for payment and hotel noon', async (t) => {
-  const api = backend(t, { state: fixture(150) });
-  await automatic(env, noon);
-  assert.equal(api.commits, 0);
-  api.state.financeiro.incomes['reservation-r1-initial'].amount = 200;
-  await automatic(env, new Date('2026-11-02T14:59:59Z'));
-  assert.equal(api.commits, 0);
-  await automatic(env, noon);
-  assert.equal(api.commits, 1);
-});
-test('scheduled handler reports backend failure instead of a successful run', async (t) => {
-  backend(t, { failure: true });
-  await assert.rejects(worker.scheduled({ scheduledTime: noon.getTime() }, env));
-});
-test('configuration routes only API through compute and installs the UTC cron', () => {
+test('configuration routes only API through compute and has no scheduled checkout trigger', () => {
   const config = JSON.parse(readFileSync(resolve(root, 'wrangler.jsonc'), 'utf8'));
   assert.equal(config.main, 'cloudflare/worker.ts');
   assert.deepEqual(config.assets.run_worker_first, ['/api/*']);
   assert.equal(config.assets.not_found_handling, 'single-page-application');
-  assert.deepEqual(config.triggers.crons, ['*/5 0-2,15-23 * * *']);
+  assert.equal(config.triggers, undefined);
 });

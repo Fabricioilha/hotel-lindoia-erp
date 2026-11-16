@@ -11,7 +11,7 @@ import { DateInput } from '../../components/ui/DateInput';
 import { PAYMENT_METHOD_LABELS, type FinancePaymentMethod } from '../../types/finance';
 import {
   EXTRA_LABELS, FOLIO_PAYMENT_METHODS, ROOM_TYPE_LABELS, SELECTABLE_EXTRAS, extraTotal,
-  stayDailyAmount,
+  stayBaseDailyAmount, stayBaseNights, stayRenewalNights,
   emptyReceptionRateSettings,
   type ExtraType, type GuestStay, type ReceptionData, type ReceptionRateSettings, type ReceptionRoom, type StayExtra, type StayKind,
 } from '../../types/reception';
@@ -142,7 +142,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   const formKind: StayKind | null = requested === 'hospede' ? 'hospede' : requested === 'rotativo' ? 'periodo' : null;
   const initialCheckIn = editingStay?.checkInDate ?? operationalDateKey();
   const initialNights = Math.max(1, editingStay?.nights ?? 1);
-  const initialRate = editingStay ? stayDailyAmount({ ...editingStay, courtesy: false }) / initialNights : 0;
+  const initialRate = editingStay ? stayBaseDailyAmount({ ...editingStay, courtesy: false }) / stayBaseNights(editingStay) : 0;
   const initialRateText = editingStay?.kind === 'hospede' ? String(Math.round(initialRate * 100) / 100).replace('.', ',') : '';
   const [checkInDate, setCheckInDate] = useState(() => initialCheckIn);
   const [checkOutDate, setCheckOutDate] = useState(() => editingStay?.checkOutDate ?? dateKeyAfterDays(initialCheckIn, initialNights));
@@ -233,12 +233,15 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   const draftBreakfastCount = Number(breakfastCount);
   const draftBreakfastDays = Number(breakfastDays);
   const enteredDailyRate = parseOptionalRate(dailyRateText);
+  const baseNightsForDraft = editingStay?.renewals
+    ? Math.max(1, draftNights - stayRenewalNights(editingStay))
+    : draftNights;
   const unchangedStayRateAndPeriod = Boolean(editingStay?.kind === 'hospede'
     && dailyRateText === initialRateText
     && checkInDate === editingStay.checkInDate
     && checkOutDate === (editingStay.checkOutDate ?? dateKeyAfterDays(editingStay.checkInDate, initialNights)));
   const dailyTotal = formKind === 'hospede'
-    ? unchangedStayRateAndPeriod ? stayDailyAmount({ ...editingStay!, courtesy: false }) : Math.round((enteredDailyRate ?? 0) * draftNights * 100) / 100
+    ? unchangedStayRateAndPeriod ? stayBaseDailyAmount({ ...editingStay!, courtesy: false }) : Math.round((enteredDailyRate ?? 0) * baseNightsForDraft * 100) / 100
     : parseAmount(dailyRate) * draftNights;
   const lodgingCharge = Math.max(0, dailyTotal - (editingStay?.creditApplied ?? 0));
   const breakfastTotal = hasBreakfast ? parseAmount(breakfastRate) * draftBreakfastCount * draftBreakfastDays : 0;
@@ -377,6 +380,12 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
       ...(formKind === 'periodo' ? { hours: draftHours } : {}),
       dailyRate: rate,
       ...(formKind === 'hospede' ? { lodgingTotal: dailyTotal } : {}),
+      ...(editingStay?.renewals ? {
+        renewals: editingStay.renewals,
+        baseNights: baseNightsForDraft,
+        baseCheckOutDate: editingStay.baseCheckOutDate ?? dateKeyAfterDays(checkInDate, baseNightsForDraft),
+        baseBreakfastDays: editingStay.baseBreakfastDays,
+      } : {}),
       ...(unchangedStayRateAndPeriod && editingStay?.nightlyRates ? { nightlyRates: editingStay.nightlyRates } : {}),
       ...(editingStay?.creditApplied !== undefined ? { creditApplied: editingStay.creditApplied } : {}),
       ...(editingStay?.convertedFromStayId ? { convertedFromStayId: editingStay.convertedFromStayId } : {}),
@@ -497,8 +506,8 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
             {error && <div className="sales-alert" role="alert">{error}</div>}
             <div className="reception-grid">
               {formKind === 'hospede' && <div className="reception-step-heading reception-wide"><span>1</span><div><strong>Hospedagem</strong><small>Entrada, quarto e quantidade de hóspedes.</small></div></div>}
-              <label className="sales-field"><span>Data de entrada</span><DateInput name="checkInDate" value={checkInDate} onValueChange={changeCheckInDate} required /></label>
-              {formKind === 'hospede' && <label className="sales-field"><span>Data de saída</span><DateInput name="checkOutDate" value={checkOutDate} onValueChange={changeCheckOutDate} min={dateKeyAfterDays(checkInDate, 1)} max={dateKeyAfterDays(checkInDate, 60)} required /><small className={`reception-date-nights${calculatedNights < 1 || calculatedNights > 60 ? ' is-invalid' : ''}`}>{calculatedNights >= 1 && calculatedNights <= 60 ? `${calculatedNights} ${calculatedNights === 1 ? 'diária' : 'diárias'}` : calculatedNights > 60 ? 'Limite de 60 diárias' : 'A saída deve ser depois da entrada'}</small></label>}
+              <label className="sales-field"><span>Data de entrada</span><DateInput name="checkInDate" value={checkInDate} onValueChange={changeCheckInDate} disabled={Boolean(editingStay?.renewals && Object.keys(editingStay.renewals).length)} required /></label>
+              {formKind === 'hospede' && <label className="sales-field"><span>Data de saída</span><DateInput name="checkOutDate" value={checkOutDate} onValueChange={changeCheckOutDate} min={dateKeyAfterDays(checkInDate, 1)} max={dateKeyAfterDays(checkInDate, 60)} disabled={Boolean(editingStay?.renewals && Object.keys(editingStay.renewals).length)} required /><small className={`reception-date-nights${calculatedNights < 1 || calculatedNights > 60 ? ' is-invalid' : ''}`}>{editingStay?.renewals && Object.keys(editingStay.renewals).length ? 'Edite as datas no histórico de renovações.' : calculatedNights >= 1 && calculatedNights <= 60 ? `${calculatedNights} ${calculatedNights === 1 ? 'diária' : 'diárias'}` : calculatedNights > 60 ? 'Limite de 60 diárias' : 'A saída deve ser depois da entrada'}</small></label>}
               <label className="sales-field"><span>Quarto</span><select value={roomNumber} onChange={(event) => setRoomNumber(event.target.value)} required><option value="">Selecione um quarto cadastrado</option>{allRoomNumbers.map((number) => <option key={number} value={number}>{number} · {describeRoom(number)}</option>)}</select></label>
               <label className="sales-field"><span>{formKind === 'hospede' ? 'Quantidade de hóspedes' : 'Quantidade de pessoas'}</span><input type="number" min="1" max="10" step="1" value={guestCount} onChange={(event) => {
                 const nextCount = event.target.value;

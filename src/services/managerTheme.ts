@@ -1,7 +1,6 @@
 import type { UserRole } from '../types';
 
-// O tema escuro "Dark Glassmorphism" é exclusivo da gerência: só vale para o perfil admin e nunca é aplicado
-// ao login de funcionários nem à tela de entrada.
+// O tema noite vale para qualquer sessão autenticada; a tela de entrada permanece no tema claro.
 export const MANAGER_THEME_STORAGE_KEY = 'lindoia_manager_dark_glass';
 export const MANAGER_THEME_ATTRIBUTE = 'data-manager-theme';
 export const MANAGER_THEME_VALUE = 'dark-glass';
@@ -23,7 +22,7 @@ export function writeManagerThemePreference(enabled: boolean, storage: ThemeStor
 }
 
 export function managerThemeApplies(role: UserRole, preferred: boolean): boolean {
-  return role === 'admin' && preferred;
+  return (role === 'admin' || role === 'viewer') && preferred;
 }
 
 export function clearManagerTheme(doc: ThemeDocument | undefined = typeof document === 'undefined' ? undefined : document): void {
@@ -31,7 +30,7 @@ export function clearManagerTheme(doc: ThemeDocument | undefined = typeof docume
   doc?.body?.removeAttribute(MANAGER_THEME_ATTRIBUTE);
 }
 
-// Liga o tema só para o gerente; qualquer outro perfil, ou a ausência de sessão, remove o atributo imediatamente.
+// Liga o tema para perfis autenticados; a ausência de sessão remove o atributo imediatamente.
 export function applyManagerTheme(role: UserRole, preferred: boolean, doc: ThemeDocument | undefined = typeof document === 'undefined' ? undefined : document): boolean {
   clearManagerTheme(doc);
   if (!doc || !managerThemeApplies(role, preferred)) return false;

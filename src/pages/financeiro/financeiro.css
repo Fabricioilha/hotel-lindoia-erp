@@ -370,9 +370,9 @@
   .payroll-split { grid-template-columns: minmax(0, 1fr); }
 }
 
-/* ===== DARK-GLASS (gerente) =====
+/* ===== DARK-GLASS (sessões autenticadas) =====
    Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
-   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+   As regras são ativadas pelo tema noite em qualquer sessão autenticada. */
 :where(html[data-manager-theme="dark-glass"]) .finance-page {
   --finance-ink: var(--dg-text);
   --finance-muted: var(--dg-text-muted);

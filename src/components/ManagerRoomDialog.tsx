@@ -177,7 +177,7 @@ export function ManagerRoomDialog({ number, room, receptionRoom, occupant, stay,
         {(reservation?.note || stay?.note) && <p className="manager-room-note">{reservation?.note || stay?.note}</p>}
         {charges.length > 0 && <p className="manager-room-note">Adicionais do quarto: {charges.map((charge) => `${charge.productName ?? charge.guestName} · ${money(charge.amount)}`).join('; ')}</p>}
       </div>}
-      {stay && <StayAccount stay={stay} charges={charges} attendant="Gerência" onSaved={onSaved} />}
+      {stay && <StayAccount stay={stay} charges={charges} attendant="Gerência" canManage onSaved={onSaved} />}
       {error && <p className="dashboard-room-charge-error" role="alert">{error}</p>}
       {confirmDelete ? <div className="manager-room-release-confirm">
         <p>Excluir {occupant?.sourceType === 'stay' ? 'a hospedagem' : 'a reserva'} de <strong>{occupant?.name}</strong>? Esta ação remove também os recebimentos e adicionais vinculados e pode devolver bebidas ao estoque. Não use para um check-out: essa operação não preserva os lançamentos.</p>

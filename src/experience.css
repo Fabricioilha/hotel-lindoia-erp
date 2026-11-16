@@ -24,6 +24,19 @@
 .stay-account-receive :is(input, select, button) { width: 100%; min-height: 44px; border: 1px solid #aabbd0; border-radius: 6px; padding: 9px; font: inherit; background: #fff; }
 .stay-account-receive button { cursor: pointer; color: #214f7b; font-weight: 700; }
 .stay-account-receive button:last-child { background: #214f7b; color: #fff; }
+.stay-renewal-tools { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px; margin: 12px 0; }
+.stay-renewal-history { flex: 1 1 100%; }
+.stay-renewal-history ul { padding-left: 20px; }
+.stay-renewal-history li { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; }
+.stay-account-text-btn, .stay-renewal-editor-heading button { border: 0; padding: 5px 0; color: #214f7b; background: transparent; font: inherit; font-size: .8125rem; font-weight: 700; cursor: pointer; }
+.stay-renewal-editor { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin: 14px 0; padding: 14px; border: 1px solid #b8c8da; border-radius: 8px; background: #fff; }
+.stay-renewal-editor-heading, .stay-renewal-manager-note, .stay-renewal-error, .stay-renewal-editor > .reception-check, .stay-renewal-editor > .stay-account-submit-btn { grid-column: 1 / -1; }
+.stay-renewal-editor-heading { display: flex; justify-content: space-between; gap: 12px; align-items: center; }
+.stay-renewal-editor .modal-field { display: grid; min-width: 0; gap: 5px; color: #556580; font-size: .8125rem; font-weight: 700; }
+.stay-renewal-editor .modal-field :is(input, select) { width: 100%; min-height: 42px; padding: 8px 10px; border: 1px solid #b9c9dc; border-radius: 6px; background: #fff; color: #172a46; font: inherit; }
+.stay-renewal-editor .reception-check { display: flex; align-items: center; gap: 8px; font-size: .875rem; }
+.stay-renewal-manager-note { margin: 0; color: #556580; font-size: .8125rem; }
+.stay-renewal-error { margin: 0; color: #a12727; font-size: .875rem; }
 .reception-receipt-options { display: grid; gap: 10px; padding: 14px; border: 1px solid #b8c8da; border-radius: 8px; background: #f2f7fc; }
 .dashboard-task-strip { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin: 18px 0; }
 .dashboard-task-strip a { display: grid; gap: 7px; padding: 18px; border: 1px solid #b8c8da; border-radius: 10px; color: #203956; background: #fff; text-decoration: none; }
@@ -39,6 +52,8 @@
   .finance-settings-form > * { flex: 1 1 100%; }
   .stay-account { padding: 12px; }
   .stay-account-receive { grid-template-columns: 1fr; }
+  .stay-renewal-editor { grid-template-columns: 1fr; }
+  .stay-renewal-editor-heading, .stay-renewal-manager-note, .stay-renewal-error, .stay-renewal-editor > .reception-check, .stay-renewal-editor > .stay-account-submit-btn { grid-column: 1; }
   .app-shell-main [role="dialog"] { max-height: 94dvh; }
   .finance-mobile-table thead { display: none; }
   .finance-mobile-table :is(tbody, tr, td) { display: block; width: 100%; }
@@ -48,9 +63,9 @@
   .finance-mobile-table td small { grid-column: 2; }
 }
 
-/* ===== DARK-GLASS (gerente) =====
+/* ===== DARK-GLASS (sessões autenticadas) =====
    Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
-   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+   As regras são ativadas pelo tema noite em qualquer sessão autenticada. */
 :where(html[data-manager-theme="dark-glass"]) .finance-summary-toggle span {
   color: var(--dg-text-muted);
 }
@@ -65,6 +80,21 @@
   background: var(--dg-surface-inset);
   color: var(--dg-text);
 }
+:where(html[data-manager-theme="dark-glass"]) .stay-renewal-editor {
+  border-color: var(--dg-border);
+  background: var(--dg-surface);
+}
+:where(html[data-manager-theme="dark-glass"]) .stay-renewal-editor .modal-field {
+  color: var(--dg-text-muted);
+}
+:where(html[data-manager-theme="dark-glass"]) .stay-renewal-editor .modal-field :is(input, select) {
+  border-color: var(--dg-border);
+  background: var(--dg-input-bg);
+  color: var(--dg-text);
+}
+:where(html[data-manager-theme="dark-glass"]) .stay-renewal-manager-note { color: var(--dg-text-muted); }
+:where(html[data-manager-theme="dark-glass"]) .stay-account-text-btn,
+:where(html[data-manager-theme="dark-glass"]) .stay-renewal-editor-heading button { color: #8ec5fa; }
 :where(html[data-manager-theme="dark-glass"]) .stay-account-receive :is(input, select, button) {
   border: 1px solid var(--dg-border);
   background: var(--dg-input-bg);

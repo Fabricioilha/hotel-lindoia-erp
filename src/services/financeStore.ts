@@ -324,7 +324,7 @@ async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData
     }
     if (receiptsChanged) updates[`erp_geral/recepcao/stays/${source.id}/lastReceiptAt`] = Object.values(sourceReceipts)
       .filter((receipt) => !source.voidedPayments?.[receipt.id]).map((receipt) => receipt.receivedAt).sort().at(-1) ?? null;
-    for (const key of ['dailyMethod', 'dailySplit', 'breakfastMethod', 'breakfastSplit', 'taxMethod', 'taxSplit', 'extras'] as const) {
+    for (const key of ['dailyMethod', 'dailySplit', 'breakfastMethod', 'breakfastSplit', 'taxMethod', 'taxSplit', 'extras', 'renewals'] as const) {
       if (JSON.stringify(source[key]) !== JSON.stringify(updatedMethods[key])) updates[`erp_geral/recepcao/stays/${source.id}/${key}`] = updatedMethods[key] ?? null;
     }
   }

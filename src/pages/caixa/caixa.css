@@ -83,9 +83,9 @@
 .cx-float { margin: 0; padding: 8px 12px; border-radius: 8px; background: #f1f6fc; color: #556580; font-size: 0.8125rem; }
 .cx-float.is-diff { color: #8f1d2e; background: #fde8eb; font-weight: 600; }
 
-/* ===== DARK-GLASS (gerente) =====
+/* ===== DARK-GLASS (sessões autenticadas) =====
    Espelho escopado das regras claras acima para o tema escuro "Dark Glassmorphism".
-   Só vale com html[data-manager-theme="dark-glass"] (tokens --dg-* em index.css); funcionários não recebem estas regras. */
+   As regras são ativadas pelo tema noite em qualquer sessão autenticada. */
 :where(html[data-manager-theme="dark-glass"]) .cx-page {
   color: var(--dg-text);
 }

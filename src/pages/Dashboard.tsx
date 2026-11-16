@@ -19,7 +19,7 @@ import { emptyCleaning, subscribeActiveCleaningTasks, subscribeDashboardCleaning
 import { subscribeInventoryProducts } from '../services/inventoryStore';
 import { useInternalOutputSync } from '../services/internalOutputs';
 import type { CleaningData, CleaningTask } from '../types/cleaning';
-import { FOLIO_PAYMENT_METHODS, ROOM_TYPE_LABELS, stayBillingLines, stayBreakfastDays, weekdayKey, type CashOut, type GuestStay, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge, type RoomChargeKind, type StayKind } from '../types/reception';
+import { FOLIO_PAYMENT_METHODS, ROOM_TYPE_LABELS, stayBillingLines, stayBreakfastCountOnDate, weekdayKey, type CashOut, type GuestStay, type ReceptionRateSettings, type ReceptionRoom, type RoomCharge, type RoomChargeKind, type StayKind } from '../types/reception';
 import { PAYMENT_METHOD_LABELS, type FinancePaymentMethod } from '../types/finance';
 import type { StockProduct } from '../types/inventory';
 import type { FrigobarData } from '../types/frigobar';
@@ -666,9 +666,7 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
       sourceId: stay.id,
       name: (stay.guestName ?? '').trim() || 'Titular não informado',
       peopleCount: Math.max(1, Math.floor(stay.guestCount ?? (stay.hasAdditionalGuests ? 2 : 1))),
-      includedBreakfastCount: stay.kind === 'hospede' && stay.hasBreakfast && today > stay.checkInDate && today <= dateKeyAfterDays(stay.checkInDate, stayBreakfastDays(stay))
-        ? Math.max(1, Math.floor(stay.breakfastCount ?? 1))
-        : 0,
+      includedBreakfastCount: stay.kind === 'hospede' ? stayBreakfastCountOnDate(stay, today) : 0,
       breakfastAllowed: stay.kind !== 'periodo',
       rotativo: stay.kind === 'periodo',
       startDate: stay.checkInDate,
@@ -1087,7 +1085,7 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
             .then(() => { setSelectedOccupant(null); onChargeSaved(`Check-out realizado. Quarto ${selectedOccupant.roomNumber} aguardando limpeza.`); })
             .catch((cause) => setChargeError(cause.message)).finally(() => setSavingCharge(false));
         }}><span aria-hidden="true">↗</span>{savingCharge ? 'Realizando check-out…' : 'Fazer check-out'}</button>
-        {selectedOccupant.sourceType === 'stay' && stays[selectedOccupant.sourceId] && <StayAccount stay={stays[selectedOccupant.sourceId]} charges={chargesForOccupant(selectedOccupant)} attendant={attendant} onSaved={onChargeSaved} />}
+        {selectedOccupant.sourceType === 'stay' && stays[selectedOccupant.sourceId] && <StayAccount stay={stays[selectedOccupant.sourceId]} charges={chargesForOccupant(selectedOccupant)} attendant={attendant} canManage={userRole === 'admin'} onSaved={onChargeSaved} />}
         <fieldset className="dashboard-room-charge-types">
           <legend>O que deseja fazer?</legend>
           <label><input type="radio" name="roomChargeKind" value="hospede_extra" checked={chargeKind === 'hospede_extra'} onChange={() => changeChargeKind('hospede_extra')} /><span>Hóspede extra</span></label>

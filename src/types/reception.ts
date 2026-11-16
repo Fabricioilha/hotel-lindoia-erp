@@ -50,11 +50,32 @@ export interface StayExtra {
 
 export const SELECTABLE_EXTRAS: ExtraType[] = ['cama_extra', 'hospede_extra', 'checkin_antecipado', 'checkout_tardio', 'outros'];
 
+export interface StayRenewal {
+  id: string;
+  startDate: string;
+  endDate: string;
+  nights: number;
+  dailyAmount: number;
+  dailyMethod: FinancePaymentMethod;
+  hasBreakfast: boolean;
+  breakfastDays: number;
+  breakfastCount: number;
+  breakfastAmount: number;
+  breakfastMethod: FinancePaymentMethod;
+  attendant: string;
+  createdAt: string;
+}
+
 export interface GuestStay {
   receiptsInitialized?: boolean;
   receipts?: Record<string, StayReceipt>;
   lastReceiptAt?: string;
   checkedOutAt?: string;
+  renewals?: Record<string, StayRenewal>;
+  /** Valores e período originais, preservados quando uma hospedagem recebe renovações. */
+  baseNights?: number;
+  baseCheckOutDate?: string;
+  baseBreakfastDays?: number;
   employeeId?: string;
   voidedPayments?: Record<string, boolean>;
   /** Hospedagem de cortesia concedida pela gerência: diária e café não são cobrados. */
@@ -210,14 +231,29 @@ export function weekdayKey(date: string): WeekdayKey | undefined {
   return WEEKDAY_BY_INDEX[day];
 }
 
-export function stayDailyAmount(stay?: Pick<GuestStay, 'dailyRate' | 'nights' | 'nightlyRates' | 'lodgingTotal' | 'courtesy'>): number {
+export function stayRenewalNights(stay: Pick<GuestStay, 'renewals'>): number {
+  return Object.values(stay.renewals ?? {}).reduce((sum, renewal) => sum + Math.max(0, Math.floor(renewal.nights || 0)), 0);
+}
+
+export function stayBaseNights(stay: Pick<GuestStay, 'nights' | 'baseNights' | 'renewals'>): number {
+  return Math.max(1, Math.floor(stay.baseNights ?? (stay.nights - stayRenewalNights(stay))));
+}
+
+export function stayBaseDailyAmount(stay?: Pick<GuestStay, 'dailyRate' | 'nights' | 'baseNights' | 'renewals' | 'nightlyRates' | 'lodgingTotal' | 'courtesy'>): number {
   if (!stay || stay.courtesy) return 0;
   if (stay.lodgingTotal !== undefined) return Math.round(stay.lodgingTotal * 100) / 100;
+  const baseNights = stayBaseNights(stay);
   const rates = stay.nightlyRates;
-  const amount = rates && rates.length === stay.nights
+  const amount = rates && rates.length === baseNights
     ? rates.reduce((total, rate) => total + rate, 0)
-    : stay.dailyRate * stay.nights;
+    : stay.dailyRate * baseNights;
   return Math.round(amount * 100) / 100;
+}
+
+export function stayDailyAmount(stay?: Pick<GuestStay, 'dailyRate' | 'nights' | 'baseNights' | 'renewals' | 'nightlyRates' | 'lodgingTotal' | 'courtesy'>): number {
+  if (!stay) return 0;
+  const renewals = Object.values(stay.renewals ?? {}).reduce((sum, renewal) => sum + Math.max(0, renewal.dailyAmount), 0);
+  return Math.round((stayBaseDailyAmount(stay) + renewals) * 100) / 100;
 }
 
 export const SELECTABLE_ROOM_TYPES: RoomType[] = ['casal', 'casal_twin', 'solteiro', 'triplo_casal_solteiro', 'triplo_solteiros'];
@@ -246,13 +282,47 @@ export const FOLIO_PAYMENT_METHODS: FinancePaymentMethod[] = ['cash', 'pix', 'ba
 
 export const extraTotal = (extra: StayExtra, nights: number) => extra.mode === 'por_diaria' ? extra.amount * nights : extra.amount;
 
-export function stayBreakfastDays(stay: Pick<GuestStay, 'hasBreakfast' | 'breakfastDays' | 'nights'>): number {
-  if (!stay.hasBreakfast) return 0;
-  return Math.min(stay.nights, Math.max(1, Math.floor(stay.breakfastDays ?? stay.nights)));
+export function stayBreakfastDays(stay: Pick<GuestStay, 'hasBreakfast' | 'breakfastDays' | 'nights' | 'baseNights' | 'renewals' | 'baseBreakfastDays'>): number {
+  const renewalDays = Object.values(stay.renewals ?? {}).reduce((sum, renewal) => sum + (renewal.hasBreakfast ? Math.max(0, Math.floor(renewal.breakfastDays || 0)) : 0), 0);
+  const baseDays = stayBaseBreakfastDays(stay);
+  return Math.min(stay.nights, baseDays + renewalDays);
 }
 
-export function stayBreakfastTotal(stay: Pick<GuestStay, 'hasBreakfast' | 'breakfastRate' | 'breakfastCount' | 'breakfastDays' | 'nights' | 'courtesy'>): number {
-  return stay.hasBreakfast && !stay.courtesy ? stay.breakfastRate * (stay.breakfastCount ?? 1) * stayBreakfastDays(stay) : 0;
+export function stayBaseBreakfastDays(stay: Pick<GuestStay, 'hasBreakfast' | 'breakfastDays' | 'nights' | 'baseNights' | 'renewals' | 'baseBreakfastDays'>): number {
+  if (!stay.hasBreakfast) return 0;
+  const renewedDays = Object.values(stay.renewals ?? {}).reduce((sum, renewal) => sum + (renewal.hasBreakfast ? renewal.breakfastDays : 0), 0);
+  const days = Math.floor(stay.baseBreakfastDays ?? ((stay.breakfastDays ?? stay.nights) - renewedDays));
+  return Math.min(stayBaseNights(stay), Math.max(1, days));
+}
+
+function addStayDays(date: string, days: number) {
+  const value = new Date(`${date}T00:00:00Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
+
+export function stayBreakfastCountOnDate(stay: GuestStay, date: string): number {
+  let count = 0;
+  const baseDays = stayBaseBreakfastDays(stay);
+  if (baseDays > 0 && date > stay.checkInDate && date <= addStayDays(stay.checkInDate, baseDays)) {
+    count += Math.max(1, Math.floor(stay.breakfastCount ?? 1));
+  }
+  Object.values(stay.renewals ?? {}).forEach((renewal) => {
+    if (!renewal.hasBreakfast || date <= renewal.startDate || date > addStayDays(renewal.startDate, renewal.breakfastDays)) return;
+    count += Math.max(1, Math.floor(renewal.breakfastCount ?? 1));
+  });
+  return count;
+}
+
+export function stayBaseBreakfastTotal(stay: Pick<GuestStay, 'hasBreakfast' | 'breakfastRate' | 'breakfastCount' | 'breakfastDays' | 'nights' | 'baseNights' | 'baseBreakfastDays' | 'renewals' | 'courtesy'>): number {
+  if (!stay.hasBreakfast || stay.courtesy) return 0;
+  return stay.breakfastRate * (stay.breakfastCount ?? 1) * stayBaseBreakfastDays(stay);
+}
+
+export function stayBreakfastTotal(stay: Pick<GuestStay, 'hasBreakfast' | 'breakfastRate' | 'breakfastCount' | 'breakfastDays' | 'nights' | 'baseNights' | 'baseBreakfastDays' | 'renewals' | 'courtesy'>): number {
+  const base = stayBaseBreakfastTotal(stay);
+  const renewed = Object.values(stay.renewals ?? {}).reduce((sum, renewal) => sum + (renewal.hasBreakfast ? Math.max(0, renewal.breakfastAmount) : 0), 0);
+  return Math.round((base + renewed) * 100) / 100;
 }
 
 export function stayTaxPayments(stay: Pick<GuestStay, 'taxAmount' | 'taxMethod' | 'taxSplit'>): { id: string; method: FinancePaymentMethod; amount: number }[] {
@@ -287,19 +357,27 @@ export function stayBillingLines(stay: GuestStay): StayBillingLine[] {
     const id = `recepcao-${stay.id}-${suffix}`;
     if (Number.isFinite(amount) && amount > 0) list.push({ id, method, amount: Math.round(amount * 100) / 100, label, category, description });
   };
-  const dailyTotal = Math.max(0, stayDailyAmount(stay) - (stay.creditApplied ?? 0));
+  const dailyTotal = Math.max(0, stayBaseDailyAmount(stay) - (stay.creditApplied ?? 0));
   const split = stay.dailySplit && stay.dailySplit.amount > 0 && stay.dailySplit.amount < dailyTotal ? stay.dailySplit : undefined;
   const dailyLabel = stay.kind === 'periodo' ? 'Rotativo' : 'Diária';
   const dailyDescription = stay.kind === 'periodo' ? `Rotativo (${stay.hours ?? 4}h)` : `Diária × ${stay.nights}`;
   add('diaria', stay.dailyMethod, dailyTotal - (split?.amount ?? 0), dailyLabel, dailyLabel, dailyDescription);
   if (split) add('diaria-2', split.method, split.amount, `${dailyLabel} (2ª forma)`, dailyLabel, `${dailyDescription} (2ª forma)`);
   if (stay.hasBreakfast) {
-    const total = Math.round(stayBreakfastTotal(stay) * 100) / 100;
+    const total = Math.round(stayBaseBreakfastTotal(stay) * 100) / 100;
     const split = stay.breakfastSplit && stay.breakfastSplit.amount > 0 && stay.breakfastSplit.amount < total ? stay.breakfastSplit : undefined;
-    const description = `${stay.breakfastCount ?? 1} café(s) por dia × ${stayBreakfastDays(stay)} dia(s)`;
+    const description = `${stay.breakfastCount ?? 1} café(s) por dia × ${stayBaseBreakfastDays(stay)} dia(s)`;
     add('cafe', stay.breakfastMethod ?? stay.dailyMethod, total - (split?.amount ?? 0), 'Café', 'Café', description);
     if (split) add('cafe-2', split.method, split.amount, 'Café (2ª forma)', 'Café', `${description} (2ª forma)`);
   }
+  Object.values(stay.renewals ?? {}).sort((a, b) => a.startDate.localeCompare(b.startDate)).forEach((renewal) => {
+    const dailyDescription = `Renovação de diária × ${renewal.nights} (${renewal.startDate} a ${renewal.endDate})`;
+    add(`renovacao-${renewal.id}-diaria`, renewal.dailyMethod, renewal.dailyAmount, 'Diária (renovação)', 'Diária', dailyDescription);
+    if (renewal.hasBreakfast) {
+      add(`renovacao-${renewal.id}-cafe`, renewal.breakfastMethod, renewal.breakfastAmount, 'Café (renovação)', 'Café',
+        `Café da renovação · ${renewal.breakfastCount} por dia × ${renewal.breakfastDays} dia(s)`);
+    }
+  });
   // A parte pré-paga já foi paga diretamente à OYO, não é um valor a cobrar no caixa do hotel.
   stayTaxPayments(stay).filter((payment) => payment.method !== 'prepaid')
     .forEach((payment) => add(payment.id, payment.method, payment.amount, 'Taxa', 'Taxas', payment.id === 'taxa' ? 'Taxa' : 'Taxa (2ª forma)'));

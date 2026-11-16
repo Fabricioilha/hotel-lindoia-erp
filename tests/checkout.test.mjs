@@ -24,7 +24,7 @@ function domainModule(path) {
   return module.exports;
 }
 
-const { applyCheckout, checkoutPending, checkoutStatus, dueCheckouts, hotelDate } = domainModule('src/services/checkoutPolicy.ts');
+const { applyCheckout, checkoutPending, checkoutStatus, hotelDate } = domainModule('src/services/checkoutPolicy.ts');
 const { currentOccupants, reservationOccupiesDate, stayOccupiesDate } = domainModule('src/services/occupantDirectory.ts');
 const { breakfastForecastDay, breakfastsOnDate } = domainModule('src/services/breakfastForecast.ts');
 const { departureDue } = domainModule('src/services/hotelSchedule.ts');
@@ -136,14 +136,6 @@ function fixture() {
     recepcao: { stays: {}, roomCharges: {} }, frigobar: { operations: { sales: {} } } };
 }
 
-test('automatic checkout begins at noon São Paulo, excludes future stays and rotativos', () => {
-  const state = fixture();
-  assert.deepEqual(dueCheckouts(state, new Date('2026-10-24T14:59:59Z')), []);
-  assert.deepEqual(dueCheckouts(state, noon), [target]);
-  state.quartos.reservations.r1.channel = 'rotativo';
-  assert.deepEqual(dueCheckouts(state, noon), []);
-  assert.equal(hotelDate(new Date('2026-10-25T01:00:00Z')), '2026-10-24');
-});
 test('checkout is idempotent, preserves receipts, clears owned slots and marks the room dirty', () => {
   const state = fixture(); const finances = structuredClone(state.financeiro);
   assert.equal(applyCheckout(state, target, noon, 'employee'), true);
@@ -156,19 +148,6 @@ test('checkout is idempotent, preserves receipts, clears owned slots and marks t
   assert.equal(applyCheckout(state, target, noon, 'retry'), false);
 });
 
-test('a later automatic retry completes a departure once its pending payment is settled', () => {
-  const state = fixture();
-  state.financeiro.incomes['reservation-r1-initial'].amount = 150;
-  assert.equal(checkoutPending(state, target), 50);
-  assert.throws(() => applyCheckout(state, target, noon, 'automatic'), /pendências/);
-  state.financeiro.incomes['reservation-r1-initial'].amount = 200;
-  const retry = new Date('2026-10-24T15:05:00Z');
-  assert.deepEqual(dueCheckouts(state, retry), [target]);
-  assert.equal(applyCheckout(state, target, retry, 'automatic'), true);
-  assert.deepEqual(currentOccupants({}, state.quartos.reservations, '2026-10-24', retry.getTime()), []);
-  assert.equal(state.quartos.rooms.room1.cleaningStatus, 'sujo');
-  assert.deepEqual(dueCheckouts(state, retry), []);
-});
 test('unpaid booking, voided receipts and extras prevent checkout without changing data', () => {
   for (const change of [
     (s) => s.financeiro.incomes['reservation-r1-initial'].amount = 150,
@@ -241,15 +220,6 @@ test('current stays, departures today and future arrivals are distinguished from
   assert.equal(currentOccupants({}, { r: { ...r, checkInDate: '2026-10-25', checkOutDate: '2026-10-27' } }, '2026-10-24', now).length, 0);
   const stay = { id: 'current', kind: 'hospede', roomNumber: '102', status: 'hospedado', checkInDate: '2026-10-23', nights: 2 };
   assert.equal(currentOccupants({ stay }, {}, '2026-10-24', now).length, 1);
-});
-
-test('automatic checkout never processes old records or dirties rooms from historical stays', () => {
-  const state = fixture();
-  state.quartos.reservations.r1.checkOutDate = '2026-10-23';
-  state.recepcao.stays.old = { id: 'old', kind: 'hospede', roomNumber: '102', status: 'hospedado', checkInDate: '2026-10-01', nights: 2 };
-  const before = structuredClone(state);
-  for (const target of dueCheckouts(state, noon)) applyCheckout(state, target, noon, 'automatic');
-  assert.deepEqual(state, before);
 });
 
 test('checkout respects in-flight booking edits and cannot dirty a newer occupied room', () => {

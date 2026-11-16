@@ -82,7 +82,7 @@ export async function updateStayReceipts(stayId: string, changes: Record<string,
   const writtenIds = initialized ? Object.keys(changes) : Object.keys(receipts);
 
   for (const id of writtenIds) updates[`${RECEPTION}/stays/${stayId}/receipts/${id}`] = next.receipts![id];
-  for (const key of ['dailyMethod', 'dailySplit', 'breakfastMethod', 'breakfastSplit', 'taxMethod', 'taxSplit', 'extras'] as const) {
+  for (const key of ['dailyMethod', 'dailySplit', 'breakfastMethod', 'breakfastSplit', 'taxMethod', 'taxSplit', 'extras', 'renewals'] as const) {
     if (JSON.stringify(stay[key]) !== JSON.stringify(next[key])) updates[`${RECEPTION}/stays/${stayId}/${key}`] = next[key] ?? null;
   }
   updates[`${RECEPTION}/stays/${stayId}/receiptsInitialized`] = true;
