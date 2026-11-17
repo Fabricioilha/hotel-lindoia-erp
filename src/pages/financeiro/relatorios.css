@@ -124,6 +124,26 @@
 .report-chart-heading p { margin: 4px 0 0; color: var(--report-muted); font-size: .78rem; line-height: 1.35; }
 .report-chart-summary { font-size: 1.08rem; }
 .report-chart-legend { min-height: 21px; margin: 8px 0 9px; color: var(--report-muted); font-size: .72rem; }
+.report-series-controls { min-height: 34px; margin: 8px 0 9px; }
+.report-series-controls button {
+  display: inline-flex;
+  min-height: 31px;
+  align-items: center;
+  gap: 7px;
+  padding: 5px 9px;
+  border: 1px solid var(--report-border);
+  border-radius: 999px;
+  color: var(--report-muted);
+  background: var(--report-surface);
+  font-size: .72rem;
+  font-weight: 650;
+  cursor: pointer;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease, opacity 160ms ease;
+}
+.report-series-controls button[aria-pressed="true"] { border-color: color-mix(in srgb, var(--report-focus) 42%, var(--report-border)); color: var(--report-ink); background: var(--report-subtle); }
+.report-series-controls button:not([aria-pressed="true"]) { opacity: .76; }
+.report-series-controls button:hover { border-color: var(--report-focus); color: var(--report-ink); opacity: 1; }
+.report-series-controls i { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; }
 .report-chart-legend span, .report-chart-tooltip div > span { display: inline-flex; align-items: center; gap: 6px; }
 .report-chart-legend i, .report-chart-tooltip i, .report-donut-row i { width: 8px; height: 8px; flex: 0 0 8px; border-radius: 50%; }
 .report-chart-plot { position: relative; height: clamp(230px, 25vw, 288px); min-width: 0; }

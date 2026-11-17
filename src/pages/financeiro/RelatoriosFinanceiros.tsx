@@ -173,8 +173,11 @@ export function RelatoriosFinanceiros() {
 
   const revenueSeries = cash ? { key: 'incoming', label: 'Entradas', color: chartColors.income } as const
     : { key: 'revenue', label: 'Faturamento', color: chartColors.revenue } as const;
-  const comparisonSeries = cash ? [revenueSeries, { key: 'outgoing', label: 'Saídas', color: chartColors.expenses }] as const
-    : [revenueSeries, { key: 'expenses', label: 'Despesas', color: chartColors.expenses }] as const;
+  const expenseSeries = cash ? { key: 'outgoing', label: 'Saídas', color: chartColors.expenses } as const
+    : { key: 'expenses', label: 'Despesas', color: chartColors.expenses } as const;
+  const comparisonSeries = cash
+    ? [revenueSeries, expenseSeries, { key: 'netCash', label: 'Saldo das movimentações', color: chartColors.income }] as const
+    : [revenueSeries, expenseSeries, { key: 'netProfit', label: 'Lucro líquido estimado', color: chartColors.income }] as const;
 
   return <div className="finance-page cash-flow-page finance-reports-page">
     <header className="finance-header">
@@ -227,6 +230,10 @@ export function RelatoriosFinanceiros() {
               detail={cash ? 'Inclui compensações da OYO' : 'Compras, contas e folha do período'}
               help={cash ? 'Soma pagamentos de despesas e folha no período, inclusive compensações com retidos da OYO.' : 'Compras no cartão entram na data da compra. As outras contas e a folha entram pelo vencimento.'}
               trend={metricTrend(reportChange(expenseAmount ?? 0, previousExpenses ?? null), comparisonLabel, { lessIsBetter: true })} />
+            {!cash && <FinanceMetric label="Lucro líquido estimado" value={money(resultAmount ?? 0)} tone={(resultAmount ?? 0) < 0 ? 'coral' : 'navy'} icon={<ReportIcon name="result" />}
+              detail="Faturamento − despesas registradas" negative={(resultAmount ?? 0) < 0}
+              help="Estimativa do período calculada pelo faturamento do hotel menos as despesas e a folha registradas."
+              trend={metricTrend(reportChange(resultAmount ?? 0, previousResult ?? null), comparisonLabel)} />}
             <FinanceMetric label="Lucro do café da manhã" value={money(overview?.profit.breakfast ?? 0)} tone={(overview?.profit.breakfast ?? 0) < 0 ? 'coral' : 'green'} icon={<ReportIcon name="result" />}
               detail={`Receita ${money(overview?.sales.breakfast ?? 0)} · custo ${money(overview?.costs.breakfast ?? 0)}`} negative={(overview?.profit.breakfast ?? 0) < 0}
               help="Receita atribuída aos recebimentos classificados como café, menos compras registradas para os suprimentos e pagamentos efetuados à I9 no período."
@@ -236,15 +243,15 @@ export function RelatoriosFinanceiros() {
         <div className="report-chart-grid grid gap-4" data-ready={Boolean(current)}>
           {!current || !overview ? <><ChartSkeleton /><ChartSkeleton donut /><div className="report-wide"><ChartSkeleton /></div>
             <div className="report-wide grid grid-cols-1 gap-4 lg:grid-cols-2"><ChartSkeleton rows={6} /><ChartSkeleton rows={3} /></div></> : <>
-            <ReportTimeline key={mode + granularity + range.from + range.to} title={cash ? 'Entradas no período' : 'Faturamento do período'}
-              description={cash ? 'Recebimentos e repasses pelas datas registradas.' : 'Receita do hotel pela data do serviço ou lançamento.'}
-              points={current.points} series={[revenueSeries]} kind="area" granularity={granularity} total={revenueAmount} />
+            <ReportTimeline key={mode + granularity + range.from + range.to} title="Evolução financeira"
+              description={cash ? 'Selecione entradas, saídas ou saldo das movimentações.' : 'Selecione faturamento, despesas ou lucro líquido estimado.'}
+              points={current.points} series={[...comparisonSeries]} kind="area" granularity={granularity} total={revenueAmount} interactive />
             <ExpenseDonut key={mode + range.from + range.to} title="Despesas por categoria" description={cash ? 'Distribuição dos pagamentos efetuados.' : 'Distribuição das despesas registradas.'}
               rows={categories} previous={previousCategories} hasComparison={Boolean(previous)} />
             <div className="report-wide">
-              <ReportTimeline key={mode + granularity + range.from + range.to} title={cash ? 'Entradas e saídas' : 'Receitas e despesas'}
-                description={cash ? 'Movimentações do caixa físico e do banco.' : 'Faturamento e despesas registradas no mesmo intervalo.'}
-                points={current.points} series={[...comparisonSeries]} kind="bars" granularity={granularity} />
+              <ReportTimeline key={mode + granularity + range.from + range.to} title="Comparação financeira"
+                description={cash ? 'Compare entradas, saídas e saldo por intervalo.' : 'Compare faturamento, despesas e lucro por intervalo.'}
+                points={current.points} series={[...comparisonSeries]} kind="bars" granularity={granularity} interactive />
             </div>
             <div className="report-wide">
               <ReportTimeline key={'breakfast-' + mode + granularity + range.from + range.to} title="Resultado do café da manhã"

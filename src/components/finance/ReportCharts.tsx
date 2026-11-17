@@ -5,7 +5,8 @@ import { financeCents, financeDateLabel } from '../../services/financePayments';
 import { reportCategorySlices, reportChange, type ReportCategory, type ReportPoint } from '../../services/financeReports';
 import { formatBRL as money } from '../../services/money';
 
-type Series = { key: 'revenue' | 'expenses' | 'incoming' | 'outgoing' | 'breakfastRevenue' | 'breakfastCost' | 'breakfastProfit'; label: string; color: string };
+type SeriesKey = 'revenue' | 'expenses' | 'incoming' | 'outgoing' | 'breakfastRevenue' | 'breakfastCost' | 'breakfastProfit' | 'netProfit' | 'netCash';
+type Series = { key: SeriesKey; label: string; color: string };
 const compactMoney = new Intl.NumberFormat('pt-BR', { notation: 'compact', maximumFractionDigits: 1 });
 const percent = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
 const margin = { top: 12, right: 10, left: 0, bottom: 0 };
@@ -30,6 +31,12 @@ function variation(value: number, previous: number | undefined, against: string)
   return change === null ? 'Base anterior zerada' : `${change > 0 ? '+' : ''}${percent.format(change)}% ${against}`;
 }
 
+function chartValue(point: ReportPoint, key: SeriesKey) {
+  if (key === 'netProfit') return point.revenue - point.expenses;
+  if (key === 'netCash') return point.incoming - point.outgoing;
+  return point[key];
+}
+
 function TimelineTooltip({ active, label, points, series }: TooltipContentProps & { points: ReportPoint[]; series: Series[] }) {
   const index = active ? points.findIndex((point) => point.from === label) : -1;
   const point = points[index];
@@ -38,29 +45,51 @@ function TimelineTooltip({ active, label, points, series }: TooltipContentProps 
   return <div className="report-chart-tooltip" role="status">
     <strong>{caption(point)}</strong>
     {series.map((line) => <div key={line.key}>
-      <span><i style={{ background: line.color }} />{line.label}</span><b>{money(point[line.key])}</b>
-      <small>{variation(point[line.key], previous?.[line.key], 'vs. intervalo anterior')}</small>
+      <span><i style={{ background: line.color }} />{line.label}</span><b>{money(chartValue(point, line.key))}</b>
+      <small>{variation(chartValue(point, line.key), previous ? chartValue(previous, line.key) : undefined, 'vs. intervalo anterior')}</small>
     </div>)}
   </div>;
 }
 
-export function ReportTimeline({ title, description, points, series, kind, granularity, total }: {
+export function ReportTimeline({ title, description, points, series, kind, granularity, total, interactive = false, selectionMode: requestedSelectionMode }: {
   title: string; description: string; points: ReportPoint[]; series: Series[]; kind: 'area' | 'bars'; granularity: FinanceGranularity; total?: number;
+  interactive?: boolean; selectionMode?: 'single' | 'multiple';
 }) {
+  const selectionMode = requestedSelectionMode ?? (kind === 'area' ? 'single' : 'multiple');
+  const [selectedKeys, setSelectedKeys] = useState<SeriesKey[]>(() => kind === 'area' ? (series[0] ? [series[0].key] : []) : series.map(({ key }) => key));
   const gradientId = useId();
-  const primary = series[0];
-  const empty = !points.some((point) => series.some((line) => point[line.key] !== 0));
+  const visibleSeries = interactive ? series.filter(({ key }) => selectedKeys.includes(key)) : series;
+  const primary = visibleSeries[0] ?? series[0]!;
+  const empty = !points.some((point) => visibleSeries.some((line) => chartValue(point, line.key) !== 0));
+  const chartPoints = points.map((point) => ({ ...point,
+    netProfit: chartValue(point, 'netProfit'), netCash: chartValue(point, 'netCash'),
+  }));
   const Chart = kind === 'area' ? AreaChart : BarChart;
+  const summaryValue = total !== undefined && visibleSeries.length === 1 && visibleSeries[0]?.key === series[0]?.key
+    ? total
+    : visibleSeries.length === 1
+      ? points.reduce((sum, point) => sum + financeCents(chartValue(point, visibleSeries[0].key)), 0) / 100
+      : undefined;
+  function toggleSeries(key: SeriesKey) {
+    setSelectedKeys((selected) => {
+      if (selectionMode === 'single') return [key];
+      if (selected.includes(key)) return selected.length === 1 ? selected : selected.filter((item) => item !== key);
+      return [...selected, key];
+    });
+  }
   const tickDate = (date: string) => granularity === 'day' ? date.slice(8) + '/' + date.slice(5, 7)
     : date.slice(5, 7) + '/' + date.slice(2, 4);
-  return <ChartPanel title={title} description={description} summary={total === undefined ? undefined : money(total)}>
-    <div className="report-chart-legend flex flex-wrap items-center gap-x-4 gap-y-1">
-      {series.map((line) => <span key={line.key}><i style={{ background: line.color }} />{line.label}</span>)}
-    </div>
+  return <ChartPanel title={title} description={description} summary={summaryValue === undefined ? undefined : money(summaryValue)}>
+    {interactive ? <div className="report-series-controls flex flex-wrap items-center gap-2" role="group" aria-label={`Séries exibidas em ${title}`}>
+      {series.map((line) => <button key={line.key} type="button" aria-pressed={visibleSeries.some(({ key }) => key === line.key)}
+        onClick={() => toggleSeries(line.key)}><i style={{ background: line.color }} />{line.label}</button>)}
+    </div> : <div className="report-chart-legend flex flex-wrap items-center gap-x-4 gap-y-1">
+      {visibleSeries.map((line) => <span key={line.key}><i style={{ background: line.color }} />{line.label}</span>)}
+    </div>}
     <div className="report-chart-plot">
       {empty ? <div className="report-chart-empty">Sem valores no período selecionado.</div> :
         <ResponsiveContainer width="100%" height="100%" minWidth={0}>
-          <Chart data={points} margin={margin} accessibilityLayer title={title}>
+          <Chart data={chartPoints} margin={margin} accessibilityLayer title={title}>
             <defs><linearGradient id={gradientId} x1="0%" x2="0%" y1="0%" y2="100%"><stop offset="0%" stopColor={primary.color} stopOpacity=".32" /><stop offset="100%" stopColor={primary.color} stopOpacity=".035" /></linearGradient></defs>
             <CartesianGrid stroke="var(--report-grid)" strokeDasharray="3 4" vertical={false} />
             <XAxis dataKey="from" tickFormatter={tickDate} tick={{ fill: 'var(--report-muted)', fontSize: 11 }}
@@ -68,22 +97,22 @@ export function ReportTimeline({ title, description, points, series, kind, granu
             <YAxis tickFormatter={(value: number) => 'R$ ' + compactMoney.format(value)} tick={{ fill: 'var(--report-muted)', fontSize: 11 }}
               tickLine={false} axisLine={false} tickMargin={7} width={65} tickCount={5} />
             <ReferenceLine y={0} stroke="var(--report-border)" />
-            <Tooltip content={(props) => <TimelineTooltip {...props} points={points} series={series} />}
+            <Tooltip content={(props) => <TimelineTooltip {...props} points={points} series={visibleSeries} />}
               cursor={kind === 'area' ? { stroke: 'var(--report-muted)', strokeDasharray: '3 4' } : { fill: 'var(--report-subtle)', opacity: .85 }}
               isAnimationActive={false} />
             {kind === 'area' ? <Area dataKey={primary.key} name={primary.label} type="monotone" baseValue={0}
               stroke={primary.color} strokeWidth={2.5} fill={`url(#${gradientId})`} fillOpacity={1}
               dot={points.length === 1} activeDot={{ r: 5, stroke: 'var(--report-surface)', strokeWidth: 2.5 }}
-              isAnimationActive={false} /> : series.map((line) => <Bar key={line.key} dataKey={line.key} name={line.label}
-              fill={line.color} radius={3} maxBarSize={30} isAnimationActive={false} />)}
+              isAnimationActive animationDuration={420} animationEasing="ease-out" /> : visibleSeries.map((line) => <Bar key={line.key} dataKey={line.key} name={line.label}
+              fill={line.color} radius={3} maxBarSize={30} isAnimationActive animationDuration={420} animationEasing="ease-out" />)}
           </Chart>
         </ResponsiveContainer>}
     </div>
     <details className="report-chart-data">
       <summary>Ver valores do gráfico</summary>
       <div className="finance-table-wrap"><table className="finance-table">
-        <thead><tr><th>Intervalo</th>{series.map((line) => <th key={line.key} className="numeric">{line.label}</th>)}</tr></thead>
-        <tbody>{points.map((point) => <tr key={point.from}><td>{caption(point)}</td>{series.map((line) => <td key={line.key} className="numeric">{money(point[line.key])}</td>)}</tr>)}</tbody>
+        <thead><tr><th>Intervalo</th>{visibleSeries.map((line) => <th key={line.key} className="numeric">{line.label}</th>)}</tr></thead>
+        <tbody>{points.map((point) => <tr key={point.from}><td>{caption(point)}</td>{visibleSeries.map((line) => <td key={line.key} className="numeric">{money(chartValue(point, line.key))}</td>)}</tr>)}</tbody>
       </table></div>
     </details>
   </ChartPanel>;
