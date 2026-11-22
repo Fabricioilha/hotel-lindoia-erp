@@ -17,10 +17,18 @@ function baseUrl(env: BackendEnv): string {
   return value;
 }
 
+export const WORKER_ERP_SCHEMA_VERSION = '2';
+
 export function pocketbaseClient(env: BackendEnv, token?: string): PocketBase {
   const client = new PocketBase(baseUrl(env));
   client.autoCancellation(false);
   if (token) client.authStore.save(token, null);
+  client.beforeSend = (url, options) => {
+    const headers = new Headers(options.headers as HeadersInit | undefined);
+    headers.set('X-ERP-Schema-Version', WORKER_ERP_SCHEMA_VERSION);
+    options.headers = Object.fromEntries(headers.entries());
+    return { url, options };
+  };
   return client;
 }
 

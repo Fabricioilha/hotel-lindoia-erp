@@ -179,6 +179,7 @@
 .finance-transfer-row strong { font-weight: 650; }
 .finance-transfer-row b { text-align: right; }
 .finance-activity-panel { margin-top: 12px; }
+.finance-pagination { display: flex; align-items: center; justify-content: flex-end; gap: 10px; margin-top: 12px; padding-top: 10px; border-top: 1px solid #edf0f5; color: var(--finance-muted); font-size: 0.75rem; font-weight: 650; }
 .finance-table-wrap { width: 100%; overflow-x: auto; }
 .finance-table { width: 100%; border-collapse: collapse; text-align: left; }
 .finance-table th { padding: 10px 9px; border-bottom: 1px solid #cdd6e3; color: #4f5f76; font-size: 0.5625rem; font-weight: 800; text-transform: uppercase; white-space: nowrap; }
@@ -603,6 +604,10 @@
 }
 :where(html[data-manager-theme="dark-glass"]) .finance-table td.positive-value {
   color: #86efac;
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-pagination {
+  border-top-color: var(--dg-border);
+  color: var(--dg-text-muted);
 }
 :where(html[data-manager-theme="dark-glass"]) .finance-row-actions button {
   border: 1px solid var(--dg-border);

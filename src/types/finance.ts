@@ -125,6 +125,34 @@ export interface PayrollEntry {
   updatedAt: string;
 }
 
+export interface FinanceMonthlySummary {
+  summaryKey: string;
+  month: string;
+  wallet: string;
+  category: string;
+  incomeDirectCents: number;
+  incomePrepaidCents: number;
+  expensePaidCents: number;
+  payrollPaidCents: number;
+  transfersInCents: number;
+  transfersOutCents: number;
+  adjustmentsNetCents: number;
+  netChangeCents: number;
+  closingCashCents: number;
+  closingBankCents: number;
+  closingOyoCents: number;
+  entryCount: number;
+  breakdown?: {
+    opening?: { cash: number; bank: number; oyo: number };
+    incoming?: { cash: number; bank: number; oyo: number };
+    outgoing?: { cash: number; bank: number; oyo: number };
+    closing?: { cash: number; bank: number; oyo: number };
+    byCategory?: { incomes?: Record<string, number>; expenses?: Record<string, number> };
+    counts?: Record<string, number>;
+  };
+  rebuiltAt?: string;
+}
+
 export interface FinanceData {
   /** Vendas operacionais pela data da venda, inclusive quando o recebimento ainda está pendente. */
   geladeiraSales?: Record<string, { date: string; amount: number }>;
@@ -146,6 +174,10 @@ export interface FinanceData {
   suppressed: Record<string, boolean>;
   deletions?: Record<string, { token: string; status: string }>;
   categoryAliases?: { income: Record<string, string>; expense: Record<string, string> };
+  /** Resumos mensais pré-consolidados (finance_monthly_summaries) para consultas históricas rápidas. */
+  monthlySummaries?: Record<string, FinanceMonthlySummary>;
+  /** Quando definido, indica que apenas o período especificado foi carregado em detalhe. */
+  loadedPeriod?: { from: string; to: string };
 }
 
 export const INCOME_CATEGORIES = [

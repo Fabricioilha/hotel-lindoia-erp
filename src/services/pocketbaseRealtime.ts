@@ -1,4 +1,12 @@
-import { pb } from '../config/pocketbase';
+import { inspectApiErrorStatus, pb } from '../config/pocketbase';
+import {
+  commitNormalizedFinance,
+  isNormalizedFinanceActive,
+  loadNormalizedFinancePath,
+  loadNormalizedFinancePathWithVersion,
+  subscribeNormalizedFinancePath,
+  translatePathsToFinanceMutation,
+} from './financeRepository';
 
 type DatabaseValue = Record<string, unknown> | unknown[] | string | number | boolean | null;
 type Listener = (snapshot: DataSnapshot) => void;
@@ -23,6 +31,16 @@ const incrementKey = '__pocketbaseIncrement';
 
 function cleanPath(path: string): string {
   return path.split('/').filter(Boolean).join('/');
+}
+
+function isFinancePath(path: string): boolean {
+  const clean = cleanPath(path);
+  return clean === 'erp_geral/financeiro' || clean.startsWith('erp_geral/financeiro/');
+}
+
+function financeSubPath(path: string): string {
+  const clean = cleanPath(path);
+  return clean === 'erp_geral/financeiro' ? '' : clean.slice('erp_geral/financeiro/'.length);
 }
 
 function makeSnapshot(value: DatabaseValue | undefined): DataSnapshot {
@@ -66,10 +84,20 @@ function applyQuery(value: DatabaseValue | undefined, reference: DatabaseReferen
 }
 
 async function fetchState(path: string, versionOnly = false): Promise<{ value: DatabaseValue | undefined; versions: Record<string, number | null> }> {
-  const result = await pb.send<{ value: DatabaseValue | undefined; versions: Record<string, number | null> }>('/api/hotel/state', {
-    query: versionOnly ? { path: cleanPath(path), versionOnly: 1 } : { path: cleanPath(path) },
-  });
-  return result;
+  const clean = cleanPath(path);
+  try {
+    if (!versionOnly && isFinancePath(clean) && await isNormalizedFinanceActive()) {
+      const value = await loadNormalizedFinancePath<DatabaseValue>(financeSubPath(clean));
+      return { value: value ?? undefined, versions: { 'erp_geral/financeiro': 2 } };
+    }
+    const result = await pb.send<{ value: DatabaseValue | undefined; versions: Record<string, number | null> }>('/api/hotel/state', {
+      query: versionOnly ? { path: clean, versionOnly: 1 } : { path: clean },
+    });
+    return result;
+  } catch (error) {
+    inspectApiErrorStatus(error);
+    throw error;
+  }
 }
 
 function storagePath(path: string): string {
@@ -84,6 +112,21 @@ function isIncrement(value: unknown): value is { [incrementKey]: number } {
 
 async function commit(updates: Record<string, unknown>, expectedVersions: Record<string, number | null> = {}): Promise<void> {
   const absolute = Object.fromEntries(Object.entries(updates).map(([path, value]) => [cleanPath(path), value]));
+  const touchesFinance = Object.keys(absolute).some((path) => isFinancePath(path));
+
+  if (touchesFinance && await isNormalizedFinanceActive()) {
+    const encoded = Object.fromEntries(Object.entries(absolute).map(([path, value]) => [
+      path,
+      isIncrement(value) ? { __pocketbaseIncrement: value[incrementKey] } : value,
+    ]));
+    const { financeMutation, stateUpdates } = translatePathsToFinanceMutation(encoded);
+    const stateExpected = Object.fromEntries(
+      Object.entries(expectedVersions).filter(([root]) => root !== 'erp_geral/financeiro'),
+    );
+    await commitNormalizedFinance(financeMutation, stateUpdates, stateExpected);
+    return;
+  }
+
   const roots = [...new Set(Object.keys(absolute).map(storagePath))];
 
   for (let attempt = 0; attempt < 8; attempt++) {
@@ -105,6 +148,7 @@ async function commit(updates: Record<string, unknown>, expectedVersions: Record
       });
       return;
     } catch (error) {
+      inspectApiErrorStatus(error);
       if (!(error && typeof error === 'object' && 'status' in error && error.status === 409)) throw error;
       if (Object.keys(expectedVersions).length) throw new Error('Os dados mudaram enquanto você editava. Reabra o lançamento e tente novamente.', { cause: error });
       if (attempt === 7) throw error;
@@ -173,36 +217,68 @@ export async function get(reference: DatabaseReference): Promise<DataSnapshot> {
 
 export function onValue(reference: DatabaseReference, onChange: Listener, onError?: (error: Error) => void): () => void {
   let active = true;
-  let previous: string | undefined;
-  let lastVersion: number | null | undefined;
-  const root = cleanPath(reference.path).split('/').slice(0, 2).join('/');
-  const canCheckVersion = cleanPath(reference.path).split('/').length >= 2;
-  const refresh = async () => {
-    if (typeof document !== 'undefined' && document.hidden && previous !== undefined) return;
-    try {
-      // The revision check is cheap; download the data only when the branch changed.
-      if (canCheckVersion && previous !== undefined) {
-        const check = await fetchState(reference.path, true);
-        const version = check.versions[root] ?? null;
-        if (!active || version === lastVersion) return;
+  let stopInner: (() => void) | null = null;
+  let timer: number | null = null;
+  const clean = cleanPath(reference.path);
+
+  const startLegacyPolling = () => {
+    let previous: string | undefined;
+    let lastVersion: number | null | undefined;
+    const root = clean.split('/').slice(0, 2).join('/');
+    const canCheckVersion = clean.split('/').length >= 2;
+    const refresh = async () => {
+      if (typeof document !== 'undefined' && document.hidden && previous !== undefined) return;
+      try {
+        if (canCheckVersion && previous !== undefined) {
+          const check = await fetchState(reference.path, true);
+          const version = check.versions[root] ?? null;
+          if (!active || version === lastVersion) return;
+        }
+        const result = await sharedFetchState(reference.path);
+        if (!active) return;
+        lastVersion = result.versions[root] ?? null;
+        const snapshot = makeSnapshot(applyQuery(result.value, reference));
+        const serialized = JSON.stringify(snapshot.val());
+        if (serialized === previous) return;
+        previous = serialized;
+        onChange(snapshot);
+      } catch (cause) {
+        if (active) onError?.(cause instanceof Error ? cause : new Error('Falha ao carregar os dados do PocketBase.'));
       }
-      const result = await sharedFetchState(reference.path);
-      if (!active) return;
-      lastVersion = result.versions[root] ?? null;
-      const snapshot = makeSnapshot(applyQuery(result.value, reference));
-      const serialized = JSON.stringify(snapshot.val());
-      if (serialized === previous) return;
-      previous = serialized;
-      onChange(snapshot);
-    } catch (cause) {
-      if (active) onError?.(cause instanceof Error ? cause : new Error('Falha ao carregar os dados do PocketBase.'));
-    }
+    };
+    void refresh();
+    timer = window.setInterval(() => void refresh(), 3000);
   };
-  void refresh();
-  const timer = window.setInterval(() => void refresh(), 3000);
+
+  if (isFinancePath(clean)) {
+    void isNormalizedFinanceActive().then((normalized) => {
+      if (!active) return;
+      if (normalized) {
+        let previous: string | undefined;
+        stopInner = subscribeNormalizedFinancePath(
+          financeSubPath(clean),
+          (val) => {
+            if (!active) return;
+            const snapshot = makeSnapshot(applyQuery((val ?? undefined) as DatabaseValue | undefined, reference));
+            const serialized = JSON.stringify(snapshot.val());
+            if (serialized === previous) return;
+            previous = serialized;
+            onChange(snapshot);
+          },
+          onError,
+        );
+      } else {
+        startLegacyPolling();
+      }
+    });
+  } else {
+    startLegacyPolling();
+  }
+
   return () => {
     active = false;
-    window.clearInterval(timer);
+    if (timer !== null) window.clearInterval(timer);
+    if (stopInner) stopInner();
   };
 }
 
@@ -228,6 +304,46 @@ export async function runTransaction<T = unknown>(
   _options?: { applyLocally?: boolean },
 ): Promise<{ committed: boolean; snapshot: DataSnapshot }> {
   void _options;
+  const clean = cleanPath(reference.path);
+
+  if (isFinancePath(clean) && await isNormalizedFinanceActive()) {
+    const sub = financeSubPath(clean);
+    const mapDiffSections = new Set(['deletions', 'suppressed', 'cashCollectionAcks', 'cleaningConcernAcks', 'cardFeeSchedule']);
+    for (let attempt = 0; attempt < 25; attempt++) {
+      const { value: current, versionKey, version } = await loadNormalizedFinancePathWithVersion<T>(sub);
+      const next = updateValue((current ?? null) as T | null);
+      if (next === undefined) {
+        return { committed: false, snapshot: makeSnapshot((current ?? undefined) as DatabaseValue | undefined) };
+      }
+      const updates: Record<string, unknown> = {};
+      if (mapDiffSections.has(sub) && next && typeof next === 'object' && !Array.isArray(next)) {
+        const prevObj = (current && typeof current === 'object' ? current : {}) as Record<string, unknown>;
+        const nextObj = next as Record<string, unknown>;
+        for (const key of new Set([...Object.keys(prevObj), ...Object.keys(nextObj)])) {
+          const prevVal = prevObj[key];
+          const nextVal = nextObj[key];
+          if (JSON.stringify(prevVal) !== JSON.stringify(nextVal)) {
+            updates[`${clean}/${key}`] = nextVal === undefined ? null : nextVal;
+          }
+        }
+      } else {
+        updates[clean] = next;
+      }
+      const { financeMutation } = translatePathsToFinanceMutation(updates);
+      if (versionKey) {
+        financeMutation.expectedVersions = { ...(financeMutation.expectedVersions ?? {}), [versionKey]: version };
+      }
+      try {
+        await commitNormalizedFinance(financeMutation);
+        return { committed: true, snapshot: makeSnapshot(next as DatabaseValue) };
+      } catch (error) {
+        inspectApiErrorStatus(error);
+        if (!(error && typeof error === 'object' && 'status' in error && error.status === 409) || attempt === 24) throw error;
+      }
+    }
+    return { committed: false, snapshot: makeSnapshot(undefined) };
+  }
+
   for (let attempt = 0; attempt < 25; attempt++) {
     const current = await fetchState(reference.path);
     const next = updateValue((current.value ?? null) as T | null);
@@ -244,6 +360,7 @@ export async function runTransaction<T = unknown>(
       await pb.send('/api/hotel/state/commit', { method: 'POST', body: { expected, updates } });
       return { committed: true, snapshot: makeSnapshot(next as DatabaseValue) };
     } catch (error) {
+      inspectApiErrorStatus(error);
       if (!(error && typeof error === 'object' && 'status' in error && error.status === 409) || attempt === 24) throw error;
     }
   }

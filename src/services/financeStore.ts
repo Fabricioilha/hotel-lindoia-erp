@@ -1,6 +1,14 @@
 import { withCardFees } from './cardFees';
 import { existingStayReceipts, withReceiptPaymentMethod } from './stayReceipts';
 import { validatePayrollAdvances } from './payrollAdvances';
+import {
+  commitNormalizedFinance,
+  hasLivePocketBaseClient,
+  isNormalizedFinanceActive,
+  loadNormalizedFinanceSnapshot,
+  subscribeNormalizedFinance,
+  translatePathsToFinanceMutation,
+} from './financeRepository';
 import { db, endAt, get, limitToLast, onValue, orderByChild, orderByKey, query, ref, startAt, update as updateDatabase } from './pocketbaseRealtime';
 import { buildAuditEvents } from '../types/audit';
 import { EXPENSE_CATEGORIES, INCOME_CATEGORIES, type FinanceData } from '../types/finance';
@@ -118,6 +126,15 @@ export function subscribeExpenseCategories(onChange: (categories: string[]) => v
 export async function loadFinanceForMonth(month: string): Promise<FinanceData> {
   financeMonthRange(month);
   // Opening and closing balances require the complete history, including payments on bills due in other months.
+  if (await isNormalizedFinanceActive()) {
+    const [snapshot, opSnapshots] = await Promise.all([
+      loadNormalizedFinanceSnapshot({ includeAudit: false, includeSummaries: true }),
+      Promise.all(Object.entries(OPERATIONAL_PATHS).map(([, location]) => get(ref(db, location)))),
+    ]);
+    const opEntries = Object.fromEntries(Object.keys(OPERATIONAL_PATHS).map((key, index) => [key, opSnapshots[index].val() ?? {}]));
+    const view = financeView({ ...snapshot.data, ...opEntries }, true);
+    return { ...view, monthlySummaries: snapshot.summaries };
+  }
   const paths = [...FINANCE_KEYS.filter((key) => key !== 'auditLog').map((key) => [key, `erp_geral/financeiro/${key}`]), ...Object.entries(OPERATIONAL_PATHS)];
   const snapshots = await Promise.all(paths.map(([, location]) => get(ref(db, location))));
   return financeView(Object.fromEntries(paths.map(([key], index) => [key, snapshots[index].val() ?? {}])), true);
@@ -126,33 +143,103 @@ export async function loadFinanceForMonth(month: string): Promise<FinanceData> {
 export function subscribeFinance(
   onChange: (data: FinanceData) => void,
   onError: (error: Error) => void,
-  options: { includeOperations?: boolean; includeAudit?: boolean; transactionRange?: { from: string; to: string } } = {},
+  options: { includeOperations?: boolean; includeAudit?: boolean; transactionRange?: { from: string; to: string }; periodRange?: { from: string; to: string } } = {},
 ): () => void {
-  const keys = options.includeAudit === false ? FINANCE_KEYS.filter((key) => key !== 'auditLog') : FINANCE_KEYS;
-  const paths = [...keys.map((key) => [key, `erp_geral/financeiro/${key}`]), ...(options.includeOperations === false ? [] : Object.entries(OPERATIONAL_PATHS))];
-  const scopedOperationalFields: Record<string, string> = {
-    roomCharges: 'date',
-    cashOuts: 'date',
+  let active = true;
+  let innerStops: (() => void)[] = [];
+
+  const startLegacy = () => {
+    const keys = options.includeAudit === false ? FINANCE_KEYS.filter((key) => key !== 'auditLog') : FINANCE_KEYS;
+    const paths = [...keys.map((key) => [key, `erp_geral/financeiro/${key}`]), ...(options.includeOperations === false ? [] : Object.entries(OPERATIONAL_PATHS))];
+    const scopedOperationalFields: Record<string, string> = {
+      roomCharges: 'date',
+      cashOuts: 'date',
+    };
+    const loaded = new Set<string>();
+    const values: Record<string, unknown> = {};
+    innerStops = paths.map(([key, location]) => {
+      const path = ref(db, location);
+      const scopedField = options.transactionRange && scopedOperationalFields[key];
+      const listener = key === 'auditLog'
+        ? query(path, orderByChild('occurredAt'), limitToLast(100))
+        : scopedField
+          ? query(path, orderByChild(scopedField), startAt(options.transactionRange!.from), endAt(options.transactionRange!.to))
+          : path;
+      return onValue(listener, (snapshot) => {
+        values[key] = snapshot.val() ?? {};
+        loaded.add(key);
+        if (loaded.size === paths.length && active) {
+          onChange(financeView(values, options.includeOperations !== false));
+        }
+      }, onError);
+    });
   };
-  const loaded = new Set<string>();
-  const values: Record<string, unknown> = {};
-  const stops = paths.map(([key, location]) => {
-    const path = ref(db, location);
-    const scopedField = options.transactionRange && scopedOperationalFields[key];
-    const listener = key === 'auditLog'
-      ? query(path, orderByChild('occurredAt'), limitToLast(100))
-      : scopedField
+
+  const startNormalized = () => {
+    const includeOperations = options.includeOperations !== false;
+    const opEntries = includeOperations ? Object.entries(OPERATIONAL_PATHS) : [];
+    const loaded = new Set<string>();
+    const opValues: Record<string, unknown> = {};
+    let financeSnap: Awaited<ReturnType<typeof loadNormalizedFinanceSnapshot>> | null = null;
+
+    const emit = () => {
+      if (!active || !financeSnap || loaded.size !== opEntries.length) return;
+      const view = financeView({ ...financeSnap.data, ...opValues }, includeOperations);
+      onChange({
+        ...view,
+        monthlySummaries: financeSnap.summaries,
+        ...(options.periodRange ? { loadedPeriod: options.periodRange } : {}),
+      });
+    };
+
+    const stopFinance = subscribeNormalizedFinance(
+      (snap) => {
+        financeSnap = snap;
+        emit();
+      },
+      onError,
+      {
+        includeAudit: options.includeAudit !== false,
+        auditLimit: 100,
+        includeSummaries: true,
+        ...(options.periodRange ? { from: options.periodRange.from, to: options.periodRange.to } : {}),
+      },
+    );
+
+    const scopedOperationalFields: Record<string, string> = {
+      roomCharges: 'date',
+      cashOuts: 'date',
+    };
+    const opStops = opEntries.map(([key, location]) => {
+      const path = ref(db, location);
+      const scopedField = options.transactionRange && scopedOperationalFields[key];
+      const listener = scopedField
         ? query(path, orderByChild(scopedField), startAt(options.transactionRange!.from), endAt(options.transactionRange!.to))
         : path;
-    return onValue(listener, (snapshot) => {
-      values[key] = snapshot.val() ?? {};
-      loaded.add(key);
-      if (loaded.size === paths.length) {
-        onChange(financeView(values, options.includeOperations !== false));
-      }
-    }, onError);
-  });
-  return () => stops.forEach((stop) => stop());
+      return onValue(listener, (snapshot) => {
+        opValues[key] = snapshot.val() ?? {};
+        loaded.add(key);
+        emit();
+      }, onError);
+    });
+
+    innerStops = [stopFinance, ...opStops];
+  };
+
+  if (!hasLivePocketBaseClient()) {
+    startLegacy();
+  } else {
+    void isNormalizedFinanceActive().then((normalized) => {
+      if (!active) return;
+      if (normalized) startNormalized();
+      else startLegacy();
+    });
+  }
+
+  return () => {
+    active = false;
+    innerStops.forEach((stop) => stop());
+  };
 }
 
 export function subscribeReservationPaymentIncomes(
@@ -212,14 +299,27 @@ export async function updateFinance(
 async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData): Promise<void> {
   const operationId = crypto.randomUUID();
   const occurredAt = new Date().toISOString();
+  const normalizedActive = await isNormalizedFinanceActive();
   const keys = ['cardStatements', 'cardFeeSchedule', 'cashAdjustments', 'incomes', 'expenses', 'transfers', 'payroll', 'openingBalances', 'incomeCategories', 'expenseCategories', 'suppressed', 'deletions', 'categoryAliases'] as const;
   const sourcePaths = Object.entries(OPERATIONAL_PATHS);
-  const [snapshots, sourceSnapshots] = await Promise.all([
-    Promise.all(keys.map((key) => get(ref(db, `erp_geral/financeiro/${key}`)))),
-    Promise.all(sourcePaths.map(([, location]) => get(ref(db, location)))),
-  ]);
-  const raw = { ...Object.fromEntries(keys.map((key, index) => [key, snapshots[index].val() ?? {}])),
-    ...Object.fromEntries(sourcePaths.map(([key], index) => [key, sourceSnapshots[index].val() ?? {}])) };
+  let raw: Record<string, unknown>;
+  if (normalizedActive) {
+    const [financeSnap, sourceSnapshots] = await Promise.all([
+      loadNormalizedFinanceSnapshot({ includeAudit: false, includeSummaries: false }),
+      Promise.all(sourcePaths.map(([, location]) => get(ref(db, location)))),
+    ]);
+    raw = {
+      ...financeSnap.data,
+      ...Object.fromEntries(sourcePaths.map(([key], index) => [key, sourceSnapshots[index].val() ?? {}])),
+    };
+  } else {
+    const [snapshots, sourceSnapshots] = await Promise.all([
+      Promise.all(keys.map((key) => get(ref(db, `erp_geral/financeiro/${key}`)))),
+      Promise.all(sourcePaths.map(([, location]) => get(ref(db, location)))),
+    ]);
+    raw = { ...Object.fromEntries(keys.map((key, index) => [key, snapshots[index].val() ?? {}])),
+      ...Object.fromEntries(sourcePaths.map(([key], index) => [key, sourceSnapshots[index].val() ?? {}])) };
+  }
   // The editor sees the same source-only entries as the cash-flow screen; unchanged derived entries are never copied.
   const current = financeView(raw, true);
   const proposed = withOyoFeeExpenses(withCardFees(update(current)), current.stays);
@@ -373,5 +473,12 @@ async function commitFinanceUpdate(update: (current: FinanceData) => FinanceData
   Object.entries(auditEvents).forEach(([id, event]) => {
     updates[`erp_geral/financeiro/auditLog/${id}`] = event;
   });
-  if (Object.keys(updates).length > 0) await updateDatabase(ref(db), updates);
+  if (Object.keys(updates).length > 0) {
+    if (normalizedActive) {
+      const { financeMutation, stateUpdates } = translatePathsToFinanceMutation(updates);
+      await commitNormalizedFinance(financeMutation, stateUpdates);
+    } else {
+      await updateDatabase(ref(db), updates);
+    }
+  }
 }

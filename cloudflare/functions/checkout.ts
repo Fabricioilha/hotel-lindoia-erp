@@ -12,6 +12,8 @@ function changedBranches(previous: CheckoutState, next: CheckoutState): Record<s
   const keys = new Set([...Object.keys(previous), ...Object.keys(next)]);
   const updates: Record<string, unknown> = {};
   for (const key of keys) {
+    // O checkout lê o financeiro normalizado apenas para conferência de saldo e nunca sobrescreve o ramo legado.
+    if (key === 'financeiro') continue;
     if (JSON.stringify(previous[key as keyof CheckoutState]) !== JSON.stringify(next[key as keyof CheckoutState])) {
       updates[`erp_geral/${key}`] = next[key as keyof CheckoutState] ?? null;
     }

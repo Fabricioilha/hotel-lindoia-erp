@@ -1,9 +1,20 @@
+import { isNormalizedFinanceActive } from './financeRepository';
 import { runTransaction } from './pocketbaseRealtime';
 import { withTransactionData } from './pocketbaseTransactions';
 
 interface FinanceWriteLock { token: string; startedAt: number }
 
+let localQueue: Promise<unknown> = Promise.resolve();
+
 export async function withFinanceWriteLock<T>(action: () => Promise<T>): Promise<T> {
+  // Na arquitetura normalizada, cada lançamento possui versão própria e gravação transacional
+  // atômica no PocketBase; evitamos lock global entre sessões para eliminar conflitos HTTP 409.
+  if (await isNormalizedFinanceActive()) {
+    const next = localQueue.catch(() => undefined).then(() => action());
+    localQueue = next;
+    return next;
+  }
+
   return withTransactionData('erp_geral/financeiro/managerWriteLock', async (lockRef) => {
     const token = crypto.randomUUID();
     let acquired = false;

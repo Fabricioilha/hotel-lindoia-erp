@@ -1,6 +1,27 @@
-import { financeReceiptItems, incomeItems, incomePaymentWallet, isOyoFeeItem, payrollNet, type FinanceBalances, type FinanceData, type FinanceIncome, type FinanceIncomeItem } from '../types/finance';
+import { financeReceiptItems, incomeItems, incomePaymentWallet, isOyoFeeItem, payrollNet, type FinanceBalances, type FinanceData, type FinanceIncome, type FinanceIncomeItem, type FinanceMonthlySummary } from '../types/finance';
 import { expensePaymentEvents, financeCents, financeMoney, financeMonthRange, paymentEventTotals, paymentsInRange, payrollPaymentEvents } from './financePayments';
 import { expenseRegistrationDate } from './cardStatements';
+
+/**
+ * Consulta saldos acumulados até o fim de um mês diretamente dos resumos mensais
+ * pré-consolidados (finance_monthly_summaries), evitando percorrer anos de registros.
+ */
+export function historicalBalancesFromSummaries(
+  summaries: Record<string, FinanceMonthlySummary> | undefined,
+  openingBalances: FinanceBalances,
+  throughMonth: string,
+): FinanceBalances {
+  if (!summaries) return { ...openingBalances };
+  const months = Object.keys(summaries).filter((m) => m <= throughMonth).sort();
+  const latest = months.at(-1);
+  if (!latest) return { ...openingBalances };
+  const s = summaries[latest];
+  return {
+    cash: s.closingCashCents / 100,
+    bank: s.closingBankCents / 100,
+    oyo: s.closingOyoCents / 100,
+  };
+}
 
 export function registeredExpenses(data: FinanceData): { date: string; category: string; amount: number }[] {
   return [

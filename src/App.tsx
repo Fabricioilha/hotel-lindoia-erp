@@ -9,6 +9,8 @@ import { useAttendant } from './services/useAttendant';
 import { initializeStaff } from './services/staffStore';
 import { applyManagerTheme, clearManagerTheme } from './services/managerTheme';
 import { useManagerTheme } from './services/useManagerTheme';
+import { getSystemBannerState, subscribeSystemBanner, type SystemBannerState } from './config/pocketbase';
+import { getFinanceSystemMeta, resetFinanceMetaCache } from './services/financeRepository';
 import './modal-theme.css';
 import './experience.css';
 
@@ -53,6 +55,19 @@ function App() {
   const [userRole, setUserRole] = useState<UserRole>(null);
   const [authReady, setAuthReady] = useState(false);
   const [staffError, setStaffError] = useState('');
+  const [systemBanner, setSystemBanner] = useState<SystemBannerState>(() => getSystemBannerState());
+
+  useEffect(() => subscribeSystemBanner(setSystemBanner), []);
+
+  useEffect(() => {
+    if (!userRole) {
+      resetFinanceMetaCache();
+      return;
+    }
+    void getFinanceSystemMeta(true);
+    const timer = window.setInterval(() => void getFinanceSystemMeta(true), 60_000);
+    return () => window.clearInterval(timer);
+  }, [userRole]);
 
   useEffect(() => {
     if (userRole !== 'admin') return;
@@ -117,6 +132,17 @@ function App() {
 
   return (
     <BrowserRouter>
+      {systemBanner.upgradeRequired && (
+        <div role="alert" style={{ position: 'sticky', top: 0, zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, padding: '12px 20px', background: '#9e2135', color: '#fff', fontSize: '0.875rem', fontWeight: 700 }}>
+          <span>{systemBanner.upgradeMessage || 'Uma nova versão do ERP foi publicada. Recarregue a página para continuar com segurança.'}</span>
+          <button type="button" onClick={() => window.location.reload()} style={{ padding: '6px 14px', borderRadius: 6, border: '1px solid #fff', background: '#fff', color: '#9e2135', fontWeight: 700, cursor: 'pointer' }}>Recarregar agora</button>
+        </div>
+      )}
+      {!systemBanner.upgradeRequired && systemBanner.maintenanceReadonly && (
+        <div role="alert" style={{ position: 'sticky', top: 0, zIndex: 2000, padding: '10px 20px', background: '#fff3cd', borderBottom: '2px solid #d97706', color: '#78350f', fontSize: '0.875rem', fontWeight: 700, textAlign: 'center' }}>
+          {systemBanner.maintenanceMessage || 'Sistema em manutenção rápida (somente leitura). Consultas continuam funcionando; novas gravações serão liberadas em instantes.'}
+        </div>
+      )}
       {staffError && <div role="alert">Cadastro de funcionários: {staffError}</div>}
       {!authReady ? <main role="status" style={{ padding: 32 }}>Verificando sessão...</main> : <Routes>
         <Route 
