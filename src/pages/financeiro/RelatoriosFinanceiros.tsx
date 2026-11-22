@@ -7,11 +7,11 @@ import { DateInput } from '../../components/ui/DateInput';
 import { exportCsv } from '../../services/financeCsv';
 import type { FinanceRange } from '../../services/financeOverview';
 import { financeDateKeyFromTimestamp, financeDateLabel, financeMonthRange, isFinanceDateKey, type FinanceGranularity } from '../../services/financePayments';
-import { financeReport, previousReportMonth, reportChange, reportDays, reportOccupancy, shiftReportDay, type ReportMode } from '../../services/financeReports';
+import { financeReport, previousReportMonth, previousReportRange, reportChange, reportDays, reportOccupancy, shiftReportDay, type ReportMode } from '../../services/financeReports';
 import { subscribeFinance } from '../../services/financeStore';
 import { subscribeRoomDirectory } from '../../services/housekeepingStore';
 import { formatBRL as money } from '../../services/money';
-import { subscribeOyoClosings, type OyoClosingRecords } from '../../services/oyoReconciliation';
+import { oyoClosingAt, subscribeOyoClosings, type OyoClosingRecords } from '../../services/oyoReconciliation';
 import { subscribeReceptionRooms } from '../../services/receptionStore';
 import type { FinanceData } from '../../types/finance';
 import type { HousekeepingRoom } from '../../types/housekeeping';
@@ -94,17 +94,6 @@ export function RelatoriosFinanceiros() {
   const [oyoReadError, setOyoReadError] = useState('');
   const [customOpen, setCustomOpen] = useState(false);
 
-  useEffect(() => {
-    const stops = [
-      subscribeFinance((next) => { setData(next); setError(''); }, (cause) => setError(cause.message), { includeAudit: false }),
-      subscribeRoomDirectory(setRooms, () => undefined),
-      subscribeReceptionRooms(setReceptionRooms, () => undefined),
-      subscribeOyoClosings((next) => { setClosings(next); setOyoReadError(''); },
-        () => setOyoReadError('Não foi possível consultar os fechamentos da OYO.')),
-    ];
-    return () => stops.forEach((stop) => stop());
-  }, []);
-
   const month = financeMonthRange(today.slice(0, 7));
   const presets = [
     { id: 'current', label: 'Mês atual', range: month },
@@ -114,6 +103,40 @@ export function RelatoriosFinanceiros() {
   const from = params.get('de') ?? '';
   const to = params.get('ate') ?? '';
   const range = isFinanceDateKey(from) && isFinanceDateKey(to) && from >= '1900-01-01' && from <= to ? { from, to } : month;
+
+  // Carregamento por janela temporal alinhada ao início do mês (usa finance_monthly_summaries para saldos anteriores).
+  const effectiveWindowTo = range.to < today ? range.to : today;
+  const windowComparison = previousReportRange({ from: range.from, to: effectiveWindowTo });
+  const earliestWindowDate = windowComparison && windowComparison.range.from < range.from ? windowComparison.range.from : range.from;
+  let windowFrom = `${earliestWindowDate.slice(0, 7)}-01`;
+  if (closings) {
+    const closing = oyoClosingAt(closings, effectiveWindowTo);
+    if (closing) {
+      const nextMonthDate = new Date(`${closing.month}-01T00:00:00Z`);
+      nextMonthDate.setUTCMonth(nextMonthDate.getUTCMonth() + 1);
+      const oyoFrom = nextMonthDate.toISOString().slice(0, 10);
+      if (oyoFrom < windowFrom) windowFrom = oyoFrom;
+    }
+  }
+  const windowTo = range.to > today ? range.to : today;
+
+  useEffect(() => {
+    return subscribeFinance(
+      (next) => { setData(next); setError(''); },
+      (cause) => setError(cause.message),
+      { includeAudit: false, periodRange: { from: windowFrom, to: windowTo } },
+    );
+  }, [windowFrom, windowTo]);
+
+  useEffect(() => {
+    const stops = [
+      subscribeRoomDirectory(setRooms, () => undefined),
+      subscribeReceptionRooms(setReceptionRooms, () => undefined),
+      subscribeOyoClosings((next) => { setClosings(next); setOyoReadError(''); },
+        () => setOyoReadError('Não foi possível consultar os fechamentos da OYO.')),
+    ];
+    return () => stops.forEach((stop) => stop());
+  }, []);
   const preset = presets.find((option) => sameRange(range, option.range));
   const mode: ReportMode = params.get('visao') === 'caixa' ? 'cash' : 'performance';
   const cash = mode === 'cash';

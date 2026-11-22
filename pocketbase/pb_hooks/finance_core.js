@@ -801,8 +801,37 @@ const rebuildMonthlySummaries = (txApp) => {
     const netChange = (closeSnap.cash + closeSnap.bank) - (openSnap.cash + openSnap.bank)
     const summaryKey = `month:${month}`
     keptKeys.add(summaryKey)
+    const breakdownStr = JSON.stringify({
+      opening: openSnap,
+      incoming: b.incoming,
+      outgoing: b.outgoing,
+      closing: closeSnap,
+      byCategory: {
+        incomes: b.byCategoryIncomes,
+        expenses: b.byCategoryExpenses,
+      },
+      counts: b.counts,
+    })
+    const entryCount = b.counts.incomes + b.counts.expenses + b.counts.payroll + b.counts.transfers + b.counts.adjustments
     const pbId = deterministicId("finance_monthly_summaries", summaryKey)
     let rec = findByIdOrNull(txApp, "finance_monthly_summaries", pbId)
+    const unchanged = Boolean(
+      rec
+      && rec.getInt("income_direct_cents") === b.incomeDirectCents
+      && rec.getInt("income_prepaid_cents") === b.incomePrepaidCents
+      && rec.getInt("expense_paid_cents") === b.expensePaidCents
+      && rec.getInt("payroll_paid_cents") === b.payrollPaidCents
+      && rec.getInt("transfers_in_cents") === b.transfersInCents
+      && rec.getInt("transfers_out_cents") === b.transfersOutCents
+      && rec.getInt("adjustments_net_cents") === b.adjustmentsNetCents
+      && rec.getInt("net_change_cents") === netChange
+      && rec.getInt("closing_cash_cents") === closeSnap.cash
+      && rec.getInt("closing_bank_cents") === closeSnap.bank
+      && rec.getInt("closing_oyo_cents") === closeSnap.oyo
+      && rec.getInt("entry_count") === entryCount
+      && JSON.stringify(decodeJsonField(rec, "breakdown_json", null)) === breakdownStr,
+    )
+    if (unchanged) continue
     if (!rec) {
       rec = new Record(summaryCol)
       rec.set("id", pbId)
@@ -822,18 +851,8 @@ const rebuildMonthlySummaries = (txApp) => {
     rec.set("closing_cash_cents", closeSnap.cash)
     rec.set("closing_bank_cents", closeSnap.bank)
     rec.set("closing_oyo_cents", closeSnap.oyo)
-    rec.set("entry_count", b.counts.incomes + b.counts.expenses + b.counts.payroll + b.counts.transfers + b.counts.adjustments)
-    rec.set("breakdown_json", JSON.stringify({
-      opening: openSnap,
-      incoming: b.incoming,
-      outgoing: b.outgoing,
-      closing: closeSnap,
-      byCategory: {
-        incomes: b.byCategoryIncomes,
-        expenses: b.byCategoryExpenses,
-      },
-      counts: b.counts,
-    }))
+    rec.set("entry_count", entryCount)
+    rec.set("breakdown_json", breakdownStr)
     rec.set("rebuilt_at", rebuiltAt)
     txApp.save(rec)
   }
@@ -1049,19 +1068,12 @@ const readNormalizedFinanceData = (app, options) => {
     configMap[rec.getString("config_key")] = decodeJsonField(rec, "value_json", null)
   }
 
-  // Load explicit payment rows for expense & payroll
+  // Load finance_entries + explicit payment rows (indexed & scoped when period from/to is specified!)
   const expPaymentMap = new Map()
   const payPaymentMap = new Map()
-  const paymentFilter = "(parent_type = 'expense' || parent_type = 'payroll') && is_explicit = true"
-  const paymentRecords = app.findRecordsByFilter("finance_payments", paymentFilter, "", 0, 0)
-  const paymentEntryIdsInRange = new Set()
-  for (const rec of paymentRecords) {
+  const addPaymentRecord = (rec) => {
     const parentType = rec.getString("parent_type")
     const entryId = rec.getString("entry_id")
-    const paidAt = rec.getString("paid_at")
-    if (from && to && paidAt >= from && paidAt <= to) {
-      paymentEntryIdsInRange.add(`${parentType}:${entryId}`)
-    }
     const target = parentType === "payroll" ? payPaymentMap : expPaymentMap
     let map = target.get(entryId)
     if (!map) {
@@ -1072,11 +1084,28 @@ const readNormalizedFinanceData = (app, options) => {
     map[ev.id] = ev
   }
 
-  // Load finance_entries
   const incomes = {}
   const expenses = {}
   let entryRecords = []
+  let payrollRecords = []
+  let priorPersistedIds = undefined
   if (from && to) {
+    // 1) Fetch only payments whose paid_at falls in [from, to] (uses idx_finance_payments_paid_wallet!)
+    const periodPayments = app.findRecordsByFilter(
+      "finance_payments",
+      "(parent_type = 'expense' || parent_type = 'payroll') && is_explicit = true && paid_at >= {:from} && paid_at <= {:to}",
+      "",
+      0,
+      0,
+      { from, to },
+    )
+    const paymentEntryIdsInRange = new Set()
+    for (const rec of periodPayments) {
+      paymentEntryIdsInRange.add(`${rec.getString("parent_type")}:${rec.getString("entry_id")}`)
+      addPaymentRecord(rec)
+    }
+
+    // 2) Fetch period entries (+ pending outside range if requested)
     const filterParts = [
       "(type = 'income' && date >= {:from} && date <= {:to})",
       "(type = 'expense' && ((date >= {:from} && date <= {:to}) || (purchase_date >= {:from} && purchase_date <= {:to}) || (paid_date >= {:from} && paid_date <= {:to})))",
@@ -1086,7 +1115,6 @@ const readNormalizedFinanceData = (app, options) => {
     }
     entryRecords = app.findRecordsByFilter("finance_entries", filterParts.join(" || "), "", 0, 0, { from, to })
     const seenIds = new Set(entryRecords.map((r) => r.getString("entry_id")))
-    // Also fetch any expense whose payment fell inside [from, to]
     for (const key of paymentEntryIdsInRange) {
       if (!key.startsWith("expense:")) continue
       const eid = key.slice("expense:".length)
@@ -1097,8 +1125,76 @@ const readNormalizedFinanceData = (app, options) => {
         seenIds.add(eid)
       }
     }
+
+    // 3) Fetch period payroll records (+ any payroll paid inside [from, to])
+    const payrollFilter = "(due_date >= {:from} && due_date <= {:to}) || (month >= {:fromMonth} && month <= {:toMonth}) || status = 'pending' || status = 'partial'"
+    payrollRecords = app.findRecordsByFilter("finance_payroll_records", payrollFilter, "", 0, 0, { from, to, fromMonth: from.slice(0, 7), toMonth: to.slice(0, 7) })
+    const seenPayrollIds = new Set(payrollRecords.map((r) => r.getString("payroll_id")))
+    for (const key of paymentEntryIdsInRange) {
+      if (!key.startsWith("payroll:")) continue
+      const pid = key.slice("payroll:".length)
+      if (seenPayrollIds.has(pid)) continue
+      const extra = findByIdOrNull(app, "finance_payroll_records", deterministicId("finance_payroll_records", pid))
+      if (extra) {
+        payrollRecords.push(extra)
+        seenPayrollIds.add(pid)
+      }
+    }
+
+    // 4) Fetch remaining explicit payments ONLY for the returned expenses & payroll records (e.g. partial payments in other months)
+    const expIdsNeedPayments = entryRecords
+      .filter((r) => r.getString("type") === "expense" && r.getBool("has_explicit_payments"))
+      .map((r) => r.getString("entry_id"))
+    for (let i = 0; i < expIdsNeedPayments.length; i += 80) {
+      const chunk = expIdsNeedPayments.slice(i, i + 80)
+      const params = {}
+      const clauses = chunk.map((id, idx) => {
+        const p = `e${idx}`
+        params[p] = id
+        return `entry_id = {:${p}}`
+      })
+      const recs = app.findRecordsByFilter(
+        "finance_payments",
+        `parent_type = 'expense' && is_explicit = true && (${clauses.join(" || ")})`,
+        "",
+        0,
+        0,
+        params,
+      )
+      for (const rec of recs) addPaymentRecord(rec)
+    }
+    const prIdsNeedPayments = payrollRecords
+      .filter((r) => r.getBool("has_explicit_payments"))
+      .map((r) => r.getString("payroll_id"))
+    for (let i = 0; i < prIdsNeedPayments.length; i += 80) {
+      const chunk = prIdsNeedPayments.slice(i, i + 80)
+      const params = {}
+      const clauses = chunk.map((id, idx) => {
+        const p = `p${idx}`
+        params[p] = id
+        return `entry_id = {:${p}}`
+      })
+      const recs = app.findRecordsByFilter(
+        "finance_payments",
+        `parent_type = 'payroll' && is_explicit = true && (${clauses.join(" || ")})`,
+        "",
+        0,
+        0,
+        params,
+      )
+      for (const rec of recs) addPaymentRecord(rec)
+    }
+
+    // 5) Collect IDs of prior persisted operational entries (< from) so the client never double-counts them against finance_monthly_summaries
+    const priorOpRows = arrayOf(new DynamicModel({ entry_id: "" }))
+    app.db().newQuery("SELECT entry_id FROM finance_entries WHERE source_ref != '' AND date < {:from}").bind({ from }).all(priorOpRows)
+    priorPersistedIds = priorOpRows.map((r) => r.entry_id).filter((eid) => !seenIds.has(eid))
   } else {
+    const paymentFilter = "(parent_type = 'expense' || parent_type = 'payroll') && is_explicit = true"
+    const paymentRecords = app.findRecordsByFilter("finance_payments", paymentFilter, "", 0, 0)
+    for (const rec of paymentRecords) addPaymentRecord(rec)
     entryRecords = app.findRecordsByFilter("finance_entries", "", "", 0, 0)
+    payrollRecords = app.findRecordsByFilter("finance_payroll_records", "", "", 0, 0)
   }
 
   for (const rec of entryRecords) {
@@ -1123,12 +1219,6 @@ const readNormalizedFinanceData = (app, options) => {
 
   // Payroll
   const payroll = {}
-  const payrollFilter = from && to
-    ? "(due_date >= {:from} && due_date <= {:to}) || (month >= {:fromMonth} && month <= {:toMonth}) || status = 'pending' || status = 'partial'"
-    : ""
-  const payrollRecords = from && to
-    ? app.findRecordsByFilter("finance_payroll_records", payrollFilter, "", 0, 0, { from, to, fromMonth: from.slice(0, 7), toMonth: to.slice(0, 7) })
-    : app.findRecordsByFilter("finance_payroll_records", "", "", 0, 0)
   for (const rec of payrollRecords) {
     const pr = recordToPayroll(rec, payPaymentMap)
     payroll[pr.id] = pr
@@ -1199,6 +1289,7 @@ const readNormalizedFinanceData = (app, options) => {
     summaries,
     versions,
     filtered: Boolean(from && to),
+    ...(priorPersistedIds ? { priorPersistedIds } : {}),
   }
 }
 

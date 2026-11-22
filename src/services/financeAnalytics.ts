@@ -43,7 +43,55 @@ export function balancesAt(data: FinanceData, month: string): FinanceBalances {
   return balancesAtDate(data, financeMonthRange(month).to);
 }
 
+function previousCalendarDay(dateKey: string): string {
+  const dt = new Date(`${dateKey}T00:00:00Z`);
+  dt.setUTCDate(dt.getUTCDate() - 1);
+  return dt.toISOString().slice(0, 10);
+}
+
 export function balancesAtDate(data: FinanceData, endDate: string): FinanceBalances {
+  const cutoff = data.loadedPeriod?.from;
+  const prevDay = cutoff && cutoff.endsWith('-01') ? previousCalendarDay(cutoff) : '';
+  const useSummaryFastPath = Boolean(cutoff && prevDay && data.monthlySummaries && endDate >= prevDay);
+
+  if (useSummaryFastPath) {
+    const prevMonth = prevDay.slice(0, 7);
+    const seed = historicalBalancesFromSummaries(data.monthlySummaries, data.openingBalances, prevMonth);
+    const balances = { cash: financeCents(seed.cash), bank: financeCents(seed.bank), oyo: financeCents(seed.oyo) };
+    const persistedIncomes = new Set(data.persistedIds?.incomes ?? []);
+    const persistedExpenses = new Set(data.persistedIds?.expenses ?? []);
+
+    Object.values(data.cashAdjustments ?? {}).filter((item) => item.date >= cutoff! && item.date <= endDate).forEach((item) => {
+      if (Number.isFinite(item.amount)) balances.cash += financeCents(item.amount);
+    });
+    Object.values(data.incomes).filter((item) => {
+      if (data.suppressed[item.id] || item.date > endDate) return false;
+      return persistedIncomes.has(item.id) ? item.date >= cutoff! : true;
+    }).forEach((item) => {
+      financeReceiptItems(item).forEach((line) => {
+        const wallet = incomePaymentWallet(line.paymentMethod);
+        if (wallet && Number.isFinite(line.amount)) balances[wallet] += financeCents(line.amount);
+      });
+    });
+    Object.values(data.expenses).filter((item) => !data.suppressed[item.id]).forEach((item) => {
+      const isPersisted = persistedExpenses.has(item.id);
+      expensePaymentEvents(item).filter((event) => event.date <= endDate && (!isPersisted || event.date >= cutoff!)).forEach((event) => {
+        if (event.wallet in balances && Number.isFinite(event.amount)) balances[event.wallet] -= financeCents(event.amount);
+      });
+    });
+    Object.values(data.payroll).forEach((item) => {
+      payrollPaymentEvents(item).filter((event) => event.date >= cutoff! && event.date <= endDate).forEach((event) => {
+        if (event.wallet in balances && Number.isFinite(event.amount)) balances[event.wallet] -= financeCents(event.amount);
+      });
+    });
+    Object.values(data.transfers).filter((item) => item.date >= cutoff! && item.date <= endDate).forEach((item) => {
+      if (!Number.isFinite(item.amount) || !(item.from in balances) || !(item.to in balances)) return;
+      balances[item.from] -= financeCents(item.amount);
+      if (item.to !== 'oyo') balances[item.to] += financeCents(item.amount);
+    });
+    return { cash: balances.cash / 100, bank: balances.bank / 100, oyo: balances.oyo / 100 };
+  }
+
   const balances = { cash: financeCents(data.openingBalances.cash), bank: financeCents(data.openingBalances.bank), oyo: financeCents(data.openingBalances.oyo) };
   Object.values(data.cashAdjustments ?? {}).filter((item) => item.date <= endDate).forEach((item) => {
     if (Number.isFinite(item.amount)) balances.cash += financeCents(item.amount);

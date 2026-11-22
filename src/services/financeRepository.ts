@@ -31,6 +31,7 @@ export interface FinanceSnapshotResponse {
   summaries: Record<string, FinanceMonthlySummary>;
   versions: Record<string, number>;
   filtered: boolean;
+  priorPersistedIds?: string[];
 }
 
 export interface FinanceMutationPayload {

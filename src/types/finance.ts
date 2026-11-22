@@ -178,6 +178,10 @@ export interface FinanceData {
   monthlySummaries?: Record<string, FinanceMonthlySummary>;
   /** Quando definido, indica que apenas o período especificado foi carregado em detalhe. */
   loadedPeriod?: { from: string; to: string };
+  /** IDs persistidos no PocketBase dentro do snapshot (permite diferenciar persistidos vs operacionais puros). */
+  persistedIds?: { incomes: string[]; expenses: string[] };
+  /** IDs operacionais persistidos anteriores a loadedPeriod.from (já consolidados em monthlySummaries). */
+  priorPersistedIds?: string[];
 }
 
 export const INCOME_CATEGORIES = [

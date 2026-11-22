@@ -96,13 +96,38 @@ const OPERATIONAL_PATHS = {
   movements: 'erp_geral/estoque/movements', reservations: 'erp_geral/quartos/reservations',
 };
 
-function financeView(values: Record<string, unknown>, includeOperations: boolean): FinanceData {
+function financeView(
+  values: Record<string, unknown>,
+  includeOperations: boolean,
+  priorPersistedIds?: string[],
+): FinanceData {
   const data = normalizeFinance(values);
-  const view = withCardFees(includeOperations ? withOperationalFinance(data, {
-    stays: values.stays ?? {}, roomCharges: values.roomCharges ?? {}, cashOuts: values.cashOuts ?? {}, sales: values.sales ?? {},
-    reservationCollections: values.reservationCollections ?? {}, movements: values.movements ?? {}, reservations: values.reservations ?? {},
-  } as OperationalFinanceSources) : data);
-  return includeOperations ? { ...view, stays: (values.stays ?? {}) as FinanceData['stays'], reservations: (values.reservations ?? {}) as FinanceData['reservations'] } : view;
+  const persistedIncomeIds = Object.keys(data.incomes);
+  const persistedExpenseIds = Object.keys(data.expenses);
+  let merged = data;
+  if (includeOperations) {
+    const operationalInput = priorPersistedIds?.length
+      ? {
+        ...data,
+        suppressed: {
+          ...data.suppressed,
+          ...Object.fromEntries(priorPersistedIds.map((id) => [id, true])),
+        },
+      }
+      : data;
+    const withOps = withOperationalFinance(operationalInput, {
+      stays: values.stays ?? {}, roomCharges: values.roomCharges ?? {}, cashOuts: values.cashOuts ?? {}, sales: values.sales ?? {},
+      reservationCollections: values.reservationCollections ?? {}, movements: values.movements ?? {}, reservations: values.reservations ?? {},
+    } as OperationalFinanceSources);
+    merged = priorPersistedIds?.length ? { ...withOps, suppressed: data.suppressed } : withOps;
+  }
+  const view = withCardFees(merged);
+  return {
+    ...view,
+    ...(includeOperations ? { stays: (values.stays ?? {}) as FinanceData['stays'], reservations: (values.reservations ?? {}) as FinanceData['reservations'] } : {}),
+    persistedIds: { incomes: persistedIncomeIds, expenses: persistedExpenseIds },
+    ...(priorPersistedIds?.length ? { priorPersistedIds } : {}),
+  };
 }
 
 export function subscribeExpenseCategories(onChange: (categories: string[]) => void, onError: (error: Error) => void): () => void {
@@ -184,7 +209,7 @@ export function subscribeFinance(
 
     const emit = () => {
       if (!active || !financeSnap || loaded.size !== opEntries.length) return;
-      const view = financeView({ ...financeSnap.data, ...opValues }, includeOperations);
+      const view = financeView({ ...financeSnap.data, ...opValues }, includeOperations, financeSnap.priorPersistedIds);
       onChange({
         ...view,
         monthlySummaries: financeSnap.summaries,
