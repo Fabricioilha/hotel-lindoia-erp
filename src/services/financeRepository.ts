@@ -55,6 +55,7 @@ export interface FinanceMutationPayload {
       income?: Record<string, string | null>;
       expense?: Record<string, string | null>;
     };
+    reportDashboards?: unknown;
   };
   auditLog?: Record<string, AuditEvent | null>;
   expectedVersions?: Record<string, number | null>;
@@ -196,6 +197,8 @@ export function translatePathsToFinanceMutation(
       financeMutation.config = { ...(financeMutation.config ?? {}), incomeCategories: value as string[] };
     } else if (section === 'expenseCategories') {
       financeMutation.config = { ...(financeMutation.config ?? {}), expenseCategories: value as string[] };
+    } else if (section === 'reportDashboards') {
+      financeMutation.config = { ...(financeMutation.config ?? {}), reportDashboards: value };
     } else if (section === 'categoryAliases') {
       const cfg = (financeMutation.config ??= {});
       const aliases = (cfg.categoryAliases ??= {});
@@ -745,6 +748,7 @@ export function subscribeNormalizedFinancePath(
     deletions: ['finance_config'],
     cashCollectionAcks: ['finance_config'],
     cleaningConcernAcks: ['finance_config'],
+    reportDashboards: ['finance_config'],
   };
   const targetCollections = collectionMap[section] ?? ['finance_entries', 'finance_config'];
 

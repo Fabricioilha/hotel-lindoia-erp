@@ -1282,6 +1282,7 @@ const readNormalizedFinanceData = (app, options) => {
     oyoReconciliations,
     cashCollectionAcks: configMap.cashCollectionAcks || {},
     cleaningConcernAcks: configMap.cleaningConcernAcks || {},
+    reportDashboards: configMap.reportDashboards ?? null,
   }
 
   return {
@@ -1311,10 +1312,11 @@ const readNormalizedFinancePath = (app, subPath) => {
     "deletions",
     "cashCollectionAcks",
     "cleaningConcernAcks",
+    "reportDashboards",
     "managerWriteLock",
   ])
   if (configKeys.has(section)) {
-    const val = getConfigValue(app, section, section.endsWith("Categories") ? [] : {})
+    const val = getConfigValue(app, section, section === "reportDashboards" ? null : section.endsWith("Categories") ? [] : {})
     let node = val
     for (const part of parts.slice(1)) {
       if (node === null || node === undefined || typeof node !== "object") { node = null; break }
@@ -1440,6 +1442,7 @@ const readNormalizedFinancePathWithVersion = (app, subPath) => {
     "deletions",
     "cashCollectionAcks",
     "cleaningConcernAcks",
+    "reportDashboards",
     "managerWriteLock",
   ])
   if (configKeys.has(section)) {

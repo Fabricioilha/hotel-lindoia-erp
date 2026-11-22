@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { ChartEditorModal } from '../../components/finance/ChartEditorModal';
+import { ChartTemplatePickerModal } from '../../components/finance/ChartTemplatePickerModal';
+import { CustomizableChartCard } from '../../components/finance/CustomizableChartCard';
 import { FinanceMetric, FinanceMetricSkeleton } from '../../components/finance/FinanceMetric';
 import { FinanceOverviewCards } from '../../components/finance/FinanceOverviewCards';
-import { ExpenseDonut, ReportBreakdown, ReportTimeline } from '../../components/finance/ReportCharts';
 import { DateInput } from '../../components/ui/DateInput';
+import type { CustomReportContext } from '../../services/customReportEngine';
 import { exportCsv } from '../../services/financeCsv';
 import type { FinanceRange } from '../../services/financeOverview';
 import { financeDateKeyFromTimestamp, financeDateLabel, financeMonthRange, isFinanceDateKey, type FinanceGranularity } from '../../services/financePayments';
@@ -12,10 +15,23 @@ import { subscribeFinance } from '../../services/financeStore';
 import { subscribeRoomDirectory } from '../../services/housekeepingStore';
 import { formatBRL as money } from '../../services/money';
 import { oyoClosingAt, subscribeOyoClosings, type OyoClosingRecords } from '../../services/oyoReconciliation';
+import { db, onValue, ref } from '../../services/pocketbaseRealtime';
 import { subscribeReceptionRooms } from '../../services/receptionStore';
+import {
+  createDefaultConfig,
+  requiredSourcesForDashboard,
+  resetReportDashboards,
+  saveReportDashboards,
+  subscribeReportDashboards,
+} from '../../services/reportDashboardStore';
+import type { CleaningTask } from '../../types/cleaning';
 import type { FinanceData } from '../../types/finance';
-import type { HousekeepingRoom } from '../../types/housekeeping';
+import type { FrigobarSale } from '../../types/frigobar';
+import type { HousekeepingRoom, RoomCleaningLog } from '../../types/housekeeping';
+import type { StockMovement, StockProduct } from '../../types/inventory';
+import type { OutputRecord } from '../../types/outputs';
 import type { ReceptionRoom } from '../../types/reception';
+import type { ChartWidgetConfig, ReportDashboardsConfig } from '../../types/reportCharts';
 import './financeiro.css';
 import './relatorios.css';
 
@@ -23,7 +39,6 @@ const MAX_DAILY_DAYS = 92;
 const pct = new Intl.NumberFormat('pt-BR', { maximumFractionDigits: 1 });
 const rangeLabel = ({ from, to }: FinanceRange) => `${financeDateLabel(from)} a ${financeDateLabel(to)}`;
 const sameRange = (a: FinanceRange, b: FinanceRange) => a.from === b.from && a.to === b.to;
-const chartColors = { revenue: 'var(--report-revenue)', expenses: 'var(--report-expense)', income: 'var(--report-income)' };
 
 const iconPaths = {
   revenue: 'M3 17l6-6 4 4 7-8M15 7h5v5',
@@ -32,6 +47,7 @@ const iconPaths = {
   download: 'M12 3v12m-4-4 4 4 4-4M4 16v4h16v-4',
   print: 'M6 9V3h12v6M6 17H4V9h16v8h-2M6 14h12v7H6zM17 12h.01',
   calendar: 'M4 6h16v14H4zM4 10h16M8 3v5m8-5v5',
+  plus: 'M12 5v14M5 12h14',
 };
 
 function ReportIcon({ name }: { name: keyof typeof iconPaths }) {
@@ -83,6 +99,13 @@ function metricTrend(change: number | null, comparison: string, { lessIsBetter =
   return { direction, sentiment, comparison, value: change === null ? 'Sem base' : `${change > 0 ? '+' : ''}${pct.format(change)}%` } as const;
 }
 
+function makeUid(prefix: string): string {
+  const rand = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+    ? crypto.randomUUID().slice(0, 8)
+    : Math.random().toString(36).slice(2, 10);
+  return `${prefix}-${rand}`;
+}
+
 export function RelatoriosFinanceiros() {
   const today = financeDateKeyFromTimestamp(new Date().toISOString());
   const [params, setParams] = useSearchParams();
@@ -94,6 +117,73 @@ export function RelatoriosFinanceiros() {
   const [oyoReadError, setOyoReadError] = useState('');
   const [customOpen, setCustomOpen] = useState(false);
 
+  // Dashboards & customizable chart state
+  const [dashConfig, setDashConfig] = useState<ReportDashboardsConfig>(() => createDefaultConfig());
+  const [activeTabId, setActiveTabId] = useState<string>('');
+  const [templatePickerOpen, setTemplatePickerOpen] = useState(false);
+  const [editingWidget, setEditingWidget] = useState<{ widget: ChartWidgetConfig; isNew: boolean } | null>(null);
+  const [newTabOpen, setNewTabOpen] = useState(false);
+  const [newTabName, setNewTabName] = useState('');
+  const [renamingTab, setRenamingTab] = useState(false);
+  const [renameTabDraft, setRenameTabDraft] = useState('');
+  const [savingNotice, setSavingNotice] = useState('');
+  const [savingError, setSavingError] = useState('');
+
+  // On-demand operational datasets (loaded only when active dashboard or editor uses them)
+  const [cleaningTasks, setCleaningTasks] = useState<Record<string, CleaningTask>>({});
+  const [cleaningLogs, setCleaningLogs] = useState<Record<string, RoomCleaningLog>>({});
+  const [frigobarSales, setFrigobarSales] = useState<Record<string, FrigobarSale>>({});
+  const [inventoryProducts, setInventoryProducts] = useState<Record<string, StockProduct>>({});
+  const [inventoryMovements, setInventoryMovements] = useState<Record<string, StockMovement>>({});
+  const [stockOutputs, setStockOutputs] = useState<Record<string, OutputRecord>>({});
+
+  useEffect(() => {
+    return subscribeReportDashboards(
+      (cfg) => setDashConfig(cfg),
+      () => undefined,
+    );
+  }, []);
+
+  const currentDashboard = useMemo(() => {
+    const requested = activeTabId || params.get('painel') || dashConfig.activeDashboardId;
+    return dashConfig.dashboards.find((d) => d.id === requested) ?? dashConfig.dashboards[0];
+  }, [activeTabId, params, dashConfig]);
+
+  const editorOpen = Boolean(editingWidget);
+  const neededSources = useMemo(() => requiredSourcesForDashboard(currentDashboard), [currentDashboard]);
+  const needCleaning = editorOpen || neededSources.has('cleaning');
+  const needCleaningLogs = editorOpen || neededSources.has('cleaningLogs');
+  const needFrigobar = editorOpen || neededSources.has('frigobar');
+  const needInventory = editorOpen || neededSources.has('inventory');
+  const needOutputs = editorOpen || neededSources.has('outputs');
+
+  useEffect(() => {
+    if (!needCleaning) return;
+    return onValue(ref(db, 'erp_geral/limpeza/tasks'), (snap) => setCleaningTasks(snap.val() ?? {}), () => undefined);
+  }, [needCleaning]);
+
+  useEffect(() => {
+    if (!needCleaningLogs) return;
+    return onValue(ref(db, 'erp_geral/quartos/cleaningLogs'), (snap) => setCleaningLogs(snap.val() ?? {}), () => undefined);
+  }, [needCleaningLogs]);
+
+  useEffect(() => {
+    if (!needFrigobar) return;
+    return onValue(ref(db, 'erp_geral/frigobar/operations/sales'), (snap) => setFrigobarSales(snap.val() ?? {}), () => undefined);
+  }, [needFrigobar]);
+
+  useEffect(() => {
+    if (!needInventory) return;
+    const stopP = onValue(ref(db, 'erp_geral/estoque/products'), (snap) => setInventoryProducts(snap.val() ?? {}), () => undefined);
+    const stopM = onValue(ref(db, 'erp_geral/estoque/movements'), (snap) => setInventoryMovements(snap.val() ?? {}), () => undefined);
+    return () => { stopP(); stopM(); };
+  }, [needInventory]);
+
+  useEffect(() => {
+    if (!needOutputs) return;
+    return onValue(ref(db, 'erp_geral/saidas/records'), (snap) => setStockOutputs(snap.val() ?? {}), () => undefined);
+  }, [needOutputs]);
+
   const month = financeMonthRange(today.slice(0, 7));
   const presets = [
     { id: 'current', label: 'Mês atual', range: month },
@@ -102,13 +192,27 @@ export function RelatoriosFinanceiros() {
   ];
   const from = params.get('de') ?? '';
   const to = params.get('ate') ?? '';
-  const range = isFinanceDateKey(from) && isFinanceDateKey(to) && from >= '1900-01-01' && from <= to ? { from, to } : month;
+  const validParamRange = isFinanceDateKey(from) && isFinanceDateKey(to) && from >= '1900-01-01' && from <= to;
+  const rangeFrom = validParamRange ? from : month.from;
+  const rangeTo = validParamRange ? to : month.to;
+  const range = { from: rangeFrom, to: rangeTo };
 
   // Carregamento por janela temporal alinhada ao início do mês (usa finance_monthly_summaries para saldos anteriores).
   const effectiveWindowTo = range.to < today ? range.to : today;
   const windowComparison = previousReportRange({ from: range.from, to: effectiveWindowTo });
   const earliestWindowDate = windowComparison && windowComparison.range.from < range.from ? windowComparison.range.from : range.from;
   let windowFrom = `${earliestWindowDate.slice(0, 7)}-01`;
+  let windowTo = range.to > today ? range.to : today;
+
+  // Expande janela se algum gráfico do painel ativo usar período próprio fora da faixa global
+  for (const w of currentDashboard?.widgets ?? []) {
+    if (w.periodOverride?.enabled && w.periodOverride.from <= w.periodOverride.to) {
+      const ovComp = previousReportRange({ from: w.periodOverride.from, to: w.periodOverride.to });
+      const ovStart = `${(ovComp?.range.from ?? w.periodOverride.from).slice(0, 7)}-01`;
+      if (ovStart < windowFrom) windowFrom = ovStart;
+      if (w.periodOverride.to > windowTo) windowTo = w.periodOverride.to;
+    }
+  }
   if (closings) {
     const closing = oyoClosingAt(closings, effectiveWindowTo);
     if (closing) {
@@ -118,7 +222,6 @@ export function RelatoriosFinanceiros() {
       if (oyoFrom < windowFrom) windowFrom = oyoFrom;
     }
   }
-  const windowTo = range.to > today ? range.to : today;
 
   useEffect(() => {
     return subscribeFinance(
@@ -137,6 +240,7 @@ export function RelatoriosFinanceiros() {
     ];
     return () => stops.forEach((stop) => stop());
   }, []);
+
   const preset = presets.find((option) => sameRange(range, option.range));
   const mode: ReportMode = params.get('visao') === 'caixa' ? 'cash' : 'performance';
   const cash = mode === 'cash';
@@ -152,7 +256,6 @@ export function RelatoriosFinanceiros() {
   const previous = report?.previous;
   const overview = current?.overview;
   const categories = (cash ? overview?.expenseCategories : current?.registeredCategories) ?? [];
-  const previousCategories = (cash ? previous?.overview.expenseCategories : previous?.registeredCategories) ?? [];
   const revenueAmount = cash ? overview?.received : current?.revenue;
   const previousRevenue = cash ? previous?.overview.received : previous?.revenue;
   const resultAmount = cash ? current?.cashResult : current?.profit;
@@ -160,13 +263,150 @@ export function RelatoriosFinanceiros() {
   const expenseAmount = cash ? overview?.expensesPaid : overview?.expenses;
   const previousExpenses = cash ? previous?.overview.expensesPaid : previous?.overview.expenses;
 
+  const customContext: CustomReportContext | null = useMemo(() => {
+    if (!data) return null;
+    return {
+      data,
+      range: { from: rangeFrom, to: rangeTo },
+      today,
+      granularity,
+      roomNumbers,
+      cleaningTasks,
+      cleaningLogs,
+      frigobarSales,
+      inventoryProducts,
+      inventoryMovements,
+      stockOutputs,
+    };
+  }, [data, rangeFrom, rangeTo, today, granularity, roomNumbers, cleaningTasks, cleaningLogs, frigobarSales, inventoryProducts, inventoryMovements, stockOutputs]);
+
+  async function persistConfig(next: ReportDashboardsConfig, feedback: string) {
+    setDashConfig(next);
+    setSavingError('');
+    try {
+      await saveReportDashboards(next);
+      setSavingNotice(feedback);
+      window.setTimeout(() => setSavingNotice((cur) => (cur === feedback ? '' : cur)), 3200);
+    } catch (cause) {
+      setSavingError(cause instanceof Error ? cause.message : 'Não foi possível salvar a personalização dos gráficos.');
+    }
+  }
+
+  function updateCurrentWidgets(updater: (widgets: ChartWidgetConfig[]) => ChartWidgetConfig[], feedback: string) {
+    if (!currentDashboard) return;
+    const next: ReportDashboardsConfig = {
+      ...dashConfig,
+      activeDashboardId: currentDashboard.id,
+      dashboards: dashConfig.dashboards.map((d) => (d.id === currentDashboard.id ? { ...d, widgets: updater(d.widgets) } : d)),
+    };
+    void persistConfig(next, feedback);
+  }
+
+  function selectDashboardTab(id: string) {
+    setActiveTabId(id);
+    setRenamingTab(false);
+    setParams((cur) => { const q = new URLSearchParams(cur); q.set('painel', id); return q; }, { replace: true });
+  }
+
+  function handleSaveWidget(saved: ChartWidgetConfig) {
+    if (editingWidget?.isNew) {
+      updateCurrentWidgets((list) => [...list, saved], 'Novo gráfico adicionado e sincronizado.');
+    } else {
+      updateCurrentWidgets((list) => list.map((w) => (w.id === saved.id ? saved : w)), 'Alterações do gráfico salvas e sincronizadas.');
+    }
+    setEditingWidget(null);
+  }
+
+  function handleDuplicateWidget(widget: ChartWidgetConfig) {
+    const copy: ChartWidgetConfig = {
+      ...structuredClone(widget),
+      id: makeUid('w'),
+      title: `${widget.title} (cópia)`,
+    };
+    updateCurrentWidgets((list) => {
+      const idx = list.findIndex((w) => w.id === widget.id);
+      if (idx === -1) return [...list, copy];
+      const next = [...list];
+      next.splice(idx + 1, 0, copy);
+      return next;
+    }, 'Gráfico duplicado.');
+  }
+
+  function handleDeleteWidget(widget: ChartWidgetConfig) {
+    if (!window.confirm(`Remover o gráfico "${widget.title}" deste painel?`)) return;
+    updateCurrentWidgets((list) => list.filter((w) => w.id !== widget.id), 'Gráfico removido.');
+  }
+
+  function handleMoveWidget(widgetId: string, direction: -1 | 1) {
+    updateCurrentWidgets((list) => {
+      const idx = list.findIndex((w) => w.id === widgetId);
+      const target = idx + direction;
+      if (idx === -1 || target < 0 || target >= list.length) return list;
+      const next = [...list];
+      const [item] = next.splice(idx, 1);
+      next.splice(target, 0, item);
+      return next;
+    }, 'Ordem dos gráficos atualizada.');
+  }
+
+  function handleCreateTab(event: FormEvent) {
+    event.preventDefault();
+    const name = newTabName.trim();
+    if (!name) return;
+    const id = makeUid('painel');
+    const next: ReportDashboardsConfig = {
+      ...dashConfig,
+      activeDashboardId: id,
+      dashboards: [...dashConfig.dashboards, { id, name: name.slice(0, 60), widgets: [] }],
+    };
+    setNewTabName('');
+    setNewTabOpen(false);
+    selectDashboardTab(id);
+    void persistConfig(next, `Painel "${name}" criado.`);
+  }
+
+  function handleRenameCurrentTab(event: FormEvent) {
+    event.preventDefault();
+    const name = renameTabDraft.trim();
+    if (!name || !currentDashboard) return;
+    const next: ReportDashboardsConfig = {
+      ...dashConfig,
+      dashboards: dashConfig.dashboards.map((d) => (d.id === currentDashboard.id ? { ...d, name: name.slice(0, 60) } : d)),
+    };
+    setRenamingTab(false);
+    void persistConfig(next, 'Nome do painel atualizado.');
+  }
+
+  function handleDeleteCurrentTab() {
+    if (!currentDashboard || dashConfig.dashboards.length <= 1) return;
+    if (!window.confirm(`Excluir o painel "${currentDashboard.name}" e todos os seus gráficos?`)) return;
+    const remaining = dashConfig.dashboards.filter((d) => d.id !== currentDashboard.id);
+    const nextId = remaining[0].id;
+    selectDashboardTab(nextId);
+    void persistConfig({ ...dashConfig, activeDashboardId: nextId, dashboards: remaining }, 'Painel excluído.');
+  }
+
+  async function handleResetDashboards() {
+    if (!window.confirm('Restaurar todos os painéis e gráficos para o modelo padrão do Hotel Lindoia? Suas personalizações serão substituídas.')) return;
+    setSavingError('');
+    try {
+      const fresh = await resetReportDashboards();
+      setDashConfig(fresh);
+      selectDashboardTab(fresh.dashboards[0].id);
+      setSavingNotice('Painéis restaurados para o padrão.');
+      window.setTimeout(() => setSavingNotice(''), 3200);
+    } catch (cause) {
+      setSavingError(cause instanceof Error ? cause.message : 'Não foi possível restaurar os painéis.');
+    }
+  }
+
   function changePeriod(next: FinanceRange) {
-    setParams((current) => { const query = new URLSearchParams(current); query.set('de', next.from); query.set('ate', next.to); return query; });
+    setParams((currentParams) => { const query = new URLSearchParams(currentParams); query.set('de', next.from); query.set('ate', next.to); return query; });
     setCustomOpen(false);
   }
 
   function setReportOption(key: string, value: string) {
-    setParams((current) => { const query = new URLSearchParams(current); query.set(key, value); return query; }, { replace: true });
+    setParams((currentParams) => { const query = new URLSearchParams(currentParams); query.set(key, value); return query; }, { replace: true });
   }
 
   function download() {
@@ -194,14 +434,6 @@ export function RelatoriosFinanceiros() {
     ], true);
   }
 
-  const revenueSeries = cash ? { key: 'incoming', label: 'Entradas', color: chartColors.income } as const
-    : { key: 'revenue', label: 'Faturamento', color: chartColors.revenue } as const;
-  const expenseSeries = cash ? { key: 'outgoing', label: 'Saídas', color: chartColors.expenses } as const
-    : { key: 'expenses', label: 'Despesas', color: chartColors.expenses } as const;
-  const comparisonSeries = cash
-    ? [revenueSeries, expenseSeries, { key: 'netCash', label: 'Saldo das movimentações', color: chartColors.income }] as const
-    : [revenueSeries, expenseSeries, { key: 'netProfit', label: 'Lucro líquido estimado', color: chartColors.income }] as const;
-
   return <div className="finance-page cash-flow-page finance-reports-page">
     <header className="finance-header">
       <Link to="/" className="finance-brand"><span className="finance-brand-mark">HL</span><span><strong>Hotel Lindoia</strong><small>GESTÃO FINANCEIRA</small></span></Link>
@@ -209,12 +441,20 @@ export function RelatoriosFinanceiros() {
     </header>
     <main className="finance-content report-content">
       <header className="report-intro flex flex-wrap items-end justify-between gap-5">
-        <div><p className="report-kicker">GESTÃO FINANCEIRA</p><h1>Relatórios e gráficos</h1><p>Faturamento e despesas do Hotel Lindoia.</p></div>
+        <div>
+          <p className="report-kicker">GESTÃO FINANCEIRA & OPERACIONAL</p>
+          <h1>Relatórios e gráficos</h1>
+          <p>Personalize métricas, cores, tipos de gráfico e painéis para analisar financeiro, OYO, geladeira, café e camareiras.</p>
+        </div>
         <div className="report-actions flex flex-wrap items-center gap-2">
+          <button type="button" className="report-button report-button-primary" onClick={() => setTemplatePickerOpen(true)}>
+            <ReportIcon name="plus" />Novo gráfico
+          </button>
           <button type="button" className="report-button" disabled={!report} onClick={() => window.print()}><ReportIcon name="print" />Exportar PDF</button>
-          <button type="button" className="report-button report-button-primary" disabled={!report} onClick={download}><ReportIcon name="download" />Exportar CSV</button>
+          <button type="button" className="report-button" disabled={!report} onClick={download}><ReportIcon name="download" />Exportar CSV</button>
         </div>
       </header>
+
       <div className="report-surface report-toolbar rounded-2xl border p-3 shadow-sm sm:p-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Segments label="Período" value={customOpen ? 'custom' : preset?.id ?? 'custom'}
@@ -223,7 +463,7 @@ export function RelatoriosFinanceiros() {
               else changePeriod(presets.find((item) => item.id === id)!.range);
             }} />
           <div className="flex flex-wrap items-center gap-2">
-            <Segments label="Tipo de relatório" value={mode} options={[{ id: 'performance', label: 'Desempenho' }, { id: 'cash', label: 'Caixa' }]}
+            <Segments label="Tipo de resumo" value={mode} options={[{ id: 'performance', label: 'Desempenho' }, { id: 'cash', label: 'Caixa' }]}
               onChange={(value) => setReportOption('visao', value === 'cash' ? 'caixa' : 'desempenho')} />
             <Segments label="Agrupamento do gráfico" value={granularity} options={[{ id: 'day', label: 'Diário', disabled: !canShowDaily }, { id: 'month', label: 'Mensal' }]}
               onChange={(value) => setReportOption('agrupar', value === 'month' ? 'mes' : 'dia')} />
@@ -231,12 +471,89 @@ export function RelatoriosFinanceiros() {
         </div>
         {customOpen && <CustomPeriod key={range.from + range.to} range={range} onChange={changePeriod} />}
       </div>
+
+      {/* Dashboard tabs bar */}
+      <div className="report-surface custom-dashboards-bar rounded-2xl border p-2.5 shadow-sm">
+        <div className="custom-dashboards-tabs" role="tablist" aria-label="Painéis de gráficos">
+          {dashConfig.dashboards.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={currentDashboard?.id === tab.id}
+              aria-pressed={currentDashboard?.id === tab.id}
+              className="custom-dash-tab"
+              onClick={() => selectDashboardTab(tab.id)}
+            >
+              <span>{tab.name}</span>
+              <small>{tab.widgets.length}</small>
+            </button>
+          ))}
+          <button
+            type="button"
+            className="custom-dash-tab custom-dash-tab-add"
+            onClick={() => { setNewTabOpen((v) => !v); setRenamingTab(false); }}
+          >
+            + Novo painel
+          </button>
+        </div>
+
+        <div className="custom-dashboards-actions">
+          <button
+            type="button"
+            className="custom-icon-btn"
+            onClick={() => { setRenameTabDraft(currentDashboard?.name ?? ''); setRenamingTab((v) => !v); setNewTabOpen(false); }}
+          >
+            Renomear painel
+          </button>
+          {dashConfig.dashboards.length > 1 && (
+            <button type="button" className="custom-icon-btn custom-icon-btn-danger" onClick={handleDeleteCurrentTab}>
+              Excluir painel
+            </button>
+          )}
+          <button type="button" className="custom-icon-btn" onClick={() => void handleResetDashboards()}>
+            Restaurar padrão
+          </button>
+        </div>
+      </div>
+
+      {newTabOpen && (
+        <form className="report-surface custom-inline-bar rounded-xl border p-3" onSubmit={handleCreateTab}>
+          <input
+            type="text"
+            placeholder="Nome do novo painel (ex.: Manutenção & Custos, Análise OYO...)"
+            value={newTabName}
+            onChange={(e) => setNewTabName(e.target.value)}
+            required
+          />
+          <button type="submit" className="report-button report-button-primary">Criar painel</button>
+          <button type="button" className="report-button" onClick={() => setNewTabOpen(false)}>Cancelar</button>
+        </form>
+      )}
+
+      {renamingTab && (
+        <form className="report-surface custom-inline-bar rounded-xl border p-3" onSubmit={handleRenameCurrentTab}>
+          <input
+            type="text"
+            value={renameTabDraft}
+            onChange={(e) => setRenameTabDraft(e.target.value)}
+            required
+          />
+          <button type="submit" className="report-button report-button-primary">Salvar nome</button>
+          <button type="button" className="report-button" onClick={() => setRenamingTab(false)}>Cancelar</button>
+        </form>
+      )}
+
       <div className="report-context flex flex-wrap items-center gap-x-4 gap-y-1" aria-live="polite">
         <span><ReportIcon name="calendar" />{rangeLabel(range)}</span>
         {report && <small>{report.effective.to < report.effective.from ? 'Período futuro' : `Dados até ${financeDateLabel(report.effective.to)}`}</small>}
         {report?.comparison && <small>Comparação com {rangeLabel(report.comparison.range)}</small>}
+        {savingNotice && <span className="custom-save-notice">{savingNotice}</span>}
       </div>
+
       {error && <p className="finance-alert" role="alert">Não foi possível atualizar os lançamentos. {error}</p>}
+      {savingError && <p className="finance-alert" role="alert">{savingError}</p>}
+
       <div className="report-results" aria-busy={!current && !error}>
         {!current && !error && <p className="sr-only" role="status">Carregando relatórios financeiros</p>}
         <section className="report-hero-grid grid gap-3" aria-label="Indicadores do período">
@@ -263,45 +580,71 @@ export function RelatoriosFinanceiros() {
               trend={metricTrend(reportChange(overview?.profit.breakfast ?? 0, previous?.overview.profit.breakfast ?? null), comparisonLabel)} />
           </>}
         </section>
-        <div className="report-chart-grid grid gap-4" data-ready={Boolean(current)}>
-          {!current || !overview ? <><ChartSkeleton /><ChartSkeleton donut /><div className="report-wide"><ChartSkeleton /></div>
-            <div className="report-wide grid grid-cols-1 gap-4 lg:grid-cols-2"><ChartSkeleton rows={6} /><ChartSkeleton rows={3} /></div></> : <>
-            <ReportTimeline key={mode + granularity + range.from + range.to} title="Evolução financeira"
-              description={cash ? 'Selecione entradas, saídas ou saldo das movimentações.' : 'Selecione faturamento, despesas ou lucro líquido estimado.'}
-              points={current.points} series={[...comparisonSeries]} kind="area" granularity={granularity} total={revenueAmount} interactive />
-            <ExpenseDonut key={mode + range.from + range.to} title="Despesas por categoria" description={cash ? 'Distribuição dos pagamentos efetuados.' : 'Distribuição das despesas registradas.'}
-              rows={categories} previous={previousCategories} hasComparison={Boolean(previous)} />
-            <div className="report-wide">
-              <ReportTimeline key={mode + granularity + range.from + range.to} title="Comparação financeira"
-                description={cash ? 'Compare entradas, saídas e saldo por intervalo.' : 'Compare faturamento, despesas e lucro por intervalo.'}
-                points={current.points} series={[...comparisonSeries]} kind="bars" granularity={granularity} interactive />
+
+        <div className="report-chart-grid custom-report-grid grid gap-4" data-ready={Boolean(customContext)}>
+          {!customContext ? (
+            <>
+              <ChartSkeleton />
+              <ChartSkeleton donut />
+              <div className="report-wide"><ChartSkeleton /></div>
+            </>
+          ) : currentDashboard && currentDashboard.widgets.length === 0 ? (
+            <div className="report-surface report-wide custom-empty-dashboard rounded-2xl border p-8 text-center">
+              <h3>Este painel ainda não possui gráficos</h3>
+              <p>Clique em <strong>+ Novo gráfico</strong> para escolher um modelo pronto (OYO, Geladeira, Camareiras, Limpeza, Manutenção, Café) ou montar o seu do zero.</p>
+              <button type="button" className="report-button report-button-primary" onClick={() => setTemplatePickerOpen(true)}>
+                <ReportIcon name="plus" />Adicionar primeiro gráfico
+              </button>
             </div>
-            <div className="report-wide">
-              <ReportTimeline key={'breakfast-' + mode + granularity + range.from + range.to} title="Resultado do café da manhã"
-                description="Receita atribuída, compras de suprimentos e pagamentos efetuados à I9."
-                points={current.points} series={[
-                  { key: 'breakfastRevenue', label: 'Receita', color: chartColors.revenue },
-                  { key: 'breakfastCost', label: 'Custo', color: chartColors.expenses },
-                  { key: 'breakfastProfit', label: 'Lucro', color: chartColors.income },
-                ]} kind="bars" granularity={granularity} total={overview.profit.breakfast} />
-            </div>
-            <div className="report-wide grid grid-cols-1 gap-4 lg:grid-cols-2">
-              <ReportBreakdown title="Recebimentos por forma de pagamento" description="Pagamentos diretos e repasses registrados." color={chartColors.income} rows={[
-                { label: 'Dinheiro', value: overview.methods.cash }, { label: 'Crédito', value: overview.methods.credit }, { label: 'Débito', value: overview.methods.debit },
-                { label: 'Pix', value: overview.methods.pix }, { label: 'Transferência bancária', value: overview.methods.bankTransfer }, { label: 'Repasses da OYO', value: overview.repasses },
-              ]} />
-              <ReportBreakdown title="Vendas por tipo" description="Geladeira e recebimentos de café e extras." color={chartColors.revenue} rows={[
-                { label: 'Geladeira', value: overview.sales.geladeira }, { label: 'Café da manhã', value: overview.sales.breakfast }, { label: 'Extras', value: overview.sales.extras },
-              ]} />
-            </div>
-          </>}
+          ) : (
+            currentDashboard?.widgets.map((widget, idx) => (
+              <CustomizableChartCard
+                key={widget.id}
+                widget={widget}
+                context={customContext}
+                canMoveLeft={idx > 0}
+                canMoveRight={idx < currentDashboard.widgets.length - 1}
+                onEdit={() => setEditingWidget({ widget, isNew: false })}
+                onDuplicate={() => handleDuplicateWidget(widget)}
+                onDelete={() => handleDeleteWidget(widget)}
+                onMove={(dir) => handleMoveWidget(widget.id, dir)}
+              />
+            ))
+          )}
         </div>
+
         {data && overview && <details className="report-surface finance-report-detail rounded-2xl border p-4 shadow-sm sm:p-6">
           <summary>Ver indicadores detalhados do período</summary>
           <FinanceOverviewCards data={data} overview={overview} closings={closings} oyoReadError={oyoReadError} />
         </details>}
       </div>
-      <footer className="finance-page-footer"><span>Hotel Lindoia</span><span>Relatórios financeiros</span></footer>
+      <footer className="finance-page-footer"><span>Hotel Lindoia</span><span>Relatórios financeiros e operacionais</span></footer>
     </main>
+
+    {templatePickerOpen && (
+      <ChartTemplatePickerModal
+        onClose={() => setTemplatePickerOpen(false)}
+        onAddDirect={(widget) => {
+          setTemplatePickerOpen(false);
+          updateCurrentWidgets((list) => [...list, widget], `Gráfico "${widget.title}" adicionado.`);
+        }}
+        onCustomize={(widget) => {
+          setTemplatePickerOpen(false);
+          setEditingWidget({ widget, isNew: true });
+        }}
+      />
+    )}
+
+    {editingWidget && customContext && data && (
+      <ChartEditorModal
+        initial={editingWidget.widget}
+        isNew={editingWidget.isNew}
+        context={customContext}
+        expenseCategories={data.expenseCategories}
+        incomeCategories={data.incomeCategories}
+        onClose={() => setEditingWidget(null)}
+        onSave={handleSaveWidget}
+      />
+    )}
   </div>;
 }
