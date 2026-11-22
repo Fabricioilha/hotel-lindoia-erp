@@ -254,6 +254,42 @@ export async function runBackfill(options = {}) {
     }
   }
 
+  // Step 2b: Prune any stale IDs left over from an earlier --prewarm if legacy deleted records in the meantime
+  const currentSnap = await requestJson(
+    baseUrl,
+    '/api/hotel/finance/snapshot?includeAudit=1&auditLimit=0&includeSummaries=0',
+    { headers: { Authorization: token } },
+  );
+  const currentNorm = currentSnap.data ?? {};
+  const pruneMutation = { skipSummaryRebuild: true };
+  let prunedCount = 0;
+  const pruneSections = [
+    'incomes', 'expenses', 'cardStatements', 'payroll', 'transfers',
+    'cashAdjustments', 'oyoReconciliations', 'auditLog',
+    'suppressed', 'deletions', 'cashCollectionAcks', 'cleaningConcernAcks', 'cardFeeSchedule',
+  ];
+  for (const key of pruneSections) {
+    const legMap = raw[key] && typeof raw[key] === 'object' ? raw[key] : {};
+    const normMap = currentNorm[key] && typeof currentNorm[key] === 'object' ? currentNorm[key] : {};
+    for (const existingId of Object.keys(normMap)) {
+      if (!Object.hasOwn(legMap, existingId)) {
+        pruneMutation[key] ??= {};
+        pruneMutation[key][existingId] = null;
+        prunedCount++;
+      }
+    }
+  }
+  if (prunedCount > 0) {
+    const res = await requestJson(baseUrl, '/api/hotel/finance/mutate', {
+      method: 'POST',
+      headers: { Authorization: token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ mutation: pruneMutation }),
+    });
+    batchesExecuted++;
+    totalChanged += Number(res.changed || 0);
+    log(`[backfill] Removidos ${prunedCount} registros excluídos no legado desde o pré-aquecimento.`);
+  }
+
   // Step 3: Rebuild monthly summaries deterministically
   const tSummary = Date.now();
   const summaryRes = await requestJson(baseUrl, '/api/hotel/finance/summaries/rebuild', {
