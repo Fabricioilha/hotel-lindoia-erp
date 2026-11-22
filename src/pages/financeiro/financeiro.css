@@ -202,7 +202,7 @@
 .finance-storage-notice { margin: -14px 0 12px; color: #758399; font-size: 0.5625rem; }
 .finance-page-footer { display: flex; justify-content: space-between; gap: 12px; margin-top: 20px; color: #5a6a80; font-size: 0.5625rem; }
 
-.finance-modal-backdrop { position: fixed; z-index: 20; inset: 0; display: grid; place-items: center; overflow-y: auto; padding: 20px; background: rgb(16 29 48 / 52%); backdrop-filter: blur(3px); }
+.finance-modal-backdrop { position: fixed; z-index: 130; inset: 0; display: grid; place-items: center; overflow-y: auto; padding: 20px; background: rgb(16 29 48 / 52%); backdrop-filter: blur(3px); }
 .finance-modal { width: min(100%, 620px); max-height: calc(100vh - 36px); overflow-y: auto; border: 1px solid #d7e0e2; border-radius: 5px; background: #fff; box-shadow: 0 22px 64px rgb(13 30 42 / 25%); }
 .finance-modal-header { position: sticky; z-index: 2; top: 0; display: flex; align-items: flex-start; justify-content: space-between; gap: 18px; padding: 19px 22px 15px; border-top: 3px solid #c99043; border-bottom: 1px solid #e3e9e8; background: #fff; }
 .finance-modal-header h2 { margin: 0; font-size: 1.125rem; }
@@ -224,6 +224,10 @@
 .finance-entry-total { display: flex; justify-content: space-between; gap: 12px; padding: 11px 0 2px; color: #51627a; font-size: 0.6875rem; }
 .finance-entry-total strong { color: var(--finance-ink); font-size: 0.9375rem; }
 .finance-form-hint { margin: 0; color: #718096; font-size: 0.625rem; line-height: 1.5; }
+.finance-modal-footer-sticky { position: sticky; z-index: 15; bottom: 0; flex-shrink: 0; }
+.finance-modal-footer-sticky .finance-modal-footer { position: static; }
+.finance-modal-alert { align-items: center; margin: 0; padding: 12px 22px; border: 0; border-top: 2px solid #c52e43; border-radius: 0; color: #7a1824; background: #ffe8ea; font-size: 0.8125rem; font-weight: 700; line-height: 1.4; }
+.finance-modal-alert span { flex: 1 1 auto; }
 .finance-modal-footer { position: sticky; z-index: 2; bottom: 0; display: flex; justify-content: flex-end; gap: 8px; padding: 13px 22px; border-top: 1px solid #e3e9e8; background: #fff; box-shadow: 0 -7px 18px rgb(31 54 65 / 4%); }
 
 @media (max-width: 920px) {
@@ -621,6 +625,12 @@
   border: 1px solid hsl(354 53% 60% / 0.35);
   color: #fda4af;
   background: hsl(355 80% 52% / 0.16);
+}
+:where(html[data-manager-theme="dark-glass"]) .finance-modal-alert {
+  border: 0;
+  border-top: 2px solid #f43f5e;
+  color: #fecdd3;
+  background: rgba(136, 19, 55, 0.92);
 }
 :where(html[data-manager-theme="dark-glass"]) .finance-notice {
   border: 1px solid hsl(152 37% 60% / 0.35);

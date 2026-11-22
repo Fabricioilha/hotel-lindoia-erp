@@ -10,7 +10,7 @@ import { OyoReconciliation } from '../../components/finance/OyoReconciliation';
 import { latestOyoClosing, oyoClosingBalance, oyoEstimatedPosition, oyoMonthPendingCash, subscribeOyoClosings, type OyoClosingRecord, type OyoClosingRecords } from '../../services/oyoReconciliation';
 import { CashOutForm } from '../../components/finance/CashOutForm';
 import { CARD_FEE_CATEGORY, cardReceiptSummary } from '../../services/cardFees';
-import { useEffect, useMemo, useState, type FormEvent } from 'react';
+import { useEffect, useMemo, useRef, useState, type FormEvent } from 'react';
 import { Link } from 'react-router-dom';
 import type { AuditEvent } from '../../types/audit';
 import { CASH_OUT_REASONS } from '../../types/reception';
@@ -115,8 +115,11 @@ export function FluxoDeCaixa() {
   const upcomingTotal = accountsInScope(debts, 'upcoming', positionDate, summaryRange.to).reduce((sum, entry) => sum + Math.round(entry.pending * 100), 0) / 100;
   const unassignedCardTotal = paymentItemTotal(accountsInScope(debts, 'unassignedCards', positionDate, summaryRange.to).map((entry) => ({ amount: entry.pending })));
 
+	const modalOpenRef = useRef(false);
+	modalOpenRef.current = Boolean(modal);
+
 	// Saldos acumulados e consultas por intervalo precisam dos movimentos operacionais antigos.
-	useEffect(() => subscribeFinance((next) => { setData(next); setLoading(false); setError(''); },
+	useEffect(() => subscribeFinance((next) => { setData(next); setLoading(false); if (!modalOpenRef.current) setError(''); },
 		(cause) => { setError(cause.message); setLoading(false); }), []);
 
 	useEffect(() => subscribeOyoClosings((records) => {
@@ -565,7 +568,7 @@ export function FluxoDeCaixa() {
 					<div className="finance-heading-actions finance-reference-actions">{financeActions}</div>
 				</section>}
 
-				{error && <div className="finance-alert" role="alert">{error}<button onClick={() => setError('')} aria-label="Fechar aviso">×</button></div>}
+				{error && !modal && <div className="finance-alert" role="alert">{error}<button onClick={() => setError('')} aria-label="Fechar aviso">×</button></div>}
 				{notice && <div className="finance-notice" role="status">{notice}</div>}
 				{financeStorageMode === 'PocketBase' && <p className="finance-storage-notice">Dados compartilhados pelo PocketBase</p>}
 				{!loading && financeIssues.length > 0 && <details className="finance-validation-notice"><summary>{financeIssues.length} informação(ões) precisam de correção no histórico financeiro</summary><ul>{financeIssues.map((issue, index) => <li key={`${issue.kind}-${issue.recordId}-${index}`}><span>{issue.message} <small>Registro {issue.recordId}</small></span>{issue.kind === 'payroll' ? <Link to="/financeiro/folha">Abrir folha</Link> : <button type="button" className="finance-text-button" onClick={() => openModal(issue.kind === 'income' ? 'entrada' : issue.kind === 'expense' ? 'saida' : 'transferencia', issue.recordId)}>Corrigir lançamento</button>}</li>)}</ul></details>}
@@ -722,12 +725,12 @@ export function FluxoDeCaixa() {
 				<footer className="finance-page-footer"><span>Armazenamento: {financeStorageMode}</span><span>Fluxo de caixa · Hotel Lindoia</span></footer>
 			</main>
 
-			{modal && <div className={`finance-modal-backdrop${modal === 'saida' ? ' finance-expense-backdrop' : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget && !saving && !(modal === 'saida' && selectedExpense?.id.startsWith('caixa-'))) setModal(null); }}><section className={`finance-modal finance-modal-${modal}${modal === 'saida' ? ' finance-expense-modal' : ''}`} role="dialog" aria-modal="true" aria-labelledby="finance-modal-title">
-				{(modal === 'entrada' || modal === 'entrada-prepaga') && <IncomeForm record={selectedEntry} month={month} categories={data.incomeCategories} initialPaymentMethod={modal === 'entrada-prepaga' ? 'prepaid' : 'cash'} saving={saving} onClose={() => { if (!saving) setModal(null); }} onSubmit={saveIncome} />}
-				{modal === 'saida' && (selectedExpense?.id.startsWith('caixa-') ? <CashOutForm key={editingId} id={editingId.slice('caixa-'.length)} onClose={() => setModal(null)} onSaved={() => { setModal(null); setNotice('Saída corrigida no plantão e no financeiro.'); }} /> : <ExpenseForm key={editingId || 'new-expense'} record={selectedExpense} month={month} categories={expenseCategories} employees={staffMembers(staff).map((member) => member.name)} saving={saving} onClose={() => setModal(null)} onSubmit={saveExpense} />)}
-				{(modal === 'transferencia' || modal === 'repasse' || modal === 'pagamento-oyo') && <TransferForm record={selectedTransfer} initialFrom={modal === 'repasse' ? 'oyo' : modal === 'pagamento-oyo' ? 'bank' : 'cash'} initialTo={modal === 'pagamento-oyo' ? 'oyo' : 'bank'} month={month} saving={saving} onClose={() => setModal(null)} onSubmit={saveTransfer} />}
-				{modal === 'ajuste' && <CashAdjustmentForm key={editingId || 'new-adjustment'} record={data.cashAdjustments?.[editingId]} month={month} saving={saving} error={error} onClose={() => setModal(null)} onSubmit={saveCashAdjustment} />}
-				{modal === 'saldo' && <BalancesForm balances={data.openingBalances} saving={saving} onClose={() => setModal(null)} onSubmit={saveOpeningBalances} />}
+			{modal && <div className={`finance-modal-backdrop${modal === 'saida' ? ' finance-expense-backdrop' : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget && !saving && !(modal === 'saida' && selectedExpense?.id.startsWith('caixa-'))) { setModal(null); setError(''); } }}><section className={`finance-modal finance-modal-${modal}${modal === 'saida' ? ' finance-expense-modal' : ''}`} role="dialog" aria-modal="true" aria-labelledby="finance-modal-title">
+				{(modal === 'entrada' || modal === 'entrada-prepaga') && <IncomeForm record={selectedEntry} month={month} categories={data.incomeCategories} initialPaymentMethod={modal === 'entrada-prepaga' ? 'prepaid' : 'cash'} saving={saving} error={error} onDismissError={() => setError('')} onClose={() => { if (!saving) { setModal(null); setError(''); } }} onSubmit={saveIncome} />}
+				{modal === 'saida' && (selectedExpense?.id.startsWith('caixa-') ? <CashOutForm key={editingId} id={editingId.slice('caixa-'.length)} onClose={() => { setModal(null); setError(''); }} onSaved={() => { setModal(null); setError(''); setNotice('Saída corrigida no plantão e no financeiro.'); }} /> : <ExpenseForm key={editingId || 'new-expense'} record={selectedExpense} month={month} categories={expenseCategories} employees={staffMembers(staff).map((member) => member.name)} saving={saving} error={error} onDismissError={() => setError('')} onClose={() => { if (!saving) { setModal(null); setError(''); } }} onSubmit={saveExpense} />)}
+				{(modal === 'transferencia' || modal === 'repasse' || modal === 'pagamento-oyo') && <TransferForm record={selectedTransfer} initialFrom={modal === 'repasse' ? 'oyo' : modal === 'pagamento-oyo' ? 'bank' : 'cash'} initialTo={modal === 'pagamento-oyo' ? 'oyo' : 'bank'} month={month} saving={saving} error={error} onDismissError={() => setError('')} onClose={() => { if (!saving) { setModal(null); setError(''); } }} onSubmit={saveTransfer} />}
+				{modal === 'ajuste' && <CashAdjustmentForm key={editingId || 'new-adjustment'} record={data.cashAdjustments?.[editingId]} month={month} saving={saving} error={error} onDismissError={() => setError('')} onClose={() => { if (!saving) { setModal(null); setError(''); } }} onSubmit={saveCashAdjustment} />}
+				{modal === 'saldo' && <BalancesForm balances={data.openingBalances} saving={saving} error={error} onDismissError={() => setError('')} onClose={() => { if (!saving) { setModal(null); setError(''); } }} onSubmit={saveOpeningBalances} />}
 			</section></div>}
 		</div>
 	);
@@ -787,11 +790,14 @@ function ModalHeader({ title, onClose }: { title: string; onClose: () => void })
 	return <div className="finance-modal-header"><div><p className="finance-eyebrow">FLUXO DE CAIXA</p><h2 id="finance-modal-title">{title}</h2></div><button type="button" className="finance-close" onClick={onClose} aria-label="Fechar">×</button></div>;
 }
 
-function ModalFooter({ saving, onClose, submit }: { saving: boolean; onClose: () => void; submit: string }) {
-	return <div className="finance-modal-footer"><button disabled={saving} type="button" className="finance-button finance-button-soft" onClick={onClose}>Cancelar</button><button className="finance-button finance-button-primary" type="submit" disabled={saving}>{saving ? 'Salvando...' : submit}</button></div>;
+function ModalFooter({ saving, onClose, submit, error, onDismissError }: { saving: boolean; onClose: () => void; submit: string; error?: string; onDismissError?: () => void }) {
+	return <div className="finance-modal-footer-sticky">
+		{error && <div className="finance-alert finance-modal-alert" role="alert" aria-live="assertive"><span>{error}</span>{onDismissError && <button type="button" onClick={onDismissError} aria-label="Fechar aviso">×</button>}</div>}
+		<div className="finance-modal-footer"><button disabled={saving} type="button" className="finance-button finance-button-soft" onClick={onClose}>Cancelar</button><button className="finance-button finance-button-primary" type="submit" disabled={saving}>{saving ? 'Salvando...' : submit}</button></div>
+	</div>;
 }
 
-function IncomeForm({ record, month, categories, initialPaymentMethod = 'cash', saving, onClose, onSubmit }: { record?: FinanceIncome; month: string; categories: string[]; initialPaymentMethod?: FinancePaymentMethod; saving: boolean; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>, category: string, items: FinanceIncomeItem[]) => void }) {
+function IncomeForm({ record, month, categories, initialPaymentMethod = 'cash', saving, error, onDismissError, onClose, onSubmit }: { record?: FinanceIncome; month: string; categories: string[]; initialPaymentMethod?: FinancePaymentMethod; saving: boolean; error: string; onDismissError: () => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>, category: string, items: FinanceIncomeItem[]) => void }) {
 	const [category, setCategory] = useState(record?.category ?? categories[0] ?? 'Diária');
 	const [items, setItems] = useState<FinanceIncomeItem[]>(() => {
 		if (record) return incomeItems(record).map((item) => ({ ...item }));
@@ -829,10 +835,10 @@ function IncomeForm({ record, month, categories, initialPaymentMethod = 'cash', 
 		</div>
 		<label className="finance-field finance-field-wide"><span>Observação</span><textarea name="note" rows={2} defaultValue={record?.note} /></label>
 		<p className="finance-form-hint finance-field-wide">Pré-pago registra um valor que o hóspede já pagou à OYO antes da chegada; não é dinheiro recebido pelo hotel. Comissões não são calculadas.</p>
-	</div><ModalFooter saving={saving} onClose={onClose} submit={record ? 'Salvar entrada' : 'Registrar entrada'} /></form>;
+	</div><ModalFooter saving={saving} error={error} onDismissError={onDismissError} onClose={onClose} submit={record ? 'Salvar entrada' : 'Registrar entrada'} /></form>;
 }
 
-function ExpenseForm({ record, month, categories, employees, saving, onClose, onSubmit }: { record?: FinanceExpense; month: string; categories: string[]; employees: string[]; saving: boolean; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>, original?: FinanceExpense) => void }) {
+function ExpenseForm({ record, month, categories, employees, saving, error, onDismissError, onClose, onSubmit }: { record?: FinanceExpense; month: string; categories: string[]; employees: string[]; saving: boolean; error: string; onDismissError: () => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>, original?: FinanceExpense) => void }) {
 	const [original] = useState(record);
 	const [category, setCategory] = useState(record?.category ?? '');
 	const [planned, setPlanned] = useState(record ? String(record.plannedAmount) : '');
@@ -882,10 +888,10 @@ function ExpenseForm({ record, month, categories, employees, saving, onClose, on
 			{events.length > 0 && <div className="finance-payment-history"><h3>Histórico de parcelas</h3><p>Corrija a data de uma parcela sem alterar as demais.</p>{events.map((payment) => <div className="finance-payment-event" key={payment.id}><input type="hidden" name="paymentEventId" value={payment.id} /><div><strong>{money(payment.amount)} · {WALLET_LABELS[payment.wallet]}</strong>{payment.amount < 0 && <small>Correção / estorno</small>}{payment.dateSource === 'legacy_due_date' && <small>Data histórica ausente: vencimento utilizado</small>}</div><label className="finance-field"><span>Data desta parcela</span><DateInput name="paymentEventDate" required max={localDateKey()} value={eventDates[payment.id]} onValueChange={(date) => setEventDates((current) => ({ ...current, [payment.id]: date }))} /></label>{payment.dateSource === 'legacy_due_date' && <label className="finance-confirm-date"><input type="checkbox" name="paymentEventConfirmed" value={payment.id} />Confirmar esta data de pagamento</label>}</div>)}</div>}
 		</section>
 		{category === SALARY_ADVANCE_CATEGORY && <section className="finance-expense-section" aria-labelledby="finance-expense-employee-title"><div className="finance-expense-step"><span>3</span><div><strong id="finance-expense-employee-title">Beneficiário e compensação na folha</strong><small>Selecione quem receberá o valor.</small></div></div><label className="finance-field"><span>Competência para descontar na folha *</span><input name="advanceMonth" type="month" required defaultValue={record?.advanceMonth ?? month} /></label><label className="finance-field"><span>Funcionário *</span><select name="employee" required defaultValue={record?.employee ?? ''}><option value="" disabled>Selecione um funcionário</option>{employeeOptions.map((name) => <option key={name} value={name}>{name}</option>)}</select></label>{employeeOptions.length === 0 && <p className="finance-form-hint">Nenhum funcionário ativo no quadro de funcionários.</p>}</section>}
-	</div><ModalFooter saving={saving} onClose={onClose} submit={record ? 'Salvar despesa e pagamentos' : 'Registrar despesa'} /></form>;
+	</div><ModalFooter saving={saving} error={error} onDismissError={onDismissError} onClose={onClose} submit={record ? 'Salvar despesa e pagamentos' : 'Registrar despesa'} /></form>;
 }
 
-function TransferForm({ record, month, initialFrom = 'cash', initialTo = 'bank', saving, onClose, onSubmit }: { record?: FinanceTransfer; month: string; initialFrom?: FinanceWallet; initialTo?: FinanceWallet; saving: boolean; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>, original?: FinanceTransfer) => void }) {
+function TransferForm({ record, month, initialFrom = 'cash', initialTo = 'bank', saving, error, onDismissError, onClose, onSubmit }: { record?: FinanceTransfer; month: string; initialFrom?: FinanceWallet; initialTo?: FinanceWallet; saving: boolean; error: string; onDismissError: () => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>, original?: FinanceTransfer) => void }) {
   const [original] = useState(record);
   const [from, setFrom] = useState<FinanceWallet>(record?.from ?? initialFrom);
   const [to, setTo] = useState<FinanceWallet>(record?.to ?? initialTo);
@@ -903,20 +909,20 @@ function TransferForm({ record, month, initialFrom = 'cash', initialTo = 'bank',
       <small>Informe o mês do relatório que já contabiliza este movimento. Em branco, vale o mês da transferência.</small>
     </label>}
 		<label className="finance-field finance-field-wide"><span>Observação</span><textarea name="note" rows={2} defaultValue={record?.note} /></label>
-	</div><ModalFooter saving={saving} onClose={onClose} submit={record ? 'Salvar transferência' : 'Registrar transferência'} /></form>;
+	</div><ModalFooter saving={saving} error={error} onDismissError={onDismissError} onClose={onClose} submit={record ? 'Salvar transferência' : 'Registrar transferência'} /></form>;
 }
 
-function BalancesForm({ balances, saving, onClose, onSubmit }: { balances: FinanceBalances; saving: boolean; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function BalancesForm({ balances, saving, error, onDismissError, onClose, onSubmit }: { balances: FinanceBalances; saving: boolean; error: string; onDismissError: () => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
 	return <form data-guard-unsaved onSubmit={onSubmit}><ModalHeader title="Saldos iniciais" onClose={onClose} /><div className="finance-modal-body">
 		<p className="finance-form-hint finance-field-wide">Informe os saldos existentes antes do primeiro lançamento financeiro. Eles são a base do fechamento acumulado.</p>
 		<label className="finance-field"><span>Caixa físico</span><input name="cash" type="number" step="0.01" defaultValue={balances.cash} /></label>
 		<label className="finance-field"><span>Banco</span><input name="bank" type="number" step="0.01" defaultValue={balances.bank} /></label>
 		<label className="finance-field"><span>Pré-pagos retidos antes do histórico</span><input name="oyo" type="number" step="0.01" defaultValue={balances.oyo} /></label>
 		<p className="finance-form-hint finance-field-wide">Informe somente valores anteriores ao histórico. Pré-pagos e repasses já registrados são calculados automaticamente.</p>
-	</div><ModalFooter saving={saving} onClose={onClose} submit="Salvar saldos" /></form>;
+	</div><ModalFooter saving={saving} error={error} onDismissError={onDismissError} onClose={onClose} submit="Salvar saldos" /></form>;
 }
 
-function CashAdjustmentForm({ record, month, saving, error, onClose, onSubmit }: { record?: CashAdjustment; month: string; saving: boolean; error: string; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
+function CashAdjustmentForm({ record, month, saving, error, onDismissError, onClose, onSubmit }: { record?: CashAdjustment; month: string; saving: boolean; error: string; onDismissError: () => void; onClose: () => void; onSubmit: (event: FormEvent<HTMLFormElement>) => void }) {
   const [draftId] = useState(() => record?.id ?? id());
   return <form data-guard-unsaved onSubmit={onSubmit}><ModalHeader title={record ? 'Editar ajuste de caixa' : 'Ajuste de caixa por data'} onClose={onClose} /><div className="finance-modal-body">
     <input type="hidden" name="id" value={draftId} />
@@ -925,6 +931,5 @@ function CashAdjustmentForm({ record, month, saving, error, onClose, onSubmit }:
     <label className="finance-field"><span>Valor do ajuste (R$, positivo ou negativo) *</span><input name="amount" type="number" step="0.01" required defaultValue={record?.amount} placeholder="Ex.: -500,00 ou 1000,00" /></label>
     <label className="finance-field finance-field-wide"><span>Motivo *</span><textarea name="note" rows={3} required maxLength={500} defaultValue={record?.note} placeholder="Ex.: acerto do caixa anterior à implantação do sistema" /></label>
     <p className="finance-form-hint finance-field-wide">Este valor é um acréscimo ou redução, não substitui o saldo total. Se o saldo já foi registrado em Saldos iniciais, não lance o mesmo valor novamente.</p>
-    {error && <p className="finance-form-hint finance-field-wide" role="alert">{error}</p>}
-  </div><ModalFooter saving={saving} onClose={onClose} submit="Salvar ajuste e recalcular saldos" /></form>;
+  </div><ModalFooter saving={saving} error={error} onDismissError={onDismissError} onClose={onClose} submit="Salvar ajuste e recalcular saldos" /></form>;
 }

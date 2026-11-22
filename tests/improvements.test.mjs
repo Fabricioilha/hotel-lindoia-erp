@@ -375,3 +375,16 @@ test('current October payables exclude November settlements and keep unpaid card
   // Historical accounting still respects the actual dates of the payments.
   assert.equal(outstandingAccounts(data, '2026-10-31').filter(r => r.dueDate <= '2026-10-31').reduce((sum, r) => sum + Math.round(r.pending * 100), 0), 15460);
 });
+
+test('cash flow modals render save errors inside a sticky banner above the modal footer', () => {
+  const page = sourceText('src/pages/financeiro/FluxoDeCaixa.tsx');
+  assert.match(page, /\{error && !modal && <div className="finance-alert" role="alert">/, 'page alert hides while modal is open so errors appear inside the dialog');
+  assert.match(page, /className="finance-modal-footer-sticky"/, 'modal footer uses sticky wrapper');
+  assert.match(page, /className="finance-alert finance-modal-alert" role="alert"/, 'modal displays sticky alert banner');
+  for (const form of ['IncomeForm', 'ExpenseForm', 'TransferForm', 'BalancesForm', 'CashAdjustmentForm']) {
+    assert.match(page, new RegExp(`<${form}[^\\n]*error=\\{error\\}`), `${form} receives modal error state`);
+  }
+  const css = sourceText('src/pages/financeiro/financeiro.css');
+  assert.match(css, /\.finance-modal-backdrop \{[^}]*z-index: 130;/, 'finance modal backdrop sits above shift banner');
+  assert.match(css, /\.finance-modal-footer-sticky \{[^}]*position: sticky;[^}]*z-index: 15;/);
+});

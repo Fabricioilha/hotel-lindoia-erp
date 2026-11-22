@@ -284,7 +284,25 @@ routerAdd("POST", "/api/hotel/state/commit", (event) => {
     throw new BadRequestError("A versão dos dados não foi informada.")
   }
 
+  const HOTEL_STATE_WARN_BYTES = 1572864
+  const HOTEL_STATE_CRITICAL_BYTES = 2621440
+  const HOTEL_STATE_MAX_BYTES = 4194304
+  const utf8ByteLength = (text) => {
+    let bytes = 0
+    for (let i = 0; i < text.length; i++) {
+      const code = text.charCodeAt(i)
+      if (code <= 0x7f) bytes += 1
+      else if (code <= 0x7ff) bytes += 2
+      else if (code >= 0xd800 && code <= 0xdbff) {
+        bytes += 4
+        i++
+      } else bytes += 3
+    }
+    return bytes
+  }
+
   let changed = 0
+  const savedSizes = []
   try {
   $app.runInTransaction((txApp) => {
     const entries = new Map()
@@ -359,16 +377,30 @@ routerAdd("POST", "/api/hotel/state/commit", (event) => {
     for (const root of roots) {
       const entry = entries.get(root)
       const record = entry.record || new Record(txApp.findCollectionByNameOrId("hotel_state"))
+      const serialized = JSON.stringify(entry.value ?? {})
+      const nextRevision = (entry.record?.getInt("revision") ?? 0) + 1
       record.set("path", root)
-      record.set("value", JSON.stringify(entry.value ?? {}))
-      record.set("revision", (entry.record?.getInt("revision") ?? 0) + 1)
+      record.set("value", serialized)
+      record.set("revision", nextRevision)
       if (body.sourceHash) record.set("source_hash", body.sourceHash)
       txApp.save(record)
+      savedSizes.push({ path: root, bytes: utf8ByteLength(serialized), revision: nextRevision })
     }
   })
   } catch (error) {
     console.error("PocketBase state commit failed", error)
     throw error
+  }
+  for (const item of savedSizes) {
+    if (item.bytes >= HOTEL_STATE_CRITICAL_BYTES) {
+      const mb = (item.bytes / 1048576).toFixed(2)
+      console.error(`[hotel_state][SIZE_CRITICAL] path=${item.path} bytes=${item.bytes} (${mb} MiB) limit=${HOTEL_STATE_MAX_BYTES} revision=${item.revision}`)
+      $app.logger().error("hotel_state branch size critical", "path", item.path, "bytes", item.bytes, "limitBytes", HOTEL_STATE_MAX_BYTES, "revision", item.revision)
+    } else if (item.bytes >= HOTEL_STATE_WARN_BYTES) {
+      const mb = (item.bytes / 1048576).toFixed(2)
+      console.warn(`[hotel_state][SIZE_WARN] path=${item.path} bytes=${item.bytes} (${mb} MiB) limit=${HOTEL_STATE_MAX_BYTES} revision=${item.revision}`)
+      $app.logger().warn("hotel_state branch size warning", "path", item.path, "bytes", item.bytes, "limitBytes", HOTEL_STATE_MAX_BYTES, "revision", item.revision)
+    }
   }
   return event.json(200, { committed: true, changed })
 }, $apis.requireAuth())

@@ -613,6 +613,15 @@ html body :is(.modal-backdrop .stock-modal .modal-footer, .modal-backdrop .stock
   -webkit-backdrop-filter: blur(16px);
   backdrop-filter: blur(16px);
 }
+html body .finance-modal-backdrop .finance-modal .finance-modal-footer-sticky {
+  position: sticky;
+  bottom: 0;
+  z-index: 15;
+  flex-shrink: 0;
+}
+html body .finance-modal-backdrop .finance-modal .finance-modal-footer-sticky .finance-modal-footer {
+  position: static;
+}
 html body .reservation-live-summary {
   position: sticky;
   top: 0;
