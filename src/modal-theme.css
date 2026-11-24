@@ -400,9 +400,10 @@ html body :is(.modal-backdrop, .finance-modal-backdrop, .dashboard-room-charge-b
   overflow-y: auto !important;
 }
 
-.dashboard-room-charge-modal.dashboard-occupied-room-modal {
-  width: min(100%, 700px) !important;
-  max-width: 700px !important;
+.dashboard-room-charge-modal.dashboard-occupied-room-modal,
+.dashboard-room-charge-modal.dashboard-quick-checkout-modal {
+  width: min(100%, 720px) !important;
+  max-width: 720px !important;
   max-height: min(92dvh, 900px) !important;
 }
 

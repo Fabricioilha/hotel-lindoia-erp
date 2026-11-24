@@ -146,6 +146,7 @@ async function commit(updates: Record<string, unknown>, expectedVersions: Record
         method: 'POST',
         body: { expected: versions, updates: encoded },
       });
+      notifyStateMutated();
       return;
     } catch (error) {
       inspectApiErrorStatus(error);
@@ -198,6 +199,12 @@ export function increment(value: number): { [incrementKey]: number } {
 }
 
 const inFlight = new Map<string, ReturnType<typeof fetchState>>();
+const activeRefreshers = new Set<() => void>();
+
+/** Triggers an immediate refresh on all active polling listeners after an out-of-band mutation (e.g. checkout). */
+export function notifyStateMutated(): void {
+  activeRefreshers.forEach((refresh) => refresh());
+}
 
 /** Reuses an identical request already in flight so many listeners do not multiply server work. */
 function sharedFetchState(path: string) {
@@ -221,6 +228,7 @@ export function onValue(reference: DatabaseReference, onChange: Listener, onErro
   let timer: number | null = null;
   const clean = cleanPath(reference.path);
 
+  let unregisterRefresher: (() => void) | null = null;
   const startLegacyPolling = () => {
     let previous: string | undefined;
     let lastVersion: number | null | undefined;
@@ -246,6 +254,9 @@ export function onValue(reference: DatabaseReference, onChange: Listener, onErro
         if (active) onError?.(cause instanceof Error ? cause : new Error('Falha ao carregar os dados do PocketBase.'));
       }
     };
+    const triggerRefresh = () => { void refresh(); };
+    activeRefreshers.add(triggerRefresh);
+    unregisterRefresher = () => activeRefreshers.delete(triggerRefresh);
     void refresh();
     timer = window.setInterval(() => void refresh(), 3000);
   };
@@ -278,6 +289,7 @@ export function onValue(reference: DatabaseReference, onChange: Listener, onErro
   return () => {
     active = false;
     if (timer !== null) window.clearInterval(timer);
+    if (unregisterRefresher) unregisterRefresher();
     if (stopInner) stopInner();
   };
 }
@@ -358,6 +370,7 @@ export async function runTransaction<T = unknown>(
     const expected = current.versions;
     try {
       await pb.send('/api/hotel/state/commit', { method: 'POST', body: { expected, updates } });
+      notifyStateMutated();
       return { committed: true, snapshot: makeSnapshot(next as DatabaseValue) };
     } catch (error) {
       inspectApiErrorStatus(error);

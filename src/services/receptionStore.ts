@@ -230,13 +230,50 @@ export function saveCashOut(cashOut: CashOut): Promise<void> {
   return set(ref(db, `${PATH}/cashOuts/${cashOut.id}`), { ...cashOut, ...staffReference(cashOut.attendant) });
 }
 
+function sameRoomNumber(left: string | undefined, right: string | undefined): boolean {
+  return (left ?? '').trim().toLocaleLowerCase('pt-BR') === (right ?? '').trim().toLocaleLowerCase('pt-BR');
+}
+
+async function assertRoomReadyForCheckIn(roomNumber: string): Promise<void> {
+  const [roomsSnapshot, activeCleaningSnapshot] = await Promise.all([
+    get(ref(db, 'erp_geral/quartos/rooms')),
+    get(ref(db, 'erp_geral/limpeza/activeRooms')),
+  ]);
+  const rooms = Object.values((roomsSnapshot.val() ?? {}) as Record<string, HousekeepingRoom>);
+  const activeRooms = (activeCleaningSnapshot.val() ?? {}) as Record<string, unknown>;
+  const room = rooms.find((item) => sameRoomNumber(item.number, roomNumber));
+  if (!room) return;
+  if (room.maintenanceStatus === 'em_manutencao') {
+    throw new Error(`O quarto ${room.number} está em manutenção e indisponível para hospedagem.`);
+  }
+  if (room.cleaningStatus !== 'limpo' || Boolean(activeRooms[room.id])) {
+    throw new Error(`O quarto ${room.number} está ${room.cleaningStatus === 'em_limpeza' || activeRooms[room.id] ? 'em limpeza' : 'sujo (aguardando limpeza)'}. Conclua a limpeza antes de liberar para o próximo hóspede.`);
+  }
+}
+
 export async function saveStay(stay: GuestStay): Promise<void> {
-  return set(ref(db, `${PATH}/stays/${stay.id}`), { ...await snapshotStayCardFees(stay), ...staffReference(stay.attendant) });
+  const immediateCheckIn = !stay.awaitingArrival && stay.status === 'hospedado' && stay.checkInDate <= localDateKey();
+  if (immediateCheckIn) {
+    await assertRoomReadyForCheckIn(stay.roomNumber);
+  }
+  const normalizedStay: GuestStay = !stay.awaitingArrival && stay.status === 'hospedado'
+    ? { ...stay, checkoutRequired: true }
+    : stay;
+  return set(ref(db, `${PATH}/stays/${normalizedStay.id}`), { ...await snapshotStayCardFees(normalizedStay), ...staffReference(normalizedStay.attendant) });
 }
 
 /** Confirma a chegada de um hóspede pré-cadastrado: o quarto passa a ficar ocupado. */
 export async function confirmStayArrival(stayId: string): Promise<void> {
-  await set(ref(db, `${PATH}/stays/${stayId}/awaitingArrival`), null);
+  const staySnapshot = await get(ref(db, `${PATH}/stays/${stayId}`));
+  const stay = staySnapshot.val() as GuestStay | null;
+  if (!stay || stay.status !== 'hospedado') {
+    throw new Error('Esta hospedagem não está mais disponível para check-in.');
+  }
+  await assertRoomReadyForCheckIn(stay.roomNumber);
+  await update(ref(db), {
+    [`${PATH}/stays/${stayId}/awaitingArrival`]: null,
+    [`${PATH}/stays/${stayId}/checkoutRequired`]: true,
+  });
 }
 
 export function updateStayAndFinance(stay: GuestStay, expected?: GuestStay): Promise<void> {
@@ -445,8 +482,13 @@ async function commitStayAndFinance(stay: GuestStay, expected?: GuestStay): Prom
         : { ...entry, updatedAt: timestamp };
     }
   }
-  if (previous.status === 'hospedado' && previous.roomNumber !== updatedStay.roomNumber) {
-    const previousRoom = (Object.values(roomsSnapshot.val() ?? {}) as HousekeepingRoom[]).find((room) => room.number === previous.roomNumber);
+  if (previous.status === 'hospedado' && !sameRoomNumber(previous.roomNumber, updatedStay.roomNumber)) {
+    const roomsList = Object.values(roomsSnapshot.val() ?? {}) as HousekeepingRoom[];
+    const destinationRoom = roomsList.find((room) => sameRoomNumber(room.number, updatedStay.roomNumber));
+    if (!updatedStay.awaitingArrival && destinationRoom && (destinationRoom.maintenanceStatus === 'em_manutencao' || destinationRoom.cleaningStatus !== 'limpo')) {
+      throw new Error(`O quarto ${destinationRoom.number} precisa estar limpo e liberado para transferir a hospedagem.`);
+    }
+    const previousRoom = roomsList.find((room) => sameRoomNumber(room.number, previous.roomNumber));
     if (previousRoom) {
       updates[`erp_geral/quartos/rooms/${previousRoom.id}/cleaningStatus`] = 'sujo';
       Object.assign(updates, await roomCleaningTaskUpdates(previousRoom, 'sujo', 'Gerência'));
@@ -522,7 +564,7 @@ export async function convertRotativoToDaily(rotativo: GuestStay, dailyStay: Gue
   }
   await update(ref(db), {
     [`${PATH}/stays/${rotativo.id}/status`]: 'encerrado',
-    [`${PATH}/stays/${dailyStay.id}`]: { ...await snapshotStayCardFees(initializeStayReceipts(dailyStay, localDateKey(), true)), ...staffReference(dailyStay.attendant), convertedFromStayId: rotativo.id },
+    [`${PATH}/stays/${dailyStay.id}`]: { ...await snapshotStayCardFees(initializeStayReceipts({ ...dailyStay, checkoutRequired: true }, localDateKey(), true)), ...staffReference(dailyStay.attendant), convertedFromStayId: rotativo.id },
   });
 }
 

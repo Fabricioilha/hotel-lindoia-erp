@@ -12,7 +12,7 @@ import { useAttendant } from '../services/useAttendant';
 import type { UserRole } from '../types';
 import { subscribeDashboardHousekeeping, subscribeCurrentReservationDirectory, subscribeReservationCollections, subscribeRoomCategories, subscribeRoomDirectory, syncReservationCollections, setRoomMaintenanceBlock, type DashboardHousekeepingData } from '../services/housekeepingStore';
 import { breakfastForecastDay, breakfastsOnDate } from '../services/breakfastForecast';
-import { guestStayOccupiesToday, hotelOccupancySummary, occupiedRoomNumbers } from '../services/reservationAnalytics';
+import { guestStayOccupiesToday, hotelOccupancySummary, occupiedRoomNumbers, reservationRotativoEndTimestamp, rotativoEndTimestamp } from '../services/reservationAnalytics';
 import { subscribeRoomAddOnInventory } from '../services/frigobarStore';
 import { convertRotativoToDaily, emptyReception, localDateKey, saveRoomCharge, confirmStayArrival, subscribeReceptionBoard, subscribeReceptionRates } from '../services/receptionStore';
 import { emptyCleaning, subscribeActiveCleaningTasks, subscribeDashboardCleaningTasks } from '../services/cleaningStore';
@@ -61,6 +61,7 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   const [temporaryNotice, setTemporaryNotice] = useState<{ id: string; message: string } | null>(null);
   const [activeTool, setActiveTool] = useState<DashboardTool | null>(null);
   const [quickReceptionKind, setQuickReceptionKind] = useState<StayKind | null>(null);
+  const [quickCheckoutOpen, setQuickCheckoutOpen] = useState(false);
   const [housekeeping, setHousekeeping] = useState<DashboardHousekeepingData>({ rooms: {}, reservations: {}, cleaningLogs: {} });
   const [inventoryProducts, setInventoryProducts] = useState<Record<string, StockProduct>>({});
   const [metricsLoadedKey, setMetricsLoadedKey] = useState('');
@@ -377,6 +378,26 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
   const displayedNotice = temporaryNotice ?? (flash ? { id: location.key, message: flash } : null);
   const valueOrLoading = (value: string | number) => allMetricsLoaded && !metricsError ? String(value) : '—';
   const detailOrLoading = (detail: string) => metricsError ? 'Dados indisponíveis' : allMetricsLoaded ? detail : 'Carregando dados';
+  const liveReservations = userRole === 'admin' ? housekeeping.reservations : reservationDirectory;
+  const todayLiveOccupants = useMemo(() => currentOccupants(boardStays, liveReservations, boardTodayKey, clock), [boardStays, liveReservations, boardTodayKey, clock]);
+  const pendingDeparturesCount = useMemo(() => todayLiveOccupants.filter((item) => {
+    if (item.sourceType === 'stay') {
+      const stay = boardStays[item.sourceId];
+      if (!stay) return false;
+      if (stay.kind === 'periodo') {
+        const end = rotativoEndTimestamp(stay);
+        return Number.isFinite(end) && clock >= end;
+      }
+      return departureDue(item.checkOutDate, clock);
+    }
+    const reservation = liveReservations[item.sourceId];
+    if (!reservation) return false;
+    if (reservation.channel === 'rotativo') {
+      const end = reservationRotativoEndTimestamp(reservation);
+      return Number.isFinite(end) && clock >= end;
+    }
+    return departureDue(item.checkOutDate, clock);
+  }).length, [todayLiveOccupants, boardStays, liveReservations, clock]);
   const checkoutMetric = <MetricCard title="Pendências de checkout" value={checkoutAlerts ? String(checkoutAlerts.length) : '—'}
     detail={!checkoutToday ? 'Consultando contas dos quartos' : !checkoutAlerts ? 'Consulta indisponível' : checkoutAlerts.length ? 'Hospedagens atuais com saldo a receber' : 'Hospedagens atuais sem saldo a receber'}
     tone={checkoutAlertsByRoom.size ? 'red' : 'neutral'} />;
@@ -414,10 +435,74 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
           {cleaningConcerns.map((log) => <p key={log.id}>Quarto {log.roomNumber} · {log.attendant} · {new Date(log.completedAt).toLocaleString('pt-BR')} · informado por {log.reportedBy || 'Equipe'} · <Link to={`/quartos?room=${encodeURIComponent(log.roomNumber)}`}>Consultar quarto</Link> · <Link to="/conferir-caixa">Conferir caixa</Link> <button type="button" disabled={Boolean(acknowledgingConcern)} onClick={() => void acknowledgeConcern(log)}>{acknowledgingConcern === log.id ? 'Confirmando...' : 'OK, conferido'}</button></p>)}
           <p>Relato para apuração, não prova de irregularidade.</p>
         </div>}
-        {userRole === 'admin' && cashCollections.length > 0 && <div className="notice notice-error" role="status">
-          <strong>Recolhimentos de caixa aguardando confirmação</strong>
-          {cashCollections.map((item) => <p key={item.id}>{new Date(item.createdAt).toLocaleString('pt-BR')} · {item.attendant} · {money(item.amount)}{item.note ? ` · ${item.note}` : ''} <button type="button" disabled={Boolean(acknowledgingCollection)} onClick={() => void acknowledgeCollection(item)}>{acknowledgingCollection === item.id ? 'Confirmando...' : 'OK, conferido'}</button></p>)}
-        </div>}
+        {userRole === 'admin' && cashCollections.length > 0 && (() => {
+          const totalPending = cashCollections.reduce((sum, item) => sum + item.amount, 0);
+          const plural = cashCollections.length > 1;
+          return (
+            <section className="manager-collection-banner" role="status" aria-live="polite" aria-label="Recolhimentos de caixa aguardando confirmação">
+              <div className="manager-collection-head">
+                <div className="manager-collection-title-group">
+                  <span className="manager-collection-icon" aria-hidden="true">
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M3 7h16a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2zM3 7l3-3h11v3M16 14h2" />
+                    </svg>
+                  </span>
+                  <div>
+                    <p className="manager-collection-eyebrow">SAÍDA DE CAIXA · RECOLHIDO PELA GERÊNCIA</p>
+                    <h2>{plural ? `${cashCollections.length} recolhimentos de caixa aguardando confirmação` : 'Recolhimento de caixa aguardando confirmação'}</h2>
+                    <p className="manager-collection-subtitle">Dinheiro retirado do caixa do plantão para a gerência. Confira o valor recebido em mãos antes de confirmar.</p>
+                  </div>
+                </div>
+                <div className="manager-collection-summary">
+                  <div className="manager-collection-total">
+                    <small>{plural ? 'Total a conferir' : 'Valor a conferir'}</small>
+                    <strong>{money(totalPending)}</strong>
+                  </div>
+                  <Link to="/conferir-caixa" className="manager-collection-link">Conferir caixa →</Link>
+                </div>
+              </div>
+
+              <ul className="manager-collection-list">
+                {cashCollections.map((item) => {
+                  const created = new Date(item.createdAt);
+                  const dateLabel = created.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                  const timeLabel = created.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                  const busy = acknowledgingCollection === item.id;
+                  return (
+                    <li key={item.id} className="manager-collection-item">
+                      <div className="manager-collection-amount">
+                        <small>Valor recolhido</small>
+                        <strong>{money(item.amount)}</strong>
+                      </div>
+                      <div className="manager-collection-meta">
+                        <div className="manager-collection-meta-top">
+                          <span className="manager-collection-attendant">
+                            <span className="manager-collection-avatar" aria-hidden="true">{(item.attendant || 'E').slice(0, 1).toUpperCase()}</span>
+                            <span>Plantonista: <strong>{item.attendant || 'Equipe'}</strong></span>
+                          </span>
+                          <span className="manager-collection-datetime">
+                            <ClockIcon />
+                            {dateLabel} às {timeLabel}
+                          </span>
+                        </div>
+                        {item.note && <p className="manager-collection-note"><strong>Observação:</strong> {item.note}</p>}
+                      </div>
+                      <button
+                        type="button"
+                        className="manager-collection-confirm"
+                        disabled={Boolean(acknowledgingCollection)}
+                        onClick={() => void acknowledgeCollection(item)}
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m5 13 4 4L19 7" /></svg>
+                        {busy ? 'Confirmando…' : 'Confirmar recebimento'}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            </section>
+          );
+        })()}
         {syncError && <div className="notice notice-error" role="alert">{syncError}</div>}
         {displayedNotice && <div key={displayedNotice.id} className="dashboard-toast" role="status"><span aria-hidden="true">✓</span>{displayedNotice.message}</div>}
 
@@ -452,6 +537,14 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
           <div className="action-grid">
             <ActionCard tone="blue" icon="bed" title="Adicionar Hóspede" onClick={() => setQuickReceptionKind('hospede')} />
             <ActionCard tone="gold" icon="clock" title="Adicionar Rotativo" onClick={() => setQuickReceptionKind('periodo')} />
+            <ActionCard
+              tone="amber"
+              icon="checkout"
+              title="Dar Check Out"
+              hint={pendingDeparturesCount > 0 ? `${pendingDeparturesCount} saída(s) pendente(s)` : todayLiveOccupants.length > 0 ? `${todayLiveOccupants.length} ocupado(s)` : undefined}
+              badge={pendingDeparturesCount > 0 ? pendingDeparturesCount : todayLiveOccupants.length > 0 ? todayLiveOccupants.length : undefined}
+              onClick={() => setQuickCheckoutOpen(true)}
+            />
             <ActionCard tone="red" icon="cart" title="Geladeira" onClick={() => setActiveTool('geladeira')} />
             <ActionCard tone="green" icon="receipt" title="Caixa" to="/conferir-caixa" />
             <ActionCard tone="slate" icon="wallet" title="Saída de Caixa" onClick={() => setActiveTool('saida-caixa')} />
@@ -469,12 +562,15 @@ export function Dashboard({ userRole, onLogout }: DashboardProps) {
           stays={boardStays}
           roomCharges={roomCharges}
           checkoutAlerts={checkoutAlertsByRoom}
+          checkoutAlertsLoaded={Boolean(checkoutToday && checkoutAlerts)}
           reservations={userRole === 'admin' ? housekeeping.reservations : reservationDirectory}
           loaded={boardReceptionLoaded && boardRoomsLoaded && boardReservationsLoaded && boardCleaningLoaded}
           now={clock}
           attendant={attendant}
           userRole={userRole}
           entryContext={userRole === 'admin' ? { ...receptionEntryContext, roomDirectory: housekeeping.rooms, reservations: housekeeping.reservations } : receptionEntryContext}
+          quickCheckoutOpen={quickCheckoutOpen}
+          onCloseQuickCheckout={() => setQuickCheckoutOpen(false)}
           onChargeSaved={showTemporaryNotice}
         />
 
@@ -564,6 +660,22 @@ function money(value: number) {
   return value.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
 }
 
+function formatTimeBR(timestamp: number | undefined): string {
+  if (!timestamp || !Number.isFinite(timestamp)) return '';
+  return new Intl.DateTimeFormat('pt-BR', {
+    timeZone: 'America/Sao_Paulo',
+    hour: '2-digit',
+    minute: '2-digit',
+  }).format(new Date(timestamp));
+}
+
+function isOccupantCheckoutDue(occupant: Pick<BoardOccupant, 'rotativo' | 'rotativoEnd' | 'checkOutDate'>, now: number): boolean {
+  if (occupant.rotativo) {
+    return occupant.rotativoEnd !== undefined && Number.isFinite(occupant.rotativoEnd) && now >= occupant.rotativoEnd;
+  }
+  return departureDue(occupant.checkOutDate, now);
+}
+
 interface BoardOccupant {
   roomNumber: string;
   sourceType: 'stay' | 'reservation';
@@ -573,13 +685,68 @@ interface BoardOccupant {
   includedBreakfastCount: number;
   breakfastAllowed: boolean;
   rotativo: boolean;
+  rotativoHours?: number;
+  rotativoEnd?: number;
   startDate: string;
   checkOutDate: string;
 }
 
+function buildOccupantsMap(
+  stays: Record<string, GuestStay>,
+  reservations: Record<string, ReservationDirectoryEntry>,
+  today: string,
+  actualToday: string,
+  now: number,
+  historical: boolean,
+): Map<string, BoardOccupant> {
+  const currentSelection = new Map(currentOccupants(stays, reservations, today, now).map((item) => [item.roomNumber, item]));
+  const occupants = new Map<string, BoardOccupant>();
+  const addOccupant = (roomNumber: string, candidate: Omit<BoardOccupant, 'roomNumber'>) => {
+    const normalized = roomNumber.trim();
+    if (!historical && (currentSelection.get(normalized)?.sourceId !== candidate.sourceId || currentSelection.get(normalized)?.sourceType !== candidate.sourceType)) return;
+    const current = occupants.get(normalized);
+    if (!current || candidate.startDate >= current.startDate) occupants.set(normalized, { ...candidate, roomNumber: normalized });
+  };
+  Object.values(stays).forEach((stay) => {
+    if (!stay.roomNumber || !stayOccupiesDate(stay, today, actualToday, now)) return;
+    const rotativoEnd = stay.kind === 'periodo' ? rotativoEndTimestamp(stay) : undefined;
+    addOccupant(stay.roomNumber, {
+      sourceType: 'stay',
+      sourceId: stay.id,
+      name: (stay.guestName ?? '').trim() || (stay.kind === 'periodo' ? 'Rotativo' : 'Titular não informado'),
+      peopleCount: Math.max(1, Math.floor(stay.guestCount ?? (stay.hasAdditionalGuests ? 2 : 1))),
+      includedBreakfastCount: stay.kind === 'hospede' ? stayBreakfastCountOnDate(stay, today) : 0,
+      breakfastAllowed: stay.kind !== 'periodo',
+      rotativo: stay.kind === 'periodo',
+      ...(stay.kind === 'periodo' ? { rotativoHours: stay.hours ?? 4, rotativoEnd } : {}),
+      startDate: stay.checkInDate,
+      checkOutDate: stay.kind === 'periodo' ? stay.checkInDate : stay.checkOutDate ?? dateKeyAfterDays(stay.checkInDate, stay.nights),
+    });
+  });
+  Object.values(reservations).forEach((reservation) => {
+    if (!reservation.roomNumber || !reservationOccupiesDate(reservation, today, actualToday, now)) return;
+    const rotativoEnd = reservation.channel === 'rotativo' ? reservationRotativoEndTimestamp(reservation) : undefined;
+    addOccupant(reservation.roomNumber, {
+      sourceType: 'reservation',
+      sourceId: reservation.id,
+      name: reservation.guestName?.trim() || (reservation.channel === 'rotativo' ? 'Rotativo' : 'Titular não informado'),
+      peopleCount: Math.max(1, Number(reservation.adults ?? 1) + Number(reservation.children ?? 0)),
+      includedBreakfastCount: reservation.channel !== 'rotativo' && reservation.breakfastIncluded === true
+        ? Math.max(1, Number(reservation.adults ?? 1) + Number(reservation.children ?? 0))
+        : 0,
+      breakfastAllowed: reservation.channel !== 'rotativo',
+      rotativo: reservation.channel === 'rotativo',
+      ...(reservation.channel === 'rotativo' ? { rotativoHours: 4, rotativoEnd } : {}),
+      startDate: reservation.checkInDate ?? '',
+      checkOutDate: reservation.checkOutDate ?? today,
+    });
+  });
+  return occupants;
+}
+
 type RoomBoardAction = RoomChargeKind | 'conversao_diaria';
 
-function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, stays: currentStays, roomCharges, checkoutAlerts, reservations: currentReservations, loaded, now, attendant, userRole, entryContext, onChargeSaved }: {
+function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, stays: currentStays, roomCharges, checkoutAlerts, checkoutAlertsLoaded, reservations: currentReservations, loaded, now, attendant, userRole, entryContext, quickCheckoutOpen, onCloseQuickCheckout, onChargeSaved }: {
   rooms: Record<string, HousekeepingRoom>;
   cleaningRoomNumbers: ReadonlySet<string>;
   cleaningTasks: CleaningTask[];
@@ -587,12 +754,15 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
   stays: Record<string, GuestStay>;
   roomCharges: Record<string, RoomCharge>;
   checkoutAlerts: ReadonlyMap<string, CheckoutAlert>;
+  checkoutAlertsLoaded: boolean;
   reservations: Record<string, ReservationDirectoryEntry>;
   loaded: boolean;
   now: number;
   attendant: string;
   userRole: UserRole;
   entryContext: ReceptionEntryContext;
+  quickCheckoutOpen: boolean;
+  onCloseQuickCheckout: () => void;
   onChargeSaved: (message: string) => void;
 }) {
   const isAdmin = userRole === 'admin';
@@ -645,50 +815,17 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
   const stays = isPast ? history?.date === today ? history.stays : {} : currentStays;
   const reservations = isPast ? history?.date === today ? history.reservations : {} : currentReservations;
   const boardLoaded = loaded && (!isPast || history?.date === today);
-  const roomsByNumber = new Map(Object.values(rooms).map((room) => [room.number, room]));
-  const receptionRoomsByNumber = new Map(Object.values(receptionRooms).map((room) => [room.number, room]));
+  const roomsByNumber = new Map(Object.values(rooms).map((room) => [room.number.trim(), room]));
+  const receptionRoomsByNumber = new Map(Object.values(receptionRooms).map((room) => [room.number.trim(), room]));
   const roomNumbers = [...new Set([
-    ...Object.values(rooms).map((room) => room.number),
-    ...Object.values(receptionRooms).map((room) => room.number),
-  ])].sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
+    ...Object.values(rooms).map((room) => room.number.trim()),
+    ...Object.values(receptionRooms).map((room) => room.number.trim()),
+  ])].filter(Boolean).sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
 
-  const currentSelection = new Map(currentOccupants(stays, reservations, today, now).map((item) => [item.roomNumber, item]));
-  const occupants = new Map<string, BoardOccupant>();
-  const addOccupant = (roomNumber: string, candidate: Omit<BoardOccupant, 'roomNumber'>) => {
-    if (!historical && (currentSelection.get(roomNumber.trim())?.sourceId !== candidate.sourceId || currentSelection.get(roomNumber.trim())?.sourceType !== candidate.sourceType)) return;
-    const current = occupants.get(roomNumber);
-    if (!current || candidate.startDate >= current.startDate) occupants.set(roomNumber, { ...candidate, roomNumber });
-  };
-  Object.values(stays).forEach((stay) => {
-    if (!stay.roomNumber || !stayOccupiesDate(stay, today, actualToday, now)) return;
-    addOccupant(stay.roomNumber, {
-      sourceType: 'stay',
-      sourceId: stay.id,
-      name: (stay.guestName ?? '').trim() || 'Titular não informado',
-      peopleCount: Math.max(1, Math.floor(stay.guestCount ?? (stay.hasAdditionalGuests ? 2 : 1))),
-      includedBreakfastCount: stay.kind === 'hospede' ? stayBreakfastCountOnDate(stay, today) : 0,
-      breakfastAllowed: stay.kind !== 'periodo',
-      rotativo: stay.kind === 'periodo',
-      startDate: stay.checkInDate,
-      checkOutDate: stay.kind === 'periodo' ? stay.checkInDate : stay.checkOutDate ?? dateKeyAfterDays(stay.checkInDate, stay.nights),
-    });
-  });
-  Object.values(reservations).forEach((reservation) => {
-    if (!reservation.roomNumber || !reservationOccupiesDate(reservation, today, actualToday, now)) return;
-    addOccupant(reservation.roomNumber, {
-      sourceType: 'reservation',
-      sourceId: reservation.id,
-      name: reservation.guestName?.trim() || 'Titular não informado',
-      peopleCount: Math.max(1, Number(reservation.adults ?? 1) + Number(reservation.children ?? 0)),
-      includedBreakfastCount: reservation.channel !== 'rotativo' && reservation.breakfastIncluded === true
-        ? Math.max(1, Number(reservation.adults ?? 1) + Number(reservation.children ?? 0))
-        : 0,
-      breakfastAllowed: reservation.channel !== 'rotativo',
-      rotativo: reservation.channel === 'rotativo',
-      startDate: reservation.checkInDate ?? '',
-      checkOutDate: reservation.checkOutDate ?? today,
-    });
-  });
+  const occupants = buildOccupantsMap(stays, reservations, today, actualToday, now, historical);
+  const liveTodayOccupants = historical
+    ? buildOccupantsMap(currentStays, currentReservations, actualToday, actualToday, now, false)
+    : occupants;
 
   const chargesForOccupant = (occupant: BoardOccupant) => Object.values(roomCharges).filter((charge) =>
     charge.sourceType === occupant.sourceType && charge.sourceId === occupant.sourceId,
@@ -966,7 +1103,7 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
               : room?.bedCount
               ? `${typeDescription.split(' · ')[0]} · ${room.bedCount} ${room.bedCount === 1 ? 'cama' : 'camas'}`
               : typeDescription;
-            const awaitingCheckout = !historical && occupant && !occupant.rotativo && departureDue(occupant.checkOutDate, now);
+            const awaitingCheckout = !historical && Boolean(occupant) && isOccupantCheckoutDue(occupant!, now);
             const awaitingCleaning = !historical && !occupant && !inMaintenance && !isCleaning && Boolean(room) && room?.cleaningStatus !== 'limpo';
             const status = awaitingCheckout ? 'checkout' : occupant ? 'occupied' : inMaintenance ? 'maintenance' : isCleaning ? 'cleaning' : awaitingCleaning ? 'dirty' : 'free';
             const statusLabel = status === 'dirty' ? 'Aguardando limpeza' : status === 'cleaning' ? 'Em limpeza' : status === 'checkout' ? 'Saída pendente' : status === 'occupied' ? historical && occupant?.sourceType === 'reservation' && reservations[occupant.sourceId]?.status === 'confirmada' ? 'Reservado' : 'Ocupado' : status === 'maintenance' ? 'Em manutenção' : 'Livre';
@@ -974,7 +1111,7 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
             const cleaningLabel = isCleaning ? ', em limpeza' : '';
             const roomAction = isAdmin ? `Gerenciar quarto ${number}`
               : unavailable ? `Quarto ${number} ${statusLabel.toLocaleLowerCase('pt-BR')} e indisponível`
-                : occupant ? `Adicionar hóspede, café, cama ou bebida ao quarto ${number}` : `Adicionar hóspede ou rotativo ao quarto ${number}`;
+                : occupant ? `Abrir opções ou fazer check-out do quarto ${number}` : `Adicionar hóspede ou rotativo ao quarto ${number}`;
             const occupantCharges = occupant ? chargesForOccupant(occupant) : [];
             const activeExtraGuests = occupantCharges.filter((charge) => charge.kind === 'hospede_extra'
               && (charge.validFrom ?? charge.date) <= today
@@ -1009,7 +1146,10 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
               </div>
               <small className="dashboard-room-type">{description}</small>
               {isCleaning && <small className="dashboard-room-cleaning"><RoomStatusIcon status="cleaning" />Em limpeza</small>}
-              {!historical && !isCleaning && room && <small className={`dashboard-room-cleanliness is-${room.cleaningStatus}`}>{room.cleaningStatus === 'limpo' ? 'Limpo' : 'Aguardando limpeza'}</small>}
+              {!historical && awaitingCheckout && <small className="dashboard-room-checkout-pill"><ClockIcon />Saída pendente</small>}
+              {!historical && occupant && !awaitingCheckout && occupant.rotativo && occupant.rotativoEnd && <small className="dashboard-room-rotativo-tag">Rotativo · até {formatTimeBR(occupant.rotativoEnd)}</small>}
+              {!historical && !occupant && !isCleaning && !inMaintenance && room && <small className={`dashboard-room-cleanliness is-${room.cleaningStatus}`}>{room.cleaningStatus === 'limpo' ? 'Limpo · Disponível' : 'Sujo · Aguardando limpeza'}</small>}
+              {!historical && !occupant && inMaintenance && <small className="dashboard-room-cleanliness is-maintenance">Em manutenção</small>}
               {isAdmin && cleaningTask && <small className="dashboard-room-extra-guest">Camareira: {cleaningTask.camareira}</small>}
               <div className="dashboard-room-stats" aria-label={`${peopleLabel} no quarto e ${breakfastLabel} hoje`}>
                 <span className={peopleToday > 0 ? 'has-value' : ''} title={peopleLabel} aria-label={peopleLabel}><PeopleIcon />{peopleToday}</span>
@@ -1071,77 +1211,119 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
         onSaved={onChargeSaved}
       />
     </Suspense>}
-    {selectedOccupant && <div className="dashboard-room-charge-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingCharge) setSelectedOccupant(null); }}>
-      <form className="dashboard-room-charge-modal dashboard-occupied-room-modal" role="dialog" aria-modal="true" aria-labelledby="room-charge-title" onSubmit={(event) => void submitRoomCharge(event)}>
-        <header className="dashboard-room-charge-header">
-          <div><p className="dashboard-eyebrow">QUARTO {selectedOccupant.roomNumber}</p><h2 id="room-charge-title">Opções do quarto</h2><small>Titular: {selectedOccupant.name}</small></div>
-          <button type="button" className="dashboard-room-charge-close" aria-label="Fechar" disabled={savingCharge} onClick={() => setSelectedOccupant(null)}>×</button>
-        </header>
-        {!selectedOccupant.rotativo && departureDue(selectedOccupant.checkOutDate, now) && <p className="dashboard-room-checkout-notice" role="status">Saída prevista para {selectedOccupant.checkOutDate.split('-').reverse().join('/')} às {HOTEL_CHECKOUT_TIME}. Confira a conta e confirme o encerramento para liberar o quarto para limpeza.</p>}
-        <button type="button" className="dashboard-room-release-button" disabled={savingCharge} onClick={() => {
-          if (!window.confirm(`Fazer o check-out do quarto ${selectedOccupant.roomNumber}? O quarto ficará aguardando limpeza.`)) return;
-          setSavingCharge(true); setChargeError('');
-          void requestCheckout({ sourceType: selectedOccupant.sourceType, sourceId: selectedOccupant.sourceId })
-            .then(() => { setSelectedOccupant(null); onChargeSaved(`Check-out realizado. Quarto ${selectedOccupant.roomNumber} aguardando limpeza.`); })
-            .catch((cause) => setChargeError(cause.message)).finally(() => setSavingCharge(false));
-        }}><span aria-hidden="true">↗</span>{savingCharge ? 'Realizando check-out…' : 'Fazer check-out'}</button>
-        {selectedOccupant.sourceType === 'stay' && stays[selectedOccupant.sourceId] && <StayAccount stay={stays[selectedOccupant.sourceId]} charges={chargesForOccupant(selectedOccupant)} attendant={attendant} canManage={userRole === 'admin'} onSaved={onChargeSaved} />}
-        <fieldset className="dashboard-room-charge-types">
-          <legend>O que deseja fazer?</legend>
-          <label><input type="radio" name="roomChargeKind" value="hospede_extra" checked={chargeKind === 'hospede_extra'} onChange={() => changeChargeKind('hospede_extra')} /><span>Hóspede extra</span></label>
-          {selectedOccupant.breakfastAllowed && <label><input type="radio" name="roomChargeKind" value="cafe_avulso" checked={chargeKind === 'cafe_avulso'} onChange={() => changeChargeKind('cafe_avulso')} /><span>Café da manhã</span></label>}
-          <label><input type="radio" name="roomChargeKind" value="cama_extra" checked={chargeKind === 'cama_extra'} onChange={() => changeChargeKind('cama_extra', selectedOccupant.name)} /><span>Cama extra</span></label>
-          <label><input type="radio" name="roomChargeKind" value="bebida" checked={chargeKind === 'bebida'} onChange={() => changeChargeKind('bebida', selectedOccupant.name)} /><span>Bebida</span></label>
-          {selectedOccupant.rotativo && selectedOccupant.sourceType === 'stay' && <label><input type="radio" name="roomChargeKind" value="conversao_diaria" checked={chargeKind === 'conversao_diaria'} onChange={() => changeChargeKind('conversao_diaria', selectedOccupant.name === 'Titular não informado' ? '' : selectedOccupant.name)} /><span>Converter em diária</span></label>}
-        </fieldset>
-        <div className="dashboard-room-charge-grid">
-          {chargeKind !== 'bebida' && <label className="dashboard-room-charge-field dashboard-room-charge-wide"><span>{chargeKind === 'hospede_extra' ? 'Nome do hóspede extra' : chargeKind === 'conversao_diaria' ? 'Nome do hóspede titular' : chargeKind === 'cafe_avulso' ? 'Quem vai tomar café?' : 'Hóspede responsável pela cama extra'}</span><input value={guestName} onChange={(event) => setGuestName(event.target.value)} maxLength={120} placeholder="Nome completo" required={chargeKind === 'hospede_extra' || chargeKind === 'conversao_diaria'} autoFocus /></label>}
-          {chargeKind === 'bebida' && <>
-            <label className="dashboard-room-charge-field"><span>Bebida</span><select value={selectedProductId} onChange={(event) => setProductId(event.target.value)} disabled={inventoryLoading || availableProducts.length === 0} required><option value="">{inventoryLoading ? 'Consultando estoque…' : 'Selecione'}</option>{availableProducts.map((product) => <option key={product.id} value={product.id}>{product.name} · {money(product.salePrice)} · saldo {addOnInventory?.stock[product.id] ?? 0}</option>)}</select></label>
-            <label className="dashboard-room-charge-field"><span>Unidades por dia</span><input type="number" min="1" max={Math.max(1, Math.floor(selectedStock / Math.max(1, validDays || 1)))} step="1" value={quantityPerDay} onChange={(event) => setQuantityPerDay(event.target.value)} required /></label>
-            {inventoryError && <p className="dashboard-room-charge-error dashboard-room-charge-wide" role="alert">{inventoryError}</p>}
-            {!inventoryLoading && !inventoryError && availableProducts.length === 0 && <p className="dashboard-room-charge-error dashboard-room-charge-wide">Não há bebidas disponíveis com saldo no estoque da recepção.</p>}
-          </>}
-          <label className="dashboard-room-charge-field"><span>{chargeKind === 'conversao_diaria' ? 'Valor de 1 diária (R$)' : chargeKind === 'cafe_avulso' ? 'Valor por dia do café (R$)' : chargeKind === 'cama_extra' ? 'Valor por dia da cama extra (R$)' : chargeKind === 'bebida' ? 'Estadia vinculada ao hóspede' : 'Valor por dia do hóspede extra (R$)'}</span>{chargeKind === 'bebida' ? <input value={selectedOccupant.name} readOnly /> : <input inputMode="decimal" value={chargeAmount} onChange={(event) => setChargeAmount(event.target.value)} placeholder="0,00" required />}</label>
-          <label className="dashboard-room-charge-field"><span>{chargeKind === 'conversao_diaria' ? 'Quantidade de diárias' : 'Quantidade de dias'}</span><input type="number" min="1" max={daysAllowed} step="1" value={chargeDays} onChange={(event) => setChargeDays(event.target.value)} required /></label>
-          {chargeKind === 'conversao_diaria' && <>
-            <label className="dashboard-room-charge-split dashboard-room-charge-wide"><input type="checkbox" checked={hasConversionBreakfast} onChange={(event) => setHasConversionBreakfast(event.target.checked)} /> Incluir café da manhã nas diárias</label>
-            {hasConversionBreakfast && <>
-              <label className="dashboard-room-charge-field"><span>Valor por café/dia (R$)</span><input inputMode="decimal" value={conversionBreakfastRate} onChange={(event) => setConversionBreakfastRate(event.target.value)} placeholder="0,00" required /></label>
-              <label className="dashboard-room-charge-field"><span>Pagamento do café</span><select value={conversionBreakfastMethod} onChange={(event) => {
-                const method = event.target.value as FinancePaymentMethod;
-                setConversionBreakfastMethod(method);
-                if (conversionBreakfastSplitMethod === method) setConversionBreakfastSplitMethod(FOLIO_PAYMENT_METHODS.find((option) => option !== method) ?? method);
-              }}>{FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}</select></label>
-              <label className="dashboard-room-charge-split dashboard-room-charge-wide"><input type="checkbox" checked={conversionBreakfastSplit} onChange={(event) => setConversionBreakfastSplit(event.target.checked)} /> Combinar pagamento do café</label>
-              {conversionBreakfastSplit && <>
-                <label className="dashboard-room-charge-field"><span>2ª forma do café</span><select value={conversionBreakfastSplitMethod} onChange={(event) => setConversionBreakfastSplitMethod(event.target.value as FinancePaymentMethod)}>{FOLIO_PAYMENT_METHODS.filter((method) => method !== conversionBreakfastMethod).map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}</select></label>
-                <label className="dashboard-room-charge-field"><span>Valor na 2ª forma do café (R$)</span><input inputMode="decimal" value={conversionBreakfastSplitAmount} onChange={(event) => setConversionBreakfastSplitAmount(event.target.value)} required /></label>
+    {selectedOccupant && (() => {
+      const selectedAlert = checkoutAlerts.get(selectedOccupant.roomNumber.trim());
+      const selectedHasAlert = Boolean(selectedAlert && selectedAlert.sourceType === selectedOccupant.sourceType && selectedAlert.sourceId === selectedOccupant.sourceId);
+      const selectedDue = isOccupantCheckoutDue(selectedOccupant, now);
+      const rotativoEndText = formatTimeBR(selectedOccupant.rotativoEnd);
+      return <div className="dashboard-room-charge-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !savingCharge) setSelectedOccupant(null); }}>
+        <form className="dashboard-room-charge-modal dashboard-occupied-room-modal" role="dialog" aria-modal="true" aria-labelledby="room-charge-title" onSubmit={(event) => void submitRoomCharge(event)}>
+          <header className="dashboard-room-charge-header">
+            <div><p className="dashboard-eyebrow">QUARTO {selectedOccupant.roomNumber}</p><h2 id="room-charge-title">Opções do quarto</h2><small>Titular: {selectedOccupant.name}</small></div>
+            <button type="button" className="dashboard-room-charge-close" aria-label="Fechar" disabled={savingCharge} onClick={() => setSelectedOccupant(null)}>×</button>
+          </header>
+          <section className={`dashboard-room-checkout-panel${selectedDue ? ' is-due' : ''}${selectedHasAlert ? ' has-alert' : ''}`} aria-label="Check-out do quarto">
+            <div className="dashboard-room-checkout-copy">
+              <div className="dashboard-room-checkout-tags">
+                <strong>Check-out do quarto {selectedOccupant.roomNumber}</strong>
+                {selectedDue && <span className="dashboard-room-checkout-tag is-due">Saída pendente</span>}
+                {selectedOccupant.rotativo && <span className="dashboard-room-checkout-tag">Rotativo{rotativoEndText ? ` · até ${rotativoEndText}` : ''}</span>}
+              </div>
+              <p>
+                {selectedOccupant.rotativo
+                  ? selectedDue
+                    ? `Período rotativo encerrado${rotativoEndText ? ` às ${rotativoEndText}` : ''}. Confirme o check-out para marcar o quarto como Sujo (Aguardando limpeza).`
+                    : `Ao encerrar o rotativo, o quarto passa para Sujo (Aguardando limpeza) e só volta a ficar livre após a limpeza.`
+                  : selectedDue
+                    ? `Saída prevista para ${selectedOccupant.checkOutDate.split('-').reverse().join('/')} às ${HOTEL_CHECKOUT_TIME}. Confira a conta e faça o check-out para liberar o quarto para limpeza.`
+                    : `Ao confirmar o check-out, o quarto passa para Sujo (Aguardando limpeza) e só volta a ficar disponível após a limpeza.`}
+              </p>
+              {selectedHasAlert && selectedAlert && <p className="dashboard-room-checkout-pending" role="status">Saldo pendente de <strong>{money(selectedAlert.pending)}</strong> na conta ou geladeira. Receba antes de concluir o check-out.</p>}
+            </div>
+            <button type="button" className="dashboard-room-release-button" disabled={savingCharge} onClick={() => {
+              if (!window.confirm(`Dar check-out do quarto ${selectedOccupant.roomNumber}? O quarto ficará como Sujo (Aguardando limpeza).`)) return;
+              setSavingCharge(true); setChargeError('');
+              void requestCheckout({ sourceType: selectedOccupant.sourceType, sourceId: selectedOccupant.sourceId })
+                .then(() => { setSelectedOccupant(null); onChargeSaved(`Check-out realizado. Quarto ${selectedOccupant.roomNumber} aguardando limpeza.`); })
+                .catch((cause) => setChargeError(cause.message)).finally(() => setSavingCharge(false));
+            }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" /></svg>
+              {savingCharge ? 'Realizando check-out…' : 'Dar Check-out'}
+            </button>
+          </section>
+          {chargeError && <p className="dashboard-room-charge-error" role="alert">{chargeError}</p>}
+          {selectedOccupant.sourceType === 'stay' && stays[selectedOccupant.sourceId] && <StayAccount stay={stays[selectedOccupant.sourceId]} charges={chargesForOccupant(selectedOccupant)} attendant={attendant} canManage={userRole === 'admin'} onSaved={onChargeSaved} />}
+          <fieldset className="dashboard-room-charge-types">
+            <legend>O que deseja fazer?</legend>
+            <label><input type="radio" name="roomChargeKind" value="hospede_extra" checked={chargeKind === 'hospede_extra'} onChange={() => changeChargeKind('hospede_extra')} /><span>Hóspede extra</span></label>
+            {selectedOccupant.breakfastAllowed && <label><input type="radio" name="roomChargeKind" value="cafe_avulso" checked={chargeKind === 'cafe_avulso'} onChange={() => changeChargeKind('cafe_avulso')} /><span>Café da manhã</span></label>}
+            <label><input type="radio" name="roomChargeKind" value="cama_extra" checked={chargeKind === 'cama_extra'} onChange={() => changeChargeKind('cama_extra', selectedOccupant.name)} /><span>Cama extra</span></label>
+            <label><input type="radio" name="roomChargeKind" value="bebida" checked={chargeKind === 'bebida'} onChange={() => changeChargeKind('bebida', selectedOccupant.name)} /><span>Bebida</span></label>
+            {selectedOccupant.rotativo && selectedOccupant.sourceType === 'stay' && <label><input type="radio" name="roomChargeKind" value="conversao_diaria" checked={chargeKind === 'conversao_diaria'} onChange={() => changeChargeKind('conversao_diaria', selectedOccupant.name === 'Titular não informado' || selectedOccupant.name === 'Rotativo' ? '' : selectedOccupant.name)} /><span>Converter em diária</span></label>}
+          </fieldset>
+          <div className="dashboard-room-charge-grid">
+            {chargeKind !== 'bebida' && <label className="dashboard-room-charge-field dashboard-room-charge-wide"><span>{chargeKind === 'hospede_extra' ? 'Nome do hóspede extra' : chargeKind === 'conversao_diaria' ? 'Nome do hóspede titular' : chargeKind === 'cafe_avulso' ? 'Quem vai tomar café?' : 'Hóspede responsável pela cama extra'}</span><input value={guestName} onChange={(event) => setGuestName(event.target.value)} maxLength={120} placeholder="Nome completo" required={chargeKind === 'hospede_extra' || chargeKind === 'conversao_diaria'} autoFocus /></label>}
+            {chargeKind === 'bebida' && <>
+              <label className="dashboard-room-charge-field"><span>Bebida</span><select value={selectedProductId} onChange={(event) => setProductId(event.target.value)} disabled={inventoryLoading || availableProducts.length === 0} required><option value="">{inventoryLoading ? 'Consultando estoque…' : 'Selecione'}</option>{availableProducts.map((product) => <option key={product.id} value={product.id}>{product.name} · {money(product.salePrice)} · saldo {addOnInventory?.stock[product.id] ?? 0}</option>)}</select></label>
+              <label className="dashboard-room-charge-field"><span>Unidades por dia</span><input type="number" min="1" max={Math.max(1, Math.floor(selectedStock / Math.max(1, validDays || 1)))} step="1" value={quantityPerDay} onChange={(event) => setQuantityPerDay(event.target.value)} required /></label>
+              {inventoryError && <p className="dashboard-room-charge-error dashboard-room-charge-wide" role="alert">{inventoryError}</p>}
+              {!inventoryLoading && !inventoryError && availableProducts.length === 0 && <p className="dashboard-room-charge-error dashboard-room-charge-wide">Não há bebidas disponíveis com saldo no estoque da recepção.</p>}
+            </>}
+            <label className="dashboard-room-charge-field"><span>{chargeKind === 'conversao_diaria' ? 'Valor de 1 diária (R$)' : chargeKind === 'cafe_avulso' ? 'Valor por dia do café (R$)' : chargeKind === 'cama_extra' ? 'Valor por dia da cama extra (R$)' : chargeKind === 'bebida' ? 'Estadia vinculada ao hóspede' : 'Valor por dia do hóspede extra (R$)'}</span>{chargeKind === 'bebida' ? <input value={selectedOccupant.name} readOnly /> : <input inputMode="decimal" value={chargeAmount} onChange={(event) => setChargeAmount(event.target.value)} placeholder="0,00" required />}</label>
+            <label className="dashboard-room-charge-field"><span>{chargeKind === 'conversao_diaria' ? 'Quantidade de diárias' : 'Quantidade de dias'}</span><input type="number" min="1" max={daysAllowed} step="1" value={chargeDays} onChange={(event) => setChargeDays(event.target.value)} required /></label>
+            {chargeKind === 'conversao_diaria' && <>
+              <label className="dashboard-room-charge-split dashboard-room-charge-wide"><input type="checkbox" checked={hasConversionBreakfast} onChange={(event) => setHasConversionBreakfast(event.target.checked)} /> Incluir café da manhã nas diárias</label>
+              {hasConversionBreakfast && <>
+                <label className="dashboard-room-charge-field"><span>Valor por café/dia (R$)</span><input inputMode="decimal" value={conversionBreakfastRate} onChange={(event) => setConversionBreakfastRate(event.target.value)} placeholder="0,00" required /></label>
+                <label className="dashboard-room-charge-field"><span>Pagamento do café</span><select value={conversionBreakfastMethod} onChange={(event) => {
+                  const method = event.target.value as FinancePaymentMethod;
+                  setConversionBreakfastMethod(method);
+                  if (conversionBreakfastSplitMethod === method) setConversionBreakfastSplitMethod(FOLIO_PAYMENT_METHODS.find((option) => option !== method) ?? method);
+                }}>{FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}</select></label>
+                <label className="dashboard-room-charge-split dashboard-room-charge-wide"><input type="checkbox" checked={conversionBreakfastSplit} onChange={(event) => setConversionBreakfastSplit(event.target.checked)} /> Combinar pagamento do café</label>
+                {conversionBreakfastSplit && <>
+                  <label className="dashboard-room-charge-field"><span>2ª forma do café</span><select value={conversionBreakfastSplitMethod} onChange={(event) => setConversionBreakfastSplitMethod(event.target.value as FinancePaymentMethod)}>{FOLIO_PAYMENT_METHODS.filter((method) => method !== conversionBreakfastMethod).map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}</select></label>
+                  <label className="dashboard-room-charge-field"><span>Valor na 2ª forma do café (R$)</span><input inputMode="decimal" value={conversionBreakfastSplitAmount} onChange={(event) => setConversionBreakfastSplitAmount(event.target.value)} required /></label>
+                </>}
               </>}
             </>}
-          </>}
-          <label className="dashboard-room-charge-field"><span>{splitPayment ? '1ª forma de pagamento' : 'Forma de pagamento'}</span><select value={paymentMethod} onChange={(event) => {
-            const method = event.target.value as FinancePaymentMethod;
-            setPaymentMethod(method);
-            if (splitMethod === method) setSplitMethod(FOLIO_PAYMENT_METHODS.find((option) => option !== method) ?? method);
-          }}>{FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}</select></label>
-          <label className="dashboard-room-charge-split dashboard-room-charge-wide"><input type="checkbox" checked={splitPayment} disabled={splitLimit <= 0} onChange={(event) => setSplitPayment(event.target.checked)} /> Combinar duas formas de pagamento{chargeKind === 'conversao_diaria' ? ' das diárias' : ''}</label>
-          {splitPayment && splitLimit > 0 && <>
-            <label className="dashboard-room-charge-field"><span>2ª forma de pagamento</span><select value={splitMethod} onChange={(event) => setSplitMethod(event.target.value as FinancePaymentMethod)}>{FOLIO_PAYMENT_METHODS.filter((method) => method !== paymentMethod).map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}</select></label>
-            <label className="dashboard-room-charge-field"><span>Valor na 2ª forma (R$)</span><input inputMode="decimal" value={splitAmount} onChange={(event) => setSplitAmount(event.target.value)} placeholder="0,00" required /></label>
-          </>}
-        </div>
-        <div className="dashboard-room-charge-total"><span>{chargeKind === 'conversao_diaria' ? `Total da diária após crédito de ${money(conversionCredit)}` : 'Total cobrado'}</span><strong>{money(chargeTotal)}</strong>
-          {chargeKind === 'bebida' && selectedProduct && <small>{totalDrinkQuantity} unidade(s) · {money(selectedProduct.salePrice)} cada · estoque disponível {selectedStock}</small>}
-          {chargeKind === 'conversao_diaria' && <small>Diárias após crédito: {money(conversionDailyTotal)}{hasConversionBreakfast ? ` · café: ${money(conversionBreakfastTotal)}` : ''}</small>}
-          {chargeKind !== 'conversao_diaria' && chargeKind !== 'bebida' && <small>{validDays} dia(s) × {money(parseRoomChargeAmount(chargeAmount))} por dia</small>}
-          {splitPayment && splitLimit > 0 && parseRoomChargeAmount(splitAmount) > 0 && <small>{PAYMENT_METHOD_LABELS[paymentMethod]} {money(Math.max(0, splitLimit - parseRoomChargeAmount(splitAmount)))} + {PAYMENT_METHOD_LABELS[splitMethod]} {money(parseRoomChargeAmount(splitAmount))}</small>}
-          {chargeKind === 'conversao_diaria' && hasConversionBreakfast && <small>Café: {PAYMENT_METHOD_LABELS[conversionBreakfastMethod]} {money(Math.max(0, conversionBreakfastTotal - (conversionBreakfastSplit ? parseRoomChargeAmount(conversionBreakfastSplitAmount) : 0)))}{conversionBreakfastSplit ? ` + ${PAYMENT_METHOD_LABELS[conversionBreakfastSplitMethod]} ${money(parseRoomChargeAmount(conversionBreakfastSplitAmount))}` : ''}</small>}
-        </div>
-        {chargeError && <p className="dashboard-room-charge-error" role="alert">{chargeError}</p>}
-        <div className="dashboard-room-charge-actions"><button type="button" className="dashboard-room-charge-cancel" disabled={savingCharge} onClick={() => setSelectedOccupant(null)}>Cancelar</button><button type="submit" className="dashboard-room-charge-submit" disabled={savingCharge || (chargeKind === 'bebida' && (!selectedProduct || inventoryLoading || Boolean(inventoryError)))}>{savingCharge ? 'Registrando…' : chargeKind === 'conversao_diaria' ? 'Converter em diária' : 'Confirmar pagamento'}</button></div>
-      </form>
-    </div>}
+            <label className="dashboard-room-charge-field"><span>{splitPayment ? '1ª forma de pagamento' : 'Forma de pagamento'}</span><select value={paymentMethod} onChange={(event) => {
+              const method = event.target.value as FinancePaymentMethod;
+              setPaymentMethod(method);
+              if (splitMethod === method) setSplitMethod(FOLIO_PAYMENT_METHODS.find((option) => option !== method) ?? method);
+            }}>{FOLIO_PAYMENT_METHODS.map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}</select></label>
+            <label className="dashboard-room-charge-split dashboard-room-charge-wide"><input type="checkbox" checked={splitPayment} disabled={splitLimit <= 0} onChange={(event) => setSplitPayment(event.target.checked)} /> Combinar duas formas de pagamento{chargeKind === 'conversao_diaria' ? ' das diárias' : ''}</label>
+            {splitPayment && splitLimit > 0 && <>
+              <label className="dashboard-room-charge-field"><span>2ª forma de pagamento</span><select value={splitMethod} onChange={(event) => setSplitMethod(event.target.value as FinancePaymentMethod)}>{FOLIO_PAYMENT_METHODS.filter((method) => method !== paymentMethod).map((method) => <option key={method} value={method}>{PAYMENT_METHOD_LABELS[method]}</option>)}</select></label>
+              <label className="dashboard-room-charge-field"><span>Valor na 2ª forma (R$)</span><input inputMode="decimal" value={splitAmount} onChange={(event) => setSplitAmount(event.target.value)} placeholder="0,00" required /></label>
+            </>}
+          </div>
+          <div className="dashboard-room-charge-total"><span>{chargeKind === 'conversao_diaria' ? `Total da diária após crédito de ${money(conversionCredit)}` : 'Total cobrado'}</span><strong>{money(chargeTotal)}</strong>
+            {chargeKind === 'bebida' && selectedProduct && <small>{totalDrinkQuantity} unidade(s) · {money(selectedProduct.salePrice)} cada · estoque disponível {selectedStock}</small>}
+            {chargeKind === 'conversao_diaria' && <small>Diárias após crédito: {money(conversionDailyTotal)}{hasConversionBreakfast ? ` · café: ${money(conversionBreakfastTotal)}` : ''}</small>}
+            {chargeKind !== 'conversao_diaria' && chargeKind !== 'bebida' && <small>{validDays} dia(s) × {money(parseRoomChargeAmount(chargeAmount))} por dia</small>}
+            {splitPayment && splitLimit > 0 && parseRoomChargeAmount(splitAmount) > 0 && <small>{PAYMENT_METHOD_LABELS[paymentMethod]} {money(Math.max(0, splitLimit - parseRoomChargeAmount(splitAmount)))} + {PAYMENT_METHOD_LABELS[splitMethod]} {money(parseRoomChargeAmount(splitAmount))}</small>}
+            {chargeKind === 'conversao_diaria' && hasConversionBreakfast && <small>Café: {PAYMENT_METHOD_LABELS[conversionBreakfastMethod]} {money(Math.max(0, conversionBreakfastTotal - (conversionBreakfastSplit ? parseRoomChargeAmount(conversionBreakfastSplitAmount) : 0)))}{conversionBreakfastSplit ? ` + ${PAYMENT_METHOD_LABELS[conversionBreakfastSplitMethod]} ${money(parseRoomChargeAmount(conversionBreakfastSplitAmount))}` : ''}</small>}
+          </div>
+          <div className="dashboard-room-charge-actions"><button type="button" className="dashboard-room-charge-cancel" disabled={savingCharge} onClick={() => setSelectedOccupant(null)}>Cancelar</button><button type="submit" className="dashboard-room-charge-submit" disabled={savingCharge || (chargeKind === 'bebida' && (!selectedProduct || inventoryLoading || Boolean(inventoryError)))}>{savingCharge ? 'Registrando…' : chargeKind === 'conversao_diaria' ? 'Converter em diária' : 'Confirmar pagamento'}</button></div>
+        </form>
+      </div>;
+    })()}
+    {quickCheckoutOpen && (
+      <QuickCheckoutModal
+        occupants={[...liveTodayOccupants.values()]}
+        checkoutAlerts={checkoutAlerts}
+        checkoutAlertsLoaded={checkoutAlertsLoaded}
+        now={now}
+        onClose={onCloseQuickCheckout}
+        onOpenAccount={(occupant) => {
+          onCloseQuickCheckout();
+          if (historical) setSelectedDate('');
+          openChargeForm(occupant);
+        }}
+        onCheckedOut={(message) => onChargeSaved(message)}
+      />
+    )}
     {newGuestRoom && !newGuestKind && <div className="dashboard-room-charge-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) setNewGuestRoom(''); }}>
       <section className="dashboard-room-choice" role="dialog" aria-modal="true" aria-labelledby="room-choice-title">
         <div><p className="dashboard-eyebrow">QUARTO {newGuestRoom}</p><h2 id="room-choice-title">Quarto livre</h2><p>O que deseja cadastrar neste quarto?</p></div>
@@ -1167,6 +1349,186 @@ function RoomBoard({ rooms, cleaningRoomNumbers, cleaningTasks, receptionRooms, 
       />
     </Suspense>}
   </section>;
+}
+
+function QuickCheckoutModal({ occupants, checkoutAlerts, checkoutAlertsLoaded, now, onClose, onOpenAccount, onCheckedOut }: {
+  occupants: BoardOccupant[];
+  checkoutAlerts: ReadonlyMap<string, CheckoutAlert>;
+  checkoutAlertsLoaded: boolean;
+  now: number;
+  onClose: () => void;
+  onOpenAccount: (occupant: BoardOccupant) => void;
+  onCheckedOut: (message: string) => void;
+}) {
+  const [search, setSearch] = useState('');
+  const [confirmingKey, setConfirmingKey] = useState('');
+  const [busyKey, setBusyKey] = useState('');
+  const [errorState, setErrorState] = useState<{ message: string; occupant?: BoardOccupant } | null>(null);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape' && !busyKey) onClose();
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, [busyKey, onClose]);
+
+  const sorted = useMemo(() => {
+    const term = search.trim().toLocaleLowerCase('pt-BR');
+    return occupants
+      .map((occupant) => {
+        const alert = checkoutAlerts.get(occupant.roomNumber.trim());
+        const matchedAlert = alert && alert.sourceType === occupant.sourceType && alert.sourceId === occupant.sourceId ? alert : undefined;
+        return {
+          occupant,
+          due: isOccupantCheckoutDue(occupant, now),
+          alert: matchedAlert,
+        };
+      })
+      .filter(({ occupant }) => !term
+        || occupant.roomNumber.toLocaleLowerCase('pt-BR').includes(term)
+        || occupant.name.toLocaleLowerCase('pt-BR').includes(term))
+      .sort((a, b) => Number(b.due) - Number(a.due) || a.occupant.roomNumber.localeCompare(b.occupant.roomNumber, 'pt-BR', { numeric: true }));
+  }, [occupants, checkoutAlerts, now, search]);
+
+  const dueCount = occupants.filter((occupant) => isOccupantCheckoutDue(occupant, now)).length;
+  const pendingBalanceCount = occupants.filter((occupant) => {
+    const alert = checkoutAlerts.get(occupant.roomNumber.trim());
+    return Boolean(alert && alert.sourceType === occupant.sourceType && alert.sourceId === occupant.sourceId);
+  }).length;
+
+  async function confirmCheckout(occupant: BoardOccupant) {
+    const key = `${occupant.sourceType}:${occupant.sourceId}`;
+    setBusyKey(key);
+    setErrorState(null);
+    try {
+      await requestCheckout({ sourceType: occupant.sourceType, sourceId: occupant.sourceId });
+      setConfirmingKey('');
+      onCheckedOut(`Check-out do quarto ${occupant.roomNumber} realizado. Quarto aguardando limpeza.`);
+      if (occupants.length <= 1) onClose();
+    } catch (cause) {
+      setConfirmingKey('');
+      setErrorState({
+        message: cause instanceof Error ? cause.message : 'Não foi possível concluir o check-out.',
+        occupant,
+      });
+    } finally {
+      setBusyKey('');
+    }
+  }
+
+  return (
+    <div className="dashboard-room-charge-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget && !busyKey) onClose(); }}>
+      <section className="dashboard-room-charge-modal dashboard-quick-checkout-modal" role="dialog" aria-modal="true" aria-labelledby="quick-checkout-title">
+        <header className="dashboard-room-charge-header">
+          <div>
+            <p className="dashboard-eyebrow">RECEPÇÃO / CHECK-OUT</p>
+            <h2 id="quick-checkout-title">Dar Check-out</h2>
+            <small>Após o check-out, o quarto muda para Sujo (Aguardando limpeza) e só volta a ficar livre depois de limpo.</small>
+          </div>
+          <button type="button" className="dashboard-room-charge-close" aria-label="Fechar" disabled={Boolean(busyKey)} onClick={onClose}>×</button>
+        </header>
+
+        <div className="quick-checkout-stats">
+          <span><strong>{occupants.length}</strong> {occupants.length === 1 ? 'quarto ocupado' : 'quartos ocupados'}</span>
+          {dueCount > 0 && <span className="is-due"><strong>{dueCount}</strong> {dueCount === 1 ? 'saída pendente' : 'saídas pendentes'}</span>}
+          {pendingBalanceCount > 0 && <span className="has-alert"><strong>{pendingBalanceCount}</strong> com saldo a receber</span>}
+        </div>
+
+        {occupants.length > 0 && (
+          <label className="quick-checkout-search">
+            <span>Buscar quarto ou hóspede</span>
+            <input
+              type="search"
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Ex.: 209 ou nome do hóspede"
+              autoFocus
+            />
+          </label>
+        )}
+
+        {errorState && (
+          <div className="quick-checkout-error" role="alert">
+            <p>{errorState.message}</p>
+            {errorState.occupant && (
+              <button type="button" onClick={() => onOpenAccount(errorState.occupant!)}>
+                Abrir conta do quarto {errorState.occupant.roomNumber}
+              </button>
+            )}
+          </div>
+        )}
+
+        {occupants.length === 0 ? (
+          <div className="quick-checkout-empty">
+            <strong>Nenhum quarto ocupado no momento</strong>
+            <p>Todos os quartos estão livres, aguardando limpeza ou em manutenção.</p>
+          </div>
+        ) : sorted.length === 0 ? (
+          <div className="quick-checkout-empty">
+            <strong>Nenhum quarto encontrado</strong>
+            <p>Tente outro número de quarto ou nome de hóspede.</p>
+          </div>
+        ) : (
+          <ul className="quick-checkout-list">
+            {sorted.map(({ occupant, due, alert }) => {
+              const key = `${occupant.sourceType}:${occupant.sourceId}`;
+              const confirming = confirmingKey === key;
+              const busy = busyKey === key;
+              const endTime = formatTimeBR(occupant.rotativoEnd);
+              const stayInfo = occupant.rotativo
+                ? endTime
+                  ? due ? `Rotativo · encerrou às ${endTime}` : `Rotativo · encerra às ${endTime}`
+                  : 'Rotativo'
+                : `Diária · saída ${occupant.checkOutDate ? occupant.checkOutDate.split('-').reverse().join('/') : 'hoje'}`;
+              return (
+                <li key={key} className={`quick-checkout-item${due ? ' is-due' : ''}${alert ? ' has-alert' : ''}`}>
+                  <div className="quick-checkout-room">
+                    <span className="quick-checkout-room-badge">Qto {occupant.roomNumber}</span>
+                    <div className="quick-checkout-info">
+                      <div className="quick-checkout-name-row">
+                        <strong>{occupant.name}</strong>
+                        {due && <span className="quick-checkout-pill is-due">Saída pendente</span>}
+                        {alert
+                          ? <span className="quick-checkout-pill has-alert">Saldo: {money(alert.pending)}</span>
+                          : checkoutAlertsLoaded
+                            ? <span className="quick-checkout-pill is-paid">Conta quitada</span>
+                            : null}
+                      </div>
+                      <small>{stayInfo}</small>
+                    </div>
+                  </div>
+                  {confirming ? (
+                    <div className="quick-checkout-confirm">
+                      <p>Confirmar check-out do quarto <strong>{occupant.roomNumber}</strong>? O quarto ficará como <strong>Sujo (Aguardando limpeza)</strong>.</p>
+                      <div className="quick-checkout-confirm-actions">
+                        <button type="button" className="quick-checkout-secondary" disabled={busy} onClick={() => setConfirmingKey('')}>Cancelar</button>
+                        <button type="button" className="quick-checkout-primary" disabled={busy} onClick={() => void confirmCheckout(occupant)}>
+                          {busy ? 'Finalizando…' : 'Confirmar check-out'}
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="quick-checkout-actions">
+                      <button type="button" className="quick-checkout-secondary" disabled={Boolean(busyKey)} onClick={() => onOpenAccount(occupant)}>
+                        {alert ? 'Abrir conta e receber' : 'Ver conta'}
+                      </button>
+                      {!alert && (
+                        <button type="button" className="quick-checkout-primary" disabled={Boolean(busyKey)} onClick={() => { setErrorState(null); setConfirmingKey(key); }}>
+                          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.1" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9" /></svg>
+                          Dar Check-out
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </section>
+    </div>
+  );
 }
 
 function MetricCard({ title, value, detail, tone }: { title: string; value: string; detail: string; tone: string }) {

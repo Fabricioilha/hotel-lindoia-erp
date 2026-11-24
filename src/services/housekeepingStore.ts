@@ -246,6 +246,7 @@ function reservationDirectoryEntry(reservation: Reservation): ReservationDirecto
     ...(reservation.checkInTime ? { checkInTime: reservation.checkInTime } : {}),
     ...(reservation.checkOutTime ? { checkOutTime: reservation.checkOutTime } : {}),
     ...(reservation.channel ? { channel: reservation.channel } : {}),
+    ...(reservation.checkoutRequired ? { checkoutRequired: true } : {}),
     status: reservation.status,
   };
 }
@@ -877,7 +878,7 @@ export async function transitionReservation(
       throw new Error('O quarto precisa estar limpo e liberado para realizar o check-in.');
     }
     const timestamp = new Date().toISOString();
-    const nextReservation: Reservation = { ...current, status: nextStatus, updatedAt: timestamp,
+    const nextReservation: Reservation = { ...current, status: nextStatus, ...(nextStatus === 'hospedado' ? { checkoutRequired: true } : {}), updatedAt: timestamp,
       balanceDue: reservationBalanceDue(current, finance.incomes, finance.extras, {}, finance.suppressed) };
     const updates: Record<string, unknown> = {
       [`erp_geral/quartos/reservations/${reservation.id}`]: nextReservation,

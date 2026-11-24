@@ -151,7 +151,9 @@
   background: #fff9fa;
 }
 
-.reservation-room-tile.is-maintenance {
+.reservation-room-tile.is-maintenance,
+.reservation-room-tile.is-dirty,
+.reservation-room-tile.is-cleaning {
   border-left-color: #b78332;
   background: #fffaf0;
 }
@@ -183,7 +185,9 @@
   background: #fff0f2;
 }
 
-.reservation-room-tile.is-maintenance .reservation-room-tile-top span {
+.reservation-room-tile.is-maintenance .reservation-room-tile-top span,
+.reservation-room-tile.is-dirty .reservation-room-tile-top span,
+.reservation-room-tile.is-cleaning .reservation-room-tile-top span {
   color: #805c2d;
   background: #fbf3e4;
 }
@@ -1159,7 +1163,9 @@
 :where(html[data-manager-theme="dark-glass"]) .reservation-room-tile.is-occupied {
   background: hsl(350 80% 52% / 0.16);
 }
-:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile.is-maintenance {
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile.is-maintenance,
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile.is-dirty,
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile.is-cleaning {
   background: hsl(40 80% 52% / 0.16);
 }
 :where(html[data-manager-theme="dark-glass"]) .reservation-room-tile-top strong {
@@ -1173,7 +1179,9 @@
   color: #fda4af;
   background: hsl(352 80% 52% / 0.16);
 }
-:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile.is-maintenance .reservation-room-tile-top span {
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile.is-maintenance .reservation-room-tile-top span,
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile.is-dirty .reservation-room-tile-top span,
+:where(html[data-manager-theme="dark-glass"]) .reservation-room-tile.is-cleaning .reservation-room-tile-top span {
   color: #fcd34d;
   background: hsl(39 80% 52% / 0.16);
 }

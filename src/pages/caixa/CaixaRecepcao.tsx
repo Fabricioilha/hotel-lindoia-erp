@@ -16,6 +16,7 @@ import {
   type ExtraType, type GuestStay, type ReceptionData, type ReceptionRateSettings, type ReceptionRoom, type StayExtra, type StayKind,
 } from '../../types/reception';
 import { subscribeReservationDirectory, subscribeRoomDirectory } from '../../services/housekeepingStore';
+import { guestStayOccupiesToday } from '../../services/reservationAnalytics';
 import { roomCategoryDescription, type HousekeepingRoom, type ReservationDirectoryEntry } from '../../types/housekeeping';
 import { emptyReception, localDateKey, saveStay, subscribeReception, subscribeReceptionRates, updateStayAndFinance } from '../../services/receptionStore';
 import '../venda-geladeira.css';
@@ -119,12 +120,14 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   const [receptionData, setReceptionData] = useState<ReceptionData>(() => emptyReception());
   const [rateSettings, setRateSettings] = useState<ReceptionRateSettings>(() => emptyReceptionRateSettings());
   const [subscribedRoomDirectory, setSubscribedRoomDirectory] = useState<Record<string, HousekeepingRoom>>({});
+  const [subscribedRoomDirectoryLoaded, setSubscribedRoomDirectoryLoaded] = useState(false);
   const [subscribedReservationDirectory, setSubscribedReservationDirectory] = useState<Record<string, ReservationDirectoryEntry>>({});
   const [subscribedReservationDirectoryLoaded, setSubscribedReservationDirectoryLoaded] = useState(false);
   const data = entryContext
     ? { ...receptionData, stays: entryContext.stays, rooms: entryContext.rooms }
     : receptionData;
   const roomDirectory = entryContext?.roomDirectory ?? subscribedRoomDirectory;
+  const roomDirectoryLoaded = Boolean(entryContext) || subscribedRoomDirectoryLoaded;
   const reservationDirectory = entryContext?.reservations ?? subscribedReservationDirectory;
   const reservationDirectoryLoaded = Boolean(entryContext) || subscribedReservationDirectoryLoaded;
   const [error, setError] = useState('');
@@ -175,8 +178,14 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   const [courtesy, setCourtesy] = useState(() => Boolean(editingStay?.courtesy));
   const [note, setNote] = useState(() => editingStay?.note ?? '');
   const [saving, setSaving] = useState(false);
+  const [clock, setClock] = useState(() => Date.now());
   const [receiptDate, setReceiptDate] = useState(() => operationalDateKey());
   const [receiveNow, setReceiveNow] = useState(true);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setClock(Date.now()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (entryContext) return;
@@ -194,8 +203,15 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   useEffect(() => {
     if (entryContext) return;
     return subscribeRoomDirectory(
-      setSubscribedRoomDirectory,
-      () => setSubscribedRoomDirectory({}),
+      (next) => {
+        setSubscribedRoomDirectory(next);
+        setSubscribedRoomDirectoryLoaded(true);
+      },
+      (cause) => {
+        setSubscribedRoomDirectory({});
+        setSubscribedRoomDirectoryLoaded(false);
+        setError(`Não foi possível consultar a situação de limpeza dos quartos: ${cause.message}`);
+      },
     );
   }, [entryContext]);
 
@@ -211,10 +227,32 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
   }, [entryContext]);
 
   const today = localDateKey();
+  const sameRoomNumber = (left: string | undefined, right: string | undefined) =>
+    (left ?? '').trim().toLocaleLowerCase('pt-BR') === (right ?? '').trim().toLocaleLowerCase('pt-BR');
   const allRoomNumbers = [...new Set([...Object.values(roomDirectory).map((room) => room.number), ...Object.values(data.rooms).map((room) => room.number), ...(editingStay?.roomNumber ? [editingStay.roomNumber] : [])])]
     .sort((a, b) => a.localeCompare(b, 'pt-BR', { numeric: true }));
   const roomByNumber = new Map(Object.values(roomDirectory).map((room) => [room.number, room]));
   const receptionRoomByNumber = new Map(Object.values(data.rooms).map((room) => [room.number, room]));
+  const roomOptionState = (number: string) => {
+    const room = Object.values(roomDirectory).find((item) => sameRoomNumber(item.number, number));
+    const hasCurrentStay = Object.values(data.stays).some((existing) =>
+      existing.id !== editingStay?.id && sameRoomNumber(existing.roomNumber, number) && guestStayOccupiesToday(existing, today, clock));
+    const hasCurrentReservation = Object.values(reservationDirectory).some((reservation) =>
+      sameRoomNumber(reservation.roomNumber, number) && reservation.status === 'hospedado' && reservation.checkInDate && reservation.checkOutDate
+      && reservation.checkInDate <= today && today <= reservation.checkOutDate);
+    const occupiedNow = hasCurrentStay || hasCurrentReservation;
+    const tag = room?.maintenanceStatus === 'em_manutencao'
+      ? 'Em manutenção'
+      : occupiedNow
+        ? 'Ocupado'
+        : room?.cleaningStatus === 'em_limpeza'
+          ? 'Em limpeza'
+          : room && room.cleaningStatus !== 'limpo'
+            ? 'Aguardando limpeza'
+            : '';
+    const blockNow = !editingStay && !awaiting && checkInDate <= today && Boolean(tag);
+    return { tag, disabled: blockNow && !sameRoomNumber(roomNumber, number) };
+  };
   const describeRoom = (number: string) => {
     const receptionRoom = receptionRoomByNumber.get(number);
     const room = roomByNumber.get(number);
@@ -413,20 +451,27 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
       if (!receiptDate || receiptDate > financeDateKeyFromTimestamp(new Date().toISOString())) return setError('Confira a data de recebimento.');
       stay = initializeStayReceipts(stay, receiptDate, receiveNow);
     }
-    if (!reservationDirectoryLoaded) return setError('Aguarde o carregamento da disponibilidade dos quartos e tente novamente.');
-    const chosenRoom = Object.values(roomDirectory).find((room) => room.number === stay.roomNumber);
-    if (!stay.awaitingArrival && (!editingStay || editingStay.roomNumber !== stay.roomNumber) && chosenRoom && (chosenRoom.maintenanceStatus === 'em_manutencao' || chosenRoom.cleaningStatus !== 'limpo')) return setError('Este quarto está bloqueado. Aguarde a conclusão da limpeza e a liberação da manutenção.');
+    if (!reservationDirectoryLoaded || !roomDirectoryLoaded) return setError('Aguarde o carregamento da disponibilidade e limpeza dos quartos e tente novamente.');
+    const chosenRoom = Object.values(roomDirectory).find((room) => sameRoomNumber(room.number, stay.roomNumber));
+    if (!stay.awaitingArrival && (!editingStay || !sameRoomNumber(editingStay.roomNumber, stay.roomNumber)) && chosenRoom) {
+      if (chosenRoom.maintenanceStatus === 'em_manutencao') return setError(`O quarto ${chosenRoom.number} está em manutenção e indisponível para hospedagem.`);
+      if (chosenRoom.cleaningStatus !== 'limpo') {
+        return setError(`O quarto ${chosenRoom.number} está ${chosenRoom.cleaningStatus === 'em_limpeza' ? 'em limpeza' : 'sujo (aguardando limpeza)'}. Conclua a limpeza antes de liberar para o próximo hóspede.`);
+      }
+    }
     const requestedInterval = stayInterval(stay);
+    const submitNow = new Date().getTime();
     const conflictsWithReservation = Object.values(reservationDirectory).some((reservation) => {
-      if (reservation.roomNumber !== stay.roomNumber || !['confirmada', 'hospedado'].includes(reservation.status ?? '')) return false;
+      if (!sameRoomNumber(reservation.roomNumber, stay.roomNumber) || !['confirmada', 'hospedado'].includes(reservation.status ?? '')) return false;
       const interval = reservationInterval(reservation);
-      return interval && intervalsOverlap(requestedInterval, interval);
+      return Boolean(interval && intervalsOverlap(requestedInterval, interval));
     });
     const conflictsWithStay = Object.values(data.stays).some((existing) => {
-      if (existing.id === stay.id || existing.status !== 'hospedado' || existing.roomNumber !== stay.roomNumber) return false;
+      if (existing.id === stay.id || existing.status !== 'hospedado' || !sameRoomNumber(existing.roomNumber, stay.roomNumber)) return false;
+      if (!stay.awaitingArrival && stay.checkInDate <= today && guestStayOccupiesToday(existing, today, submitNow)) return true;
       return intervalsOverlap(requestedInterval, stayInterval(existing));
     });
-    if (conflictsWithReservation || conflictsWithStay) return setError(`O quarto ${stay.roomNumber} já tem uma hospedagem ou reserva nesse período.`);
+    if (conflictsWithReservation || conflictsWithStay) return setError(`O quarto ${stay.roomNumber} já tem uma hospedagem ou rotativo ativo/pendente de check-out nesse período.`);
     setSaving(true);
     const message = editingStay
       ? `Hospedagem do quarto ${stay.roomNumber} atualizada.`
@@ -508,7 +553,7 @@ function CaixaRecepcaoContent({ userRole, modalOnly = false, initialKind = 'hosp
               {formKind === 'hospede' && <div className="reception-step-heading reception-wide"><span>1</span><div><strong>Hospedagem</strong><small>Entrada, quarto e quantidade de hóspedes.</small></div></div>}
               <label className="sales-field"><span>Data de entrada</span><DateInput name="checkInDate" value={checkInDate} onValueChange={changeCheckInDate} disabled={Boolean(editingStay?.renewals && Object.keys(editingStay.renewals).length)} required /></label>
               {formKind === 'hospede' && <label className="sales-field"><span>Data de saída</span><DateInput name="checkOutDate" value={checkOutDate} onValueChange={changeCheckOutDate} min={dateKeyAfterDays(checkInDate, 1)} max={dateKeyAfterDays(checkInDate, 60)} disabled={Boolean(editingStay?.renewals && Object.keys(editingStay.renewals).length)} required /><small className={`reception-date-nights${calculatedNights < 1 || calculatedNights > 60 ? ' is-invalid' : ''}`}>{editingStay?.renewals && Object.keys(editingStay.renewals).length ? 'Edite as datas no histórico de renovações.' : calculatedNights >= 1 && calculatedNights <= 60 ? `${calculatedNights} ${calculatedNights === 1 ? 'diária' : 'diárias'}` : calculatedNights > 60 ? 'Limite de 60 diárias' : 'A saída deve ser depois da entrada'}</small></label>}
-              <label className="sales-field"><span>Quarto</span><select value={roomNumber} onChange={(event) => setRoomNumber(event.target.value)} required><option value="">Selecione um quarto cadastrado</option>{allRoomNumbers.map((number) => <option key={number} value={number}>{number} · {describeRoom(number)}</option>)}</select></label>
+              <label className="sales-field"><span>Quarto</span><select value={roomNumber} onChange={(event) => setRoomNumber(event.target.value)} required><option value="">Selecione um quarto cadastrado</option>{allRoomNumbers.map((number) => { const option = roomOptionState(number); return <option key={number} value={number} disabled={option.disabled}>{number} · {describeRoom(number)}{option.tag ? ` (${option.tag})` : ''}</option>; })}</select></label>
               <label className="sales-field"><span>{formKind === 'hospede' ? 'Quantidade de hóspedes' : 'Quantidade de pessoas'}</span><input type="number" min="1" max="10" step="1" value={guestCount} onChange={(event) => {
                 const nextCount = event.target.value;
                 const previousCount = Number(guestCount);

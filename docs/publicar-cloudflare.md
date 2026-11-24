@@ -83,11 +83,12 @@ agendamento antigo após confirmar o novo para evitar trabalho duplicado.
 Use uma instância PocketBase de testes. Configure `VITE_POCKETBASE_URL` em
 `.env.local` e as três variáveis de runtime em `.dev.vars` (arquivo ignorado
 pelo Git). Execute `npm run dev:cloudflare` para build e servidor local completo.
-`npm run dev` inicia o Vite com a consulta de pendências e histórico. A gerência
-usa a própria sessão do PocketBase. Para consultar como recepção, configure
-`POCKETBASE_SUPERUSER_EMAIL` e `POCKETBASE_SUPERUSER_PASSWORD` no ambiente local
-do servidor, sem o prefixo `VITE_`. O encerramento e o agendamento usam o Worker.
-Não teste Cron ou checkout manual contra hospedagens reais.
+`npm run dev` inicia o Vite com `/api/checkout` (GET e POST: consulta de pendências,
+histórico e check-out manual). A gerência usa a própria sessão do PocketBase para
+leitura. Para consulta como recepção e para realizar o check-out manual no ambiente
+local, configure `POCKETBASE_SUPERUSER_EMAIL` e `POCKETBASE_SUPERUSER_PASSWORD` no
+ambiente local do servidor (`.env.development.local`), sem o prefixo `VITE_`.
+Não teste check-out manual contra hospedagens reais.
 
 ## Plano gratuito
 

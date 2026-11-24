@@ -1056,3 +1056,35 @@ test('payroll with an advance records the vale on the payroll but only the paysl
   await assert.rejects(store.updateFinance((current) => ({ ...current, payroll: { ...current.payroll, p1: { ...current.payroll.p1, paidBank: 1800, payments: undefined } } })), /supera o valor líquido/);
   await assert.rejects(store.updateFinance((current) => { const expenses = { ...current.expenses }; delete expenses.vale; return { ...current, expenses }; }), /adiantamento/);
 });
+
+test('saveStay and confirmStayArrival block check-in until the room is clean and mark stays checkoutRequired', async () => {
+  const state = db();
+  state.erp_geral.quartos.rooms = {
+    r1: { id: 'r1', number: '101', cleaningStatus: 'sujo', maintenanceStatus: 'normal', note: '' },
+    r2: { id: 'r2', number: '102', cleaningStatus: 'em_limpeza', maintenanceStatus: 'normal', note: '' },
+    r3: { id: 'r3', number: '103', cleaningStatus: 'limpo', maintenanceStatus: 'em_manutencao', note: '' },
+  };
+  state.erp_geral.limpeza = { tasks: {}, activeRooms: { r2: { taskId: 't2', phase: 'assigning', expiresAt: Date.now() + 60_000 } } };
+  const { load } = isolatedDomain(state);
+  const reception = load('src/services/receptionStore.ts');
+  const today = reception.localDateKey();
+  const baseStay = editableStay({ id: 'new-stay', checkInDate: today, checkOutDate: today, roomNumber: '101', dailyMethod: 'pix' });
+
+  await assert.rejects(reception.saveStay(baseStay), /sujo \(aguardando limpeza\)/);
+  await assert.rejects(reception.saveStay({ ...baseStay, id: 's-cleaning', roomNumber: '102' }), /em limpeza/);
+  await assert.rejects(reception.saveStay({ ...baseStay, id: 's-maint', roomNumber: '103' }), /em manutenção/);
+
+  // Pre-registration (awaitingArrival) is allowed while dirty, but confirming arrival is blocked until clean.
+  await reception.saveStay({ ...baseStay, id: 'pre-1', awaitingArrival: true });
+  assert.equal(state.erp_geral.recepcao.stays['pre-1'].awaitingArrival, true);
+  await assert.rejects(reception.confirmStayArrival('pre-1'), /sujo \(aguardando limpeza\)/);
+
+  // Once cleaned, confirming arrival and direct check-in succeed and set checkoutRequired.
+  state.erp_geral.quartos.rooms.r1.cleaningStatus = 'limpo';
+  await reception.confirmStayArrival('pre-1');
+  assert.equal(state.erp_geral.recepcao.stays['pre-1'].awaitingArrival, undefined);
+  assert.equal(state.erp_geral.recepcao.stays['pre-1'].checkoutRequired, true);
+
+  await reception.saveStay({ ...baseStay, id: 'rot-clean', kind: 'periodo', hours: 4, roomNumber: '101' });
+  assert.equal(state.erp_geral.recepcao.stays['rot-clean'].checkoutRequired, true);
+});

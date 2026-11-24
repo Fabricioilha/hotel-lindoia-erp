@@ -82,6 +82,8 @@ export interface GuestStay {
   courtesy?: boolean;
   /** Pré-cadastro: o hóspede ainda não chegou e só ocupa o quarto após o check-in. */
   awaitingArrival?: boolean;
+  /** Exige check-out explícito: o quarto não volta a ficar livre/limpo automaticamente após o horário previsto. */
+  checkoutRequired?: boolean;
   id: string;
   kind: StayKind;
   checkInDate: string;

@@ -161,3 +161,38 @@ test('configuration routes only API through compute and has no scheduled checkou
   assert.equal(config.assets.not_found_handling, 'single-page-application');
   assert.equal(config.triggers, undefined);
 });
+test('manual checkout populates null expected revision for newly created branches like checkoutAudit', async (t) => {
+  let committedExpected = null;
+  let committedUpdates = null;
+  const state = fixture();
+  t.mock.method(globalThis, 'fetch', async (input, init) => {
+    const reqUrl = new URL(input);
+    if (reqUrl.pathname === '/api/hotel/me') return Response.json({ id: 'employee', role: 'viewer' });
+    if (reqUrl.pathname === '/api/collections/_superusers/auth-with-password') return Response.json({ token: 'super-token', record: { id: 'technical' } });
+    if (reqUrl.pathname === '/api/hotel/state') {
+      return Response.json({
+        value: structuredClone(state),
+        versions: { 'erp_geral/quartos': 7, 'erp_geral/recepcao': 4, 'erp_geral/limpeza': 2 },
+      });
+    }
+    if (reqUrl.pathname === '/api/hotel/state/commit') {
+      const body = JSON.parse(init.body);
+      committedExpected = body.expected;
+      committedUpdates = body.updates;
+      return Response.json({ committed: true });
+    }
+    assert.fail(`Unexpected request ${reqUrl}`);
+  });
+  const response = await worker.fetch(post(), env);
+  assert.equal(response.status, 200, await response.text());
+  assert.ok(committedUpdates && 'erp_geral/checkoutAudit' in committedUpdates);
+  assert.equal(committedExpected['erp_geral/quartos'], 7);
+  assert.equal(Object.hasOwn(committedExpected, 'erp_geral/checkoutAudit'), true);
+  assert.equal(committedExpected['erp_geral/checkoutAudit'], null);
+});
+test('local Vite dev server middleware serves both GET and POST on /api/checkout', () => {
+  const viteConfig = readFileSync(resolve(root, 'vite.config.ts'), 'utf8');
+  assert.match(viteConfig, /url\.pathname !== '\/api\/checkout'/);
+  assert.doesNotMatch(viteConfig, /req\.method !== 'GET'/);
+  assert.match(viteConfig, /readRequestBody/);
+});

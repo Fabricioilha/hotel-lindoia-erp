@@ -9,10 +9,12 @@
 .action-card.tone-purple { --card-color: #6a3f9a; }
 .action-card.tone-teal { --card-color: #1d7a85; }
 .action-card.tone-slate { --card-color: #4a5a72; }
+.action-card.tone-amber { --card-color: #c2551a; }
 .action-card-icon { display: grid; flex: 0 0 62px; width: 62px; height: 62px; place-items: center; border-radius: 50%; background: rgb(255 255 255 / 18%); }
-.action-card-text { display: grid; flex: 1; gap: 4px; }
+.action-card-text { display: grid; flex: 1; min-width: 0; gap: 4px; }
 .action-card-text strong { font-size: 1.25rem; line-height: 1.2; }
 .action-card-text small { color: rgb(255 255 255 / 85%); font-size: 0.8125rem; }
+.action-card-badge { display: inline-flex; min-width: 22px; height: 22px; align-items: center; justify-content: center; padding: 0 6px; border-radius: 999px; color: #fff; background: rgb(0 0 0 / 24%); font-size: 0.72rem; font-weight: 800; font-variant-numeric: tabular-nums; line-height: 1; }
 .action-card-arrow { font-size: 1.75rem; transition: transform 140ms ease; }
 .action-card:hover .action-card-arrow { transform: translateX(5px); }
 

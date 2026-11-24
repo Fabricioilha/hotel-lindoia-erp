@@ -213,7 +213,7 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 	const reservations = useMemo(() => Object.values(data.reservations).sort((a, b) => a.checkInDate.localeCompare(b.checkInDate) || a.guestName.localeCompare(b.guestName, 'pt-BR')), [data.reservations]);
 	const occupancy = hotelOccupancySummary({ rooms: data.rooms, reservations: currentReservationIndex }, now, receptionDirectory);
 	const occupancyRooms = (() => {
-		const roomByNumber = new Map<string, { number: string; maintenanceStatus?: string }>();
+		const roomByNumber = new Map<string, { number: string; maintenanceStatus?: string; cleaningStatus?: string }>();
 		Object.values(data.rooms).forEach((room) => roomByNumber.set(room.number.trim(), room));
 		Object.values(receptionDirectory.rooms).forEach((room) => {
 			if (!roomByNumber.has(room.number.trim())) roomByNumber.set(room.number.trim(), room);
@@ -670,14 +670,30 @@ export function MapaReservas({ userRole }: { userRole: UserRole }) {
 						<div className="reservation-room-occupancy-heading"><div><p className="eyebrow">ACOMPANHAMENTO DE HOJE</p><h2 id="reservation-room-occupancy-title">Grade de ocupação dos quartos</h2></div><span>{loading || receptionLoading || !currentReservationIndexLoaded ? 'Carregando...' : `${occupancyRooms.filter((room) => room.occupied).length} ocupados · ${occupancyRooms.length} quartos`}</span></div>
 						{loading || receptionLoading || !currentReservationIndexLoaded ? <div className="loading-state">Carregando ocupação dos quartos...</div> : !occupancyRooms.length ? <div className="reservation-empty"><strong>Nenhum quarto cadastrado</strong><p>Cadastre os quartos para acompanhar a ocupação.</p></div> : <div className="reservation-room-grid" role="list">
 							{occupancyRooms.map((room) => {
-								const status = room.occupied ? 'occupied' : room.maintenanceStatus === 'em_manutencao' ? 'maintenance' : 'free';
-								const label = status === 'occupied' ? 'Ocupado' : status === 'maintenance' ? 'Em manutenção' : 'Livre';
+								const status = room.occupied
+									? 'occupied'
+									: room.maintenanceStatus === 'em_manutencao'
+										? 'maintenance'
+										: room.cleaningStatus === 'em_limpeza'
+											? 'cleaning'
+											: room.cleaningStatus && room.cleaningStatus !== 'limpo'
+												? 'dirty'
+												: 'free';
+								const label = status === 'occupied'
+									? 'Ocupado'
+									: status === 'maintenance'
+										? 'Em manutenção'
+										: status === 'cleaning'
+											? 'Em limpeza'
+											: status === 'dirty'
+												? 'Aguardando limpeza'
+												: 'Livre';
 								const reservation = Object.values(currentReservationIndex).find((item) => item.roomNumber.trim() === room.number.trim() && reservationOccupiesToday(item, today, now.getTime()));
 								const stay = Object.values(receptionDirectory.stays).find((item) => item.roomNumber.trim() === room.number.trim() && guestStayOccupiesToday(item, today, now.getTime()));
 								const target = reservation ? `/reservas?reservation=${encodeURIComponent(reservation.id)}&room=${encodeURIComponent(room.number)}` : stay ? `/reservas?stay=${encodeURIComponent(stay.id)}&room=${encodeURIComponent(room.number)}` : `/quartos?room=${encodeURIComponent(room.number)}`;
 								return <article key={room.number} role="listitem"><Link to={target} onClick={() => setDismissedContext('')} className={`reservation-room-tile is-${status}`} aria-label={`Quarto ${room.number}, ${label}${room.guestName ? ` por ${room.guestName}` : ''}. ${room.occupied ? 'Ver hospedagem' : 'Gerenciar quarto'}`}>
 									<div className="reservation-room-tile-top"><strong>Quarto {room.number}</strong><span>{label}</span></div>
-									<p>{room.occupied ? room.guestName || 'Hóspede hospedado' : status === 'maintenance' ? 'Indisponível para hospedagem' : 'Sem hospedagem ativa'}</p>
+									<p>{room.occupied ? room.guestName || 'Hóspede hospedado' : status === 'maintenance' ? 'Indisponível para hospedagem' : status === 'cleaning' ? 'Camareira realizando limpeza' : status === 'dirty' ? 'Sujo · liberar após limpeza' : 'Limpo e disponível'}</p>
 								</Link></article>;
 							})}
 						</div>}

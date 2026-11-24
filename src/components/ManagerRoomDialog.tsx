@@ -149,13 +149,17 @@ export function ManagerRoomDialog({ number, room, receptionRoom, occupant, stay,
         <div><p className="dashboard-eyebrow">GERÊNCIA DE QUARTOS</p><h2 id="manager-room-title">Quarto {number}</h2><small>{room ? roomCategoryDescription(room) : receptionRoom ? ROOM_TYPE_LABELS[receptionRoom.type] : 'Quarto'}</small></div>
         <button ref={closeButton} type="button" className="dashboard-room-charge-close" aria-label="Fechar opções do quarto" disabled={saving} onClick={onClose}>×</button>
       </header>
-      <div className="manager-room-badges"><span>{occupant ? 'Ocupado' : 'Livre'}</span><span>{blocked ? 'Bloqueado para manutenção' : 'Sem bloqueio'}</span><span>{cleaningLabels[cleaningStatus]}</span></div>
+      <div className="manager-room-badges">
+        <span>{occupant ? 'Ocupado' : 'Livre'}</span>
+        <span>{blocked ? 'Bloqueado para manutenção' : 'Sem bloqueio'}</span>
+        <span>{occupant && cleaningStatus === 'limpo' ? 'Aguardando check-out' : cleaningLabels[cleaningStatus]}</span>
+      </div>
       {activeTasks.length > 0 && <p className="manager-room-cleaner">Limpeza designada: <strong>{activeTasks.map((task) => task.camareira).join(', ')}</strong></p>}
       {room?.note && <p className="manager-room-note">{room.note}</p>}
       {occupant && <div className="manager-room-booking">
         <h3>Informações da {occupant.sourceType === 'stay' ? 'hospedagem' : 'reserva'}</h3>
         <dl className="manager-room-details">
-          <div><dt>Hóspede titular</dt><dd>{reservation?.guestName ?? stay?.guestName ?? occupant.name}</dd></div>
+          <div><dt>Hóspede titular</dt><dd>{reservation?.guestName?.trim() || stay?.guestName?.trim() || occupant.name}</dd></div>
           <div><dt>Pessoas</dt><dd>{reservation ? reservation.adults + reservation.children : stay?.guestCount ?? occupant.peopleCount}</dd></div>
           <div><dt>Check-in</dt><dd>{dateLabel(reservation?.checkInDate ?? stay?.checkInDate ?? occupant.startDate)}{reservation?.checkInTime ? ` às ${reservation.checkInTime}` : ''}</dd></div>
           <div><dt>Check-out previsto</dt><dd>{dateLabel(reservation?.checkOutDate ?? occupant.checkOutDate)}{reservation?.checkOutTime ? ` às ${reservation.checkOutTime}` : ''}</dd></div>
@@ -167,7 +171,7 @@ export function ManagerRoomDialog({ number, room, receptionRoom, occupant, stay,
             <div><dt>Saldo a receber</dt><dd>{financialLoaded ? money(balance + Math.max(0, chargeTotal - chargesPaid)) : 'Consultando…'}</dd></div>
           </>}
           {stay && <>
-            <div><dt>Hospedagem</dt><dd>{stay.kind === 'periodo' ? `Rotativo · ${stay.hours ?? 4} horas` : `${stay.nights} diária(s)`}</dd></div>
+            <div><dt>Hospedagem</dt><dd>{stay.kind === 'periodo' ? `Rotativo · ${(stay.hours ?? 4) === 1 ? '1 hora' : `${stay.hours ?? 4} horas`}` : `${stay.nights} diária(s)`}</dd></div>
             <div><dt>Total registrado</dt><dd>{money(stayTotals(stay).total + chargeTotal)}</dd></div>
             <div><dt>Pagamentos da hospedagem</dt><dd>{stayPayments(stay).map((payment) => `${payment.label}: ${money(payment.amount)} (${PAYMENT_METHOD_LABELS[payment.method]})`).join(' · ') || 'Nenhum pagamento ativo'}</dd></div>
           </>}

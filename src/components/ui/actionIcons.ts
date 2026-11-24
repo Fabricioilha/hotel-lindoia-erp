@@ -1,6 +1,7 @@
 export const ACTION_ICONS = {
   bed: 'M3 19V6M21 19v-5M3 14h18v-3a3 3 0 0 0-3-3H3M6 11V9h5v2',
   clock: 'M12 7v5l3 2M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18',
+  checkout: 'M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4M16 17l5-5-5-5M21 12H9',
   cart: 'M3 4h2l2.4 11h10.2l2-8H6M9 20h.01M17 20h.01',
   calendar: 'M4 6h16v14H4zM4 10h16M8 3v4M16 3v4',
   outbox: 'M4 14v6h16v-6M12 15V3M8 7l4-4 4 4M4 14l2-4h12l2 4',

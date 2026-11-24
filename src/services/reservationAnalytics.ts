@@ -26,11 +26,43 @@ export function dateKeyAfterDays(days: number, date = new Date()): string {
   return localDateKey(target);
 }
 
+const hotelDateFormatter = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'America/Sao_Paulo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+});
+
+const hotelShiftFormatter = new Intl.DateTimeFormat('sv-SE', {
+  timeZone: 'America/Sao_Paulo',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  hourCycle: 'h23',
+});
+
+function hotelDateKey(timestamp: number | string | Date): string {
+  const date = timestamp instanceof Date ? timestamp : new Date(timestamp);
+  return Number.isFinite(date.getTime()) ? hotelDateFormatter.format(date) : '';
+}
+
+function hotelShiftDateKey(timestamp: number): string {
+  const date = new Date(timestamp);
+  if (!Number.isFinite(date.getTime())) return '';
+  const parts = hotelShiftFormatter.formatToParts(date);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? '';
+  const day = new Date(`${part('year')}-${part('month')}-${part('day')}T00:00:00Z`);
+  if (!Number.isFinite(day.getTime())) return '';
+  if (Number(part('hour')) < 7) day.setUTCDate(day.getUTCDate() - 1);
+  return day.toISOString().slice(0, 10);
+}
+
 export function stayCheckOutDate(stay: GuestStay): string {
-  if (stay.status === 'encerrado' && stay.checkedOutAt) return new Intl.DateTimeFormat('sv-SE', { timeZone: 'America/Sao_Paulo', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(stay.checkedOutAt));
+  if (stay.status === 'encerrado' && stay.checkedOutAt) return hotelDateKey(stay.checkedOutAt);
   if (stay.kind === 'periodo') {
-    const end = rotativoStart(stay) + (stay.hours ?? 4) * 3_600_000;
-    return Number.isFinite(end) ? localDateKey(new Date(end)) : '';
+    const end = rotativoEndTimestamp(stay);
+    return Number.isFinite(end) ? hotelDateKey(end) : '';
   }
   if (stay.checkOutDate) return stay.checkOutDate;
   const date = new Date(`${stay.checkInDate}T00:00:00Z`);
@@ -39,31 +71,56 @@ export function stayCheckOutDate(stay: GuestStay): string {
   return date.toISOString().slice(0, 10);
 }
 
-function rotativoStart(stay: GuestStay): number {
+function rotativoStart(stay: Pick<GuestStay, 'checkInDate' | 'createdAt'>): number {
   const createdAt = Date.parse(stay.createdAt);
-  return Number.isFinite(createdAt) ? createdAt : Date.parse(`${stay.checkInDate}T12:00:00`);
+  return Number.isFinite(createdAt) ? createdAt : Date.parse(`${stay.checkInDate}T12:00:00-03:00`);
+}
+
+export function rotativoEndTimestamp(stay: Pick<GuestStay, 'checkInDate' | 'createdAt' | 'hours'>): number {
+  const start = rotativoStart(stay);
+  return Number.isFinite(start) ? start + (stay.hours ?? 4) * 3_600_000 : Number.NaN;
+}
+
+export function rotativoDepartureDue(stay: Pick<GuestStay, 'kind' | 'checkInDate' | 'createdAt' | 'hours'>, now: number): boolean {
+  if (stay.kind !== 'periodo') return false;
+  const end = rotativoEndTimestamp(stay);
+  return Number.isFinite(end) && now >= end;
+}
+
+export function reservationRotativoEndTimestamp(reservation: Pick<ReservationDirectoryEntry, 'channel' | 'checkOutDate' | 'checkOutTime'>): number {
+  if (reservation.channel !== 'rotativo' || !reservation.checkOutDate || !reservation.checkOutTime) return Number.NaN;
+  return Date.parse(`${reservation.checkOutDate}T${reservation.checkOutTime}:00-03:00`);
 }
 
 export function guestStayOccupiesToday(stay: GuestStay, today: string, now: number): boolean {
   if (stay.status !== 'hospedado' || stay.awaitingArrival) return false;
+  if (stay.checkInDate > today) return false;
+  if (stay.checkoutRequired) return true;
   if (stay.kind === 'periodo') {
-    if (stay.checkInDate > today) return false;
     const start = rotativoStart(stay);
-    return Number.isFinite(start) && now >= start && now < start + (stay.hours ?? 4) * 3_600_000;
+    const end = rotativoEndTimestamp(stay);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
+    // Mantém o rotativo visível (como saída pendente) durante o dia/plantão até que o check-out seja feito,
+    // evitando que o quarto volte automaticamente para "livre/limpo" ao fim das horas.
+    const endDate = hotelDateKey(end);
+    return now >= start && (today <= endDate || hotelShiftDateKey(end) === hotelShiftDateKey(now));
   }
   // Legacy records may retain "hospedado" after departure. Status alone is
   // not evidence of current occupancy; debts are handled separately.
-  return stay.checkInDate <= today && today <= stayCheckOutDate(stay);
+  return today <= stayCheckOutDate(stay);
 }
 
 export function reservationOccupiesToday(reservation: ReservationDirectoryEntry, today: string, now: number): boolean {
   if (reservation.status !== 'hospedado' || !reservation.checkInDate || !reservation.checkOutDate) return false;
+  if (reservation.checkInDate > today) return false;
+  if (reservation.checkoutRequired) return true;
   if (reservation.channel === 'rotativo' && reservation.checkInTime && reservation.checkOutTime) {
-    const start = Date.parse(`${reservation.checkInDate}T${reservation.checkInTime}:00`);
-    const end = Date.parse(`${reservation.checkOutDate}T${reservation.checkOutTime}:00`);
-    return Number.isFinite(start) && Number.isFinite(end) && now >= start && now < end;
+    const start = Date.parse(`${reservation.checkInDate}T${reservation.checkInTime}:00-03:00`);
+    const end = reservationRotativoEndTimestamp(reservation);
+    if (!Number.isFinite(start) || !Number.isFinite(end)) return false;
+    return now >= start && (today <= reservation.checkOutDate || hotelShiftDateKey(end) === hotelShiftDateKey(now));
   }
-  return reservation.checkInDate <= today && today <= reservation.checkOutDate;
+  return today <= reservation.checkOutDate;
 }
 
 export function reservationGuestCount(reservation: Pick<Reservation, 'adults' | 'children'> | Pick<ReservationDirectoryEntry, 'adults' | 'children'>): number {

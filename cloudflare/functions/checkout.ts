@@ -105,7 +105,12 @@ export default async (request: Request, env: BackendEnv) => {
       if (!applyCheckout(next, target, now, user.id)) return Response.json({ ok: true });
 
       try {
-        await commitState(client, current.versions, changedBranches(previous, next));
+        const updates = changedBranches(previous, next);
+        const expected: Record<string, number | null> = { ...current.versions };
+        for (const path of Object.keys(updates)) {
+          if (!(path in expected)) expected[path] = null;
+        }
+        await commitState(client, expected, updates);
         return Response.json({ ok: true });
       } catch (error) {
         if (!(error && typeof error === 'object' && 'status' in error && error.status === 409) || attempt === 4) throw error;

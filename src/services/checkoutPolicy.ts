@@ -6,6 +6,13 @@ import type { FrigobarSale } from '../types/frigobar';
 import type { CleaningTask } from '../types/cleaning';
 import { hotelDate } from './hotelSchedule';
 import { currentOccupants } from './occupantDirectory';
+import {
+  guestStayOccupiesToday,
+  reservationOccupiesToday,
+  reservationRotativoEndTimestamp,
+  rotativoDepartureDue,
+  stayCheckOutDate,
+} from './reservationAnalytics';
 
 export { hotelDate } from './hotelSchedule';
 
@@ -57,6 +64,59 @@ export function checkoutStatus(state: CheckoutState, now: Date): CheckoutAlert[]
   });
 }
 
+function sameRoomNumber(left: string | undefined, right: string | undefined): boolean {
+  return (left ?? '').trim().toLocaleLowerCase('pt-BR') === (right ?? '').trim().toLocaleLowerCase('pt-BR');
+}
+
+function isNewerCheckIn(
+  other: { checkInDate?: string; createdAt?: string },
+  source: { checkInDate?: string; createdAt?: string },
+): boolean {
+  const otherDate = other.checkInDate ?? '';
+  const sourceDate = source.checkInDate ?? '';
+  if (otherDate !== sourceDate) return otherDate > sourceDate;
+  return Boolean(other.createdAt && source.createdAt && other.createdAt > source.createdAt);
+}
+
+/**
+ * Only an active, non-pre-registered occupant who checked in AFTER the departing stay/reservation
+ * may prevent checkout from marking the room dirty. Legacy un-closed stays, expired rotativos
+ * and awaiting-arrival pre-registrations must never keep a checked-out room clean/available.
+ */
+function hasNewerActiveOccupant(
+  state: CheckoutState,
+  target: CheckoutTarget,
+  source: GuestStay | Reservation,
+  roomNumber: string,
+  now: Date,
+): boolean {
+  const today = hotelDate(now);
+  const nowMs = now.getTime();
+  const newerReservation = Object.values(state.quartos?.reservations ?? {}).some((other) => {
+    if (target.sourceType === 'reservation' && other.id === source.id) return false;
+    if (other.status !== 'hospedado' || !sameRoomNumber(other.roomNumber, roomNumber)) return false;
+    if (!isNewerCheckIn(other, source)) return false;
+    if (!reservationOccupiesToday(other, today, nowMs)) return false;
+    if (other.channel === 'rotativo') {
+      const end = reservationRotativoEndTimestamp(other);
+      if (Number.isFinite(end) && nowMs >= end) return false;
+    }
+    return true;
+  });
+  if (newerReservation) return true;
+  return Object.values(state.recepcao?.stays ?? {}).some((other) => {
+    if (target.sourceType === 'stay' && other.id === source.id) return false;
+    if (other.status !== 'hospedado' || other.awaitingArrival || !sameRoomNumber(other.roomNumber, roomNumber)) return false;
+    if (!isNewerCheckIn(other, source)) return false;
+    if (other.kind === 'periodo') {
+      return guestStayOccupiesToday(other, today, nowMs) && !rotativoDepartureDue(other, nowMs);
+    }
+    if (other.checkoutRequired) return other.checkInDate <= today;
+    const end = stayCheckOutDate(other);
+    return other.checkInDate <= today && (end ? today <= end : other.checkInDate === today);
+  });
+}
+
 /** Mutates only a transaction's private snapshot; all checkout effects commit together. */
 export function applyCheckout(state: CheckoutState, target: CheckoutTarget, now: Date, actor: string): boolean {
   const source = target.sourceType === 'stay' ? state.recepcao?.stays?.[target.sourceId] : state.quartos?.reservations?.[target.sourceId];
@@ -66,9 +126,9 @@ export function applyCheckout(state: CheckoutState, target: CheckoutTarget, now:
   if (locks.some((lock) => lock && now.getTime() - lock.startedAt < 300_000)) throw new Error('A hospedagem ou o financeiro está sendo atualizado. Aguarde e tente novamente.');
   const due = checkoutPending(state, target);
   if (!Number.isFinite(due) || due > 0) throw new Error('Há pendências no checkout: ' + due.toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }) + '. Confira a conta da hospedagem e a geladeira antes de liberar o quarto para limpeza.');
-  let room = Object.values(state.quartos?.rooms ?? {}).find((r) => r.number.trim() === source.roomNumber.trim());
+  let room = Object.values(state.quartos?.rooms ?? {}).find((r) => sameRoomNumber(r.number, source.roomNumber));
   if (!room) {
-    const legacy = Object.values(state.recepcao?.rooms ?? {}).find((r) => r.number.trim() === source.roomNumber.trim());
+    const legacy = Object.values(state.recepcao?.rooms ?? {}).find((r) => sameRoomNumber(r.number, source.roomNumber));
     if (!legacy) throw new Error('Cadastre o quarto no controle de quartos antes de liberá-lo.');
     state.quartos ??= {};
     state.quartos.rooms ??= {};
@@ -89,11 +149,10 @@ export function applyCheckout(state: CheckoutState, target: CheckoutTarget, now:
     };
     if (state.quartos?.reservationSlots?.[room.id]) clearSlots(state.quartos.reservationSlots[room.id] as Record<string, unknown>);
   }
-  const anotherOccupant = [...Object.values(state.quartos?.reservations ?? {}), ...Object.values(state.recepcao?.stays ?? {})]
-    .some((other) => other.id !== source.id && other.status === 'hospedado' && other.roomNumber.trim() === room!.number.trim() && other.checkInDate <= hotelDate(now));
+  const anotherOccupant = hasNewerActiveOccupant(state, target, source, room.number, now);
   if (!anotherOccupant) room.cleaningStatus = 'sujo';
   for (const task of Object.values(state.limpeza?.tasks ?? {})) {
-    if (!anotherOccupant && task.status === 'em_limpeza' && (task.roomId === room.id || task.roomNumber.trim() === room.number.trim())) {
+    if (!anotherOccupant && task.status === 'em_limpeza' && (task.roomId === room.id || sameRoomNumber(task.roomNumber, room.number))) {
       Object.assign(task, { status: 'cancelado', completedAt: timestamp, completedBy: actor });
     }
   }

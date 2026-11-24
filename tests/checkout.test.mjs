@@ -26,6 +26,7 @@ function domainModule(path) {
 
 const { applyCheckout, checkoutPending, checkoutStatus, hotelDate } = domainModule('src/services/checkoutPolicy.ts');
 const { currentOccupants, reservationOccupiesDate, stayOccupiesDate } = domainModule('src/services/occupantDirectory.ts');
+const { guestStayOccupiesToday, rotativoDepartureDue } = domainModule('src/services/reservationAnalytics.ts');
 const { breakfastForecastDay, breakfastsOnDate } = domainModule('src/services/breakfastForecast.ts');
 const { departureDue } = domainModule('src/services/hotelSchedule.ts');
 
@@ -332,4 +333,76 @@ test('resultado de caixa fecha com a variação de caixa físico e banco', () =>
   const open = s.openingBalances.cash + s.openingBalances.bank;
   const close = s.closingBalances.cash + s.closingBalances.bank;
   assert.equal(Math.round((close - open) * 100), Math.round(s.cashResult * 100));
+});
+
+test('checkout always dirties the room even with legacy un-closed stays, expired rotativos or awaiting arrivals in the same room', () => {
+  const now = new Date('2026-10-24T18:00:00Z'); // 15:00 BRT
+  const paidStay = {
+    id: 'current-stay', kind: 'hospede', roomNumber: '101', guestName: 'Atual',
+    checkInDate: '2026-10-23', checkOutDate: '2026-10-24', nights: 1,
+    dailyRate: 150, dailyMethod: 'pix', hasBreakfast: false, breakfastRate: 0,
+    taxAmount: 0, taxMethod: 'cash', extras: [], note: '', attendant: 'Luana',
+    status: 'hospedado', checkoutRequired: true, createdAt: '2026-10-23T18:00:00Z',
+  };
+  const state = {
+    quartos: {
+      reservations: {},
+      rooms: { room1: { id: 'room1', number: '101', cleaningStatus: 'limpo', maintenanceStatus: 'normal', note: '' } },
+    },
+    recepcao: {
+      stays: {
+        legacyStay: { ...paidStay, id: 'legacy-stay', checkInDate: '2026-10-05', checkOutDate: '2026-10-06', checkoutRequired: undefined, createdAt: '2026-10-05T15:00:00Z' },
+        legacyRotativo: { ...paidStay, id: 'legacy-rotativo', kind: 'periodo', hours: 4, checkInDate: '2026-10-12', checkOutDate: undefined, checkoutRequired: undefined, createdAt: '2026-10-12T15:00:00Z' },
+        earlierExpiredRotativo: { ...paidStay, id: 'earlier-rotativo', kind: 'periodo', hours: 4, checkInDate: '2026-10-24', checkOutDate: undefined, checkoutRequired: undefined, createdAt: '2026-10-24T11:00:00Z' },
+        awaitingToday: { ...paidStay, id: 'awaiting-today', checkInDate: '2026-10-24', checkOutDate: '2026-10-25', awaitingArrival: true, createdAt: '2026-10-24T14:00:00Z' },
+        'current-stay': paidStay,
+      },
+      roomCharges: {},
+    },
+    limpeza: {
+      tasks: { t1: { id: 't1', roomId: 'room1', roomNumber: '101', status: 'em_limpeza' } },
+      activeRooms: { room1: { taskId: 't1' } },
+    },
+    frigobar: { operations: { sales: {} } },
+    financeiro: { incomes: {}, suppressed: {} },
+  };
+  assert.equal(applyCheckout(state, { sourceType: 'stay', sourceId: 'current-stay' }, now, 'employee'), true);
+  assert.equal(state.recepcao.stays['current-stay'].status, 'encerrado');
+  assert.equal(state.quartos.rooms.room1.cleaningStatus, 'sujo');
+  assert.equal(state.limpeza.tasks.t1.status, 'cancelado');
+  assert.equal(state.limpeza.activeRooms.room1, undefined);
+});
+
+test('rotativo and checkoutRequired stays remain occupied (awaiting checkout) after end time until explicitly checked out', () => {
+  // Rotativo started at 10:00 BRT (13:00Z) for 4h -> ends at 14:00 BRT (17:00Z).
+  const rotativo = {
+    id: 'rot-1', kind: 'periodo', roomNumber: '209', guestName: '',
+    checkInDate: '2026-10-24', nights: 1, hours: 4, dailyRate: 80, dailyMethod: 'pix',
+    hasBreakfast: false, breakfastRate: 0, taxAmount: 0, taxMethod: 'cash',
+    extras: [], note: '', attendant: 'Luana', status: 'hospedado', checkoutRequired: true,
+    createdAt: '2026-10-24T13:00:00Z',
+  };
+  const at1300BRT = Date.parse('2026-10-24T16:00:00Z');
+  const at1500BRT = Date.parse('2026-10-24T18:00:00Z');
+  const nextDay0900BRT = Date.parse('2026-10-25T12:00:00Z');
+  assert.equal(guestStayOccupiesToday(rotativo, '2026-10-24', at1300BRT), true);
+  assert.equal(rotativoDepartureDue(rotativo, at1300BRT), false);
+  // After 4h elapse, it must stay occupied (as saída pendente) rather than flipping back to clean/available.
+  assert.equal(guestStayOccupiesToday(rotativo, '2026-10-24', at1500BRT), true);
+  assert.equal(rotativoDepartureDue(rotativo, at1500BRT), true);
+  assert.equal(guestStayOccupiesToday(rotativo, '2026-10-25', nextDay0900BRT), true);
+  // Even an older rotativo without checkoutRequired stays visible during its operational shift (night shift past midnight).
+  const nightRotativo = { ...rotativo, id: 'rot-night', checkoutRequired: undefined, hours: 2, createdAt: '2026-10-25T00:00:00Z' }; // 21:00 BRT Oct 24 -> ends 23:00 BRT Oct 24
+  assert.equal(guestStayOccupiesToday(nightRotativo, '2026-10-25', Date.parse('2026-10-25T04:00:00Z')), true); // 01:00 BRT Oct 25
+  assert.equal(guestStayOccupiesToday(nightRotativo, '2026-10-26', Date.parse('2026-10-26T15:00:00Z')), false); // legacy after shift ends
+  // Once checked out, room becomes dirty and occupant clears immediately.
+  const state = {
+    quartos: { rooms: { r209: { id: 'r209', number: '209', cleaningStatus: 'limpo', maintenanceStatus: 'normal', note: '' } } },
+    recepcao: { stays: { 'rot-1': structuredClone(rotativo) }, roomCharges: {} },
+    frigobar: { operations: { sales: {} } },
+    financeiro: { incomes: {}, suppressed: {} },
+  };
+  assert.equal(applyCheckout(state, { sourceType: 'stay', sourceId: 'rot-1' }, new Date(at1500BRT), 'employee'), true);
+  assert.equal(state.quartos.rooms.r209.cleaningStatus, 'sujo');
+  assert.deepEqual(currentOccupants(state.recepcao.stays, {}, '2026-10-24', at1500BRT), []);
 });

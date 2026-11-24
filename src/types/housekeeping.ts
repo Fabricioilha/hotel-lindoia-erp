@@ -143,6 +143,7 @@ export interface RoomCleaningLog {
 
 export interface Reservation {
   checkedOutAt?: string;
+  checkoutRequired?: boolean;
   id: string;
   guestName: string;
   channel?: ReservationChannel;
@@ -188,6 +189,7 @@ export interface ReservationDirectoryEntry {
   checkOutTime?: string;
   channel?: ReservationChannel;
   status?: ReservationStatus;
+  checkoutRequired?: boolean;
 }
 
 export interface HousekeepingData {

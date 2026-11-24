@@ -7,14 +7,23 @@ export function currentOccupants(stays: Record<string, GuestStay>, reservations:
   const candidates = [
     ...Object.values(stays).filter((stay) => guestStayOccupiesToday(stay, date, now)).map((stay) => ({
       id: `stay-${stay.id}`, sourceId: stay.id, sourceType: 'stay' as const, roomNumber: stay.roomNumber.trim(), guestName: stay.guestName,
-      start: stay.checkInDate, checkOutDate: stayCheckOutDate(stay),
+      start: stay.checkInDate, createdAt: stay.createdAt ?? '', checkOutDate: stayCheckOutDate(stay),
     })),
     ...Object.values(reservations).filter((reservation) => reservationOccupiesToday(reservation, date, now)).map((reservation) => ({
       id: reservation.id, sourceId: reservation.id, sourceType: 'reservation' as const, roomNumber: reservation.roomNumber.trim(), guestName: reservation.guestName,
-      start: reservation.checkInDate ?? '', checkOutDate: reservation.checkOutDate ?? '',
+      start: reservation.checkInDate ?? '', createdAt: '', checkOutDate: reservation.checkOutDate ?? '',
     })),
-  ].sort((a, b) => a.start.localeCompare(b.start) || a.id.localeCompare(b.id));
+  ].sort((a, b) => a.start.localeCompare(b.start) || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
   return [...new Map(candidates.map((candidate) => [candidate.roomNumber, candidate])).values()]
+    .map((candidate) => ({
+      id: candidate.id,
+      sourceId: candidate.sourceId,
+      sourceType: candidate.sourceType,
+      roomNumber: candidate.roomNumber,
+      guestName: candidate.guestName,
+      start: candidate.start,
+      checkOutDate: candidate.checkOutDate,
+    }))
     .sort((a, b) => a.roomNumber.localeCompare(b.roomNumber, 'pt-BR', { numeric: true }));
 }
 

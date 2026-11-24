@@ -388,3 +388,17 @@ test('cash flow modals render save errors inside a sticky banner above the modal
   assert.match(css, /\.finance-modal-backdrop \{[^}]*z-index: 130;/, 'finance modal backdrop sits above shift banner');
   assert.match(css, /\.finance-modal-footer-sticky \{[^}]*position: sticky;[^}]*z-index: 15;/);
 });
+
+test('dashboard upgrades management cash collection banner and adds dedicated Dar Check Out flow for employees', () => {
+  const dashboard = sourceText('src/pages/Dashboard.tsx');
+  assert.match(dashboard, /className="manager-collection-banner"/, 'manager collection alert uses dedicated executive card');
+  assert.match(dashboard, /RECOLHIDO PELA GERÊNCIA/, 'manager collection banner identifies the cash-out modality');
+  assert.match(dashboard, /Confirmar recebimento/, 'manager collection banner has explicit confirmation button');
+  assert.match(dashboard, /title="Dar Check Out"/, 'employee dashboard has a dedicated Dar Check Out card');
+  assert.match(dashboard, /function QuickCheckoutModal/, 'employee dashboard includes quick checkout modal');
+  assert.match(dashboard, /className=\{`dashboard-room-checkout-panel/, 'occupied room dialog highlights checkout in its own panel');
+  const css = sourceText('src/pages/dashboard.css');
+  assert.match(css, /\.manager-collection-banner \{/, 'dashboard.css styles manager collection banner');
+  assert.match(css, /\.dashboard-quick-checkout-modal \{/, 'dashboard.css styles quick checkout modal');
+  assert.match(css, /:where\(html\[data-manager-theme="dark-glass"\]\) \.manager-collection-banner \{/, 'dark-glass mirror styles manager collection banner');
+});
